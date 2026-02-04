@@ -25,8 +25,7 @@ export {
 	DEFAULT_TRUNCATE_LENGTH,
 	// For advanced use cases and testing
 	registerTraceFields,
-	resetTraceFields,
-	TRACE_FIELDS
+	resetTraceFields
 } from './trace-fields';
 // Re-export TraceFieldDef from types
 export type { TraceFieldDef, LoggerGlobalOptions, Logging } from './types';

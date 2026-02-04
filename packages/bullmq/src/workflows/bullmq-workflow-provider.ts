@@ -202,6 +202,34 @@ export type { JobsOptions as BullMQJobOptions } from 'bullmq';
 export type { WorkerOptions as BullMQWorkerOptions } from 'bullmq';
 
 /**
+ * Options for building a flow job with step children.
+ * @internal
+ */
+interface BuildFlowJobOptions<TData> {
+	workflowName: string;
+	flowId: string;
+	queueName: string;
+	stepGroups: StepGroup[];
+	data: TData;
+	meta?: PropagationMeta;
+	executeOptions?: ExecuteOptions;
+	stepJobOpts?: StepJobRetryOpts;
+}
+
+/**
+ * Options for building a simple job without steps.
+ * @internal
+ */
+interface BuildSimpleJobOptions<TData> {
+	workflowName: string;
+	flowId: string;
+	queueName: string;
+	data: TData;
+	meta?: PropagationMeta;
+	executeOptions?: ExecuteOptions;
+}
+
+/**
  * Combined workflow options - job options + worker options.
  * Full BullMQ native interface, no abstraction.
  *
@@ -657,17 +685,17 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 		// Build job structure (without adding to queue yet)
 		const { job, jobId } = hasSteps
-			? this.buildFlowJob(
+			? this.buildFlowJob({
 					workflowName,
 					flowId,
 					queueName,
-					stepGroups as StepGroup[],
+					stepGroups: stepGroups as StepGroup[],
 					data,
 					meta,
-					options,
+					executeOptions: options,
 					stepJobOpts
-				)
-			: this.buildSimpleJob(workflowName, flowId, queueName, data, meta, options);
+				})
+			: this.buildSimpleJob({ workflowName, flowId, queueName, data, meta, executeOptions: options });
 
 		// CRITICAL: Register pending result BEFORE adding job to prevent race condition
 		this.registerPendingResult(jobId, flowId, resolve, reject);
@@ -695,25 +723,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * Build a flow job with step children.
 	 * Does NOT add to queue - returns structure for caller to add.
 	 */
-	private buildFlowJob<TData>(
-		workflowName: string,
-		flowId: string,
-		_queueName: string,
-		stepGroups: StepGroup[],
-		data: TData,
-		meta: PropagationMeta | undefined,
-		options?: ExecuteOptions,
-		stepJobOpts?: StepJobRetryOpts
-	): { job: FlowJobDefinition; jobId: string } {
+	private buildFlowJob<TData>(opts: BuildFlowJobOptions<TData>): { job: FlowJobDefinition; jobId: string } {
 		const flowBuilder = new FlowBuilder({
-			workflowName,
-			flowId,
+			workflowName: opts.workflowName,
+			flowId: opts.flowId,
 			queuePrefix: this.queuePrefix,
-			meta,
-			idempotencyKey: options?.idempotencyKey,
-			stepJobOpts
+			meta: opts.meta,
+			idempotencyKey: opts.executeOptions?.idempotencyKey,
+			stepJobOpts: opts.stepJobOpts
 		});
-		const job = flowBuilder.buildFlow(stepGroups, data);
+		const job = flowBuilder.buildFlow(opts.stepGroups, opts.data);
 		const jobId = flowBuilder.getParentJobId();
 		return { job, jobId };
 	}
@@ -722,26 +741,19 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * Build a simple job without steps.
 	 * Does NOT add to queue - returns structure for caller to add.
 	 */
-	private buildSimpleJob<TData>(
-		workflowName: string,
-		flowId: string,
-		queueName: string,
-		data: TData,
-		meta: PropagationMeta | undefined,
-		options?: ExecuteOptions
-	): { job: FlowJobDefinition; jobId: string } {
+	private buildSimpleJob<TData>(opts: BuildSimpleJobOptions<TData>): { job: FlowJobDefinition; jobId: string } {
 		const jobData: WorkflowJobData = {
 			type: 'workflow',
 			version: '1.0',
-			flowId,
-			workflowData: data,
+			flowId: opts.flowId,
+			workflowData: opts.data,
 			stepResults: {},
-			meta
+			meta: opts.meta
 		};
-		const jobId = options?.idempotencyKey ?? `${workflowName}.${flowId}`;
+		const jobId = opts.executeOptions?.idempotencyKey ?? `${opts.workflowName}.${opts.flowId}`;
 		const job: FlowJobDefinition = {
-			name: workflowName,
-			queueName,
+			name: opts.workflowName,
+			queueName: opts.queueName,
 			data: jobData,
 			opts: { jobId }
 		};

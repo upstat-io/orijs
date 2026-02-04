@@ -5,7 +5,6 @@ import type { AppContext } from '../src/app-context.ts';
 import { parseQuery } from '../src/utils/query.ts';
 import { Logger } from '@orijs/logging';
 import type { ConfigProvider } from '@orijs/config';
-import type { EventSystem } from '@orijs/events';
 import type { SocketEmitter } from '../src/types/emitter.ts';
 
 /** Mock config provider for testing */
@@ -449,29 +448,6 @@ describe('RequestContext', () => {
 			const ctx = createTestContext(request, {}, mockApp);
 
 			expect(ctx.app).toBe(mockApp);
-		});
-
-		test('should expose event system from app context', () => {
-			const request = new Request('http://localhost/');
-			// Minimal mock for testing that event property is passed through
-			const mockEvents = { emit: () => {}, on: () => {} } as unknown as EventSystem;
-			const mockApp = {
-				...createMockAppContext(),
-				event: mockEvents
-			} as unknown as AppContext;
-
-			const ctx = createTestContext(request, {}, mockApp);
-
-			expect(ctx.event).toBe(mockEvents);
-		});
-
-		test('should have undefined event when app has no event system', () => {
-			const request = new Request('http://localhost/');
-			const mockApp = createMockAppContext();
-
-			const ctx = createTestContext(request, {}, mockApp);
-
-			expect(ctx.event).toBeUndefined();
 		});
 	});
 

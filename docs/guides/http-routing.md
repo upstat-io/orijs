@@ -105,7 +105,7 @@ configure(r: RouteBuilder) {
 
 ```typescript
 r.get('/users/:id', this.findUser);
-r.get('/projects/:projectId/monitors/:monitorId', this.findMonitor);
+r.get('/projects/:workspaceId/monitors/:productId', this.findMonitor);
 
 private findUser = async (ctx: RequestContext) => {
   const { id } = ctx.params;  // { id: 'abc123' }
@@ -113,8 +113,8 @@ private findUser = async (ctx: RequestContext) => {
 };
 
 private findMonitor = async (ctx: RequestContext) => {
-  const { projectId, monitorId } = ctx.params;
-  return ctx.json({ projectId, monitorId });
+  const { workspaceId, productId } = ctx.params;
+  return ctx.json({ workspaceId, productId });
 };
 ```
 
@@ -221,8 +221,8 @@ const UserParams = Params.uuid('id');
 
 // Multiple parameters
 const MonitorParams = Type.Object({
-  projectId: Type.String({ format: 'uuid' }),
-  monitorId: Type.String({ format: 'uuid' }),
+  workspaceId: Type.String({ format: 'uuid' }),
+  productId: Type.String({ format: 'uuid' }),
 });
 
 configure(r: RouteBuilder) {
@@ -230,7 +230,7 @@ configure(r: RouteBuilder) {
     params: UserParams,
   });
 
-  r.get('/projects/:projectId/monitors/:monitorId', this.findMonitor, {
+  r.get('/projects/:workspaceId/monitors/:productId', this.findMonitor, {
     params: MonitorParams,
   });
 }

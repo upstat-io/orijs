@@ -10,7 +10,6 @@ import {
 	formatTraceField,
 	extractTraceFields,
 	DEFAULT_TRUNCATE_LENGTH,
-	TRACE_FIELDS,
 	Logger
 } from '../src/index.ts';
 
@@ -368,68 +367,4 @@ describe('trace-fields', () => {
 		});
 	});
 
-	describe('TRACE_FIELDS (deprecated Proxy)', () => {
-		it('should return field definition via get', () => {
-			const def = TRACE_FIELDS['correlationId'];
-			expect(def).toEqual({
-				abbrev: 'corrId',
-				color: ANSI_COLORS.brightYellow
-			});
-		});
-
-		it('should return undefined for non-existent field', () => {
-			const def = TRACE_FIELDS['nonExistentField'];
-			expect(def).toBeUndefined();
-		});
-
-		it('should support "in" operator via has trap', () => {
-			expect('correlationId' in TRACE_FIELDS).toBe(true);
-			expect('traceId' in TRACE_FIELDS).toBe(true);
-			expect('nonExistent' in TRACE_FIELDS).toBe(false);
-		});
-
-		it('should support Object.keys via ownKeys trap', () => {
-			const keys = Object.keys(TRACE_FIELDS);
-			expect(keys).toContain('correlationId');
-			expect(keys).toContain('traceId');
-			expect(keys).toContain('spanId');
-			expect(keys).toContain('parentSpanId');
-			expect(keys).toContain('correlationId');
-		});
-
-		it('should include registered fields in Object.keys', () => {
-			registerTraceFields({
-				accountUuid: { abbrev: 'acctId', color: ANSI_COLORS.cyan }
-			});
-
-			const keys = Object.keys(TRACE_FIELDS);
-			expect(keys).toContain('accountUuid');
-		});
-
-		it('should support property descriptor via getOwnPropertyDescriptor', () => {
-			const descriptor = Object.getOwnPropertyDescriptor(TRACE_FIELDS, 'correlationId');
-			expect(descriptor).toBeDefined();
-			expect(descriptor?.enumerable).toBe(true);
-			expect(descriptor?.configurable).toBe(true);
-			expect(descriptor?.value).toEqual({
-				abbrev: 'corrId',
-				color: ANSI_COLORS.brightYellow
-			});
-		});
-
-		it('should return undefined descriptor for non-existent field', () => {
-			const descriptor = Object.getOwnPropertyDescriptor(TRACE_FIELDS, 'nonExistent');
-			expect(descriptor).toBeUndefined();
-		});
-
-		it('should support Object.entries', () => {
-			const entries = Object.entries(TRACE_FIELDS);
-			const correlationIdEntry = entries.find(([key]) => key === 'correlationId');
-			expect(correlationIdEntry).toBeDefined();
-			expect(correlationIdEntry![1]).toEqual({
-				abbrev: 'corrId',
-				color: ANSI_COLORS.brightYellow
-			});
-		});
-	});
 });

@@ -20,8 +20,6 @@ export { Redis } from 'ioredis';
 export {
 	RedisCacheProvider,
 	createRedisCacheProvider,
-	RedisCache, // deprecated alias
 	type RedisCacheProviderOptions,
-	type RedisConnectionOptions,
-	type RedisCacheOptions // deprecated alias
+	type RedisConnectionOptions
 } from './redis-cache';

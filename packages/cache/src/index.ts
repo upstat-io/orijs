@@ -25,8 +25,8 @@
  * // 3. Define caches (scope, params, dependencies auto-derived)
  * const UserCache = Cache.for(Entities.User).ttl('1h').grace('5m').build();
  *
- * // 4. Use cache service
- * const cacheService = new CacheService(new RedisCache(redis));
+ * // 4. Use cache service with a provider
+ * const cacheService = new CacheService(provider);
  * const user = await cacheService.getOrSet(UserCache, params, async (ctx) => {
  *   const data = await db.findById(params);
  *   if (!data) return ctx.skip();

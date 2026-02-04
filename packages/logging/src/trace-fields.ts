@@ -84,31 +84,6 @@ export function resetTraceFields(): void {
 	}
 }
 
-/**
- * @deprecated Use getTraceFields() instead. This is for backwards compatibility.
- */
-export const TRACE_FIELDS: Readonly<Record<string, TraceFieldDef>> = new Proxy(
-	{} as Record<string, TraceFieldDef>,
-	{
-		get(_target, prop: string) {
-			return getTraceFields()[prop];
-		},
-		has(_target, prop: string) {
-			return prop in getTraceFields();
-		},
-		ownKeys() {
-			return Object.keys(getTraceFields());
-		},
-		getOwnPropertyDescriptor(_target, prop: string) {
-			const fields = getTraceFields();
-			if (prop in fields) {
-				return { configurable: true, enumerable: true, value: fields[prop] };
-			}
-			return undefined;
-		}
-	}
-);
-
 /** Default truncation length for UUIDs and long IDs */
 export const DEFAULT_TRUNCATE_LENGTH = 8;
 
@@ -149,7 +124,8 @@ export function truncateValue(value: string, length: number = DEFAULT_TRUNCATE_L
  * @returns Formatted string like "trcId:abc12345"
  */
 export function formatTraceField(fieldName: string, value: string, useColors: boolean = true): string {
-	const def = TRACE_FIELDS[fieldName];
+	const fields = getTraceFields();
+	const def = fields[fieldName];
 	if (!def) {
 		return `${fieldName}:${value}`;
 	}

@@ -75,13 +75,13 @@ class ServiceB {
 **Solution 2:** Use events for decoupling:
 
 ```typescript
-// Instead of direct dependency
+// Instead of direct dependency, emit events
 class OrderService {
-	constructor(private ctx: AppContext) {}
+	constructor(private readonly eventCoordinator: EventCoordinator) {}
 
 	async complete(orderId: string) {
 		// Emit event instead of calling InventoryService directly
-		this.ctx.event?.emit('order.completed', { orderId });
+		await this.eventCoordinator.emit(OrderCompleted, { orderId });
 	}
 }
 ```

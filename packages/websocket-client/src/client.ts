@@ -392,7 +392,6 @@ export class SocketClient {
 	 * @param type - Message type
 	 * @param payload - Message payload
 	 * @param options - Send options
-	 * @deprecated Use emit() with typed message definitions instead
 	 */
 	send(type: string, payload: Record<string, unknown>, options?: { buffer?: boolean }): void {
 		const message = JSON.stringify({ type, ...payload });

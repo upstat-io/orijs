@@ -167,13 +167,6 @@ export class SocketContext<
 	}
 
 	/**
-	 * @deprecated Use `ctx.events` instead for definition-based event emission.
-	 */
-	get event() {
-		return this.app.event;
-	}
-
-	/**
 	 * Event emitter for type-safe event emission.
 	 * Automatically binds events to this socket context for correlation.
 	 */

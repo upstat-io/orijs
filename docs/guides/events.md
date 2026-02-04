@@ -35,10 +35,10 @@ export const UserCreated = Event.define({
 });
 
 // Request-response event (returns a value)
-export const MonitorCheck = Event.define({
-	name: 'monitor.check',
+export const OrderValidation = Event.define({
+	name: 'order.validate',
 	payload: Type.Object({
-		monitorId: Type.String()
+		orderId: Type.String()
 	}),
 	response: Type.Object({
 		status: Type.Union([Type.Literal('up'), Type.Literal('down')]),
@@ -272,14 +272,14 @@ class UserController implements OriController {
 For events that return values, the response is typed:
 
 ```typescript
-import { MonitorCheck } from './event-definitions';
+import { OrderValidation } from './event-definitions';
 
 class MonitorController implements OriController {
 	private checkMonitor = async (ctx: RequestContext) => {
-		const { monitorId } = ctx.params;
+		const { orderId } = ctx.params;
 
 		// result is typed as { status: 'up' | 'down', latency: number }
-		const result = await ctx.events.emit(MonitorCheck, { monitorId });
+		const result = await ctx.events.emit(OrderValidation, { orderId });
 
 		return ctx.json({
 			status: result.status,
@@ -677,7 +677,7 @@ export const OrderPlaced = Event.define({
 // GOOD - specific and clear
 'user.email.changed';
 'order.payment.failed';
-'monitor.check.completed';
+'order.validate.completed';
 
 // BAD - too generic
 'updated';

@@ -328,9 +328,3 @@ export class RedisCacheProvider implements CacheProvider {
 export function createRedisCacheProvider(options: RedisCacheProviderOptions): RedisCacheProvider {
 	return new RedisCacheProvider(options);
 }
-
-// Backwards compatibility aliases
-/** @deprecated Use RedisCacheProvider instead */
-export const RedisCache = RedisCacheProvider;
-/** @deprecated Use RedisCacheProviderOptions instead */
-export type RedisCacheOptions = RedisCacheProviderOptions;

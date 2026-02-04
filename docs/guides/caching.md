@@ -59,8 +59,8 @@ import { EntityRegistry, defineScopes, defineEntities, createCacheBuilder } from
 // 1. Define scopes (hierarchy with param inheritance)
 const Scope = defineScopes({
 	Global: { name: 'global' },
-	Account: { name: 'account', param: 'accountUuid' },
-	Project: { name: 'project', param: 'projectUuid' }
+	Account: { name: 'account', param: 'tenantId' },
+	Project: { name: 'project', param: 'workspaceId' }
 });
 
 // 2. Define entities (associated with scopes)
@@ -68,9 +68,9 @@ const Entities = defineEntities({
 	Account: { name: 'Account', scope: Scope.Account },
 	Project: { name: 'Project', scope: Scope.Project },
 	User: { name: 'User', scope: Scope.Account, param: 'userUuid' },
-	Monitor: { name: 'Monitor', scope: Scope.Project, param: 'monitorUuid' },
-	Check: { name: 'Check', scope: Scope.Project, param: 'checkUuid' },
-	MonitorList: { name: 'MonitorList', scope: Scope.Project }
+	Product: { name: 'Product', scope: Scope.Project, param: 'productId' },
+	Order: { name: 'Order', scope: Scope.Project, param: 'orderId' },
+	ProductList: { name: 'ProductList', scope: Scope.Project }
 });
 
 // 3. Build registry
@@ -86,11 +86,11 @@ Scopes form a hierarchy with param inheritance:
 
 ```
 global         → []
-  account      → [accountUuid]
-    project    → [accountUuid, projectUuid]
+  account      → [tenantId]
+    project    → [tenantId, workspaceId]
 ```
 
-When you define an entity at `project` scope with `param: 'monitorUuid'`, its full params are auto-derived: `['accountUuid', 'projectUuid', 'monitorUuid']`.
+When you define an entity at `project` scope with `param: 'productId'`, its full params are auto-derived: `['tenantId', 'workspaceId', 'productId']`.
 
 ---
 
@@ -102,9 +102,9 @@ When you define an entity at `project` scope with `param: 'monitorUuid'`, its fu
 // Simple cache - everything auto-derived from registry
 const UserCache = Cache.for(Entities.User).ttl('10m').build();
 
-// UserCache.params = ['accountUuid', 'userUuid']
-// UserCache.metaParams = ['accountUuid']
-// UserCache.dependsOn = { Account: ['accountUuid'] }
+// UserCache.params = ['tenantId', 'userUuid']
+// UserCache.metaParams = ['tenantId']
+// UserCache.dependsOn = { Account: ['tenantId'] }
 ```
 
 ### TTL Format
@@ -138,7 +138,7 @@ Cache.for(Entities.User).ttl<MyTTL>('32m').build(); // OK
 ### Full Configuration Options
 
 ```typescript
-const MonitorCache = Cache.for(Entities.Monitor)
+const ProductCache = Cache.for(Entities.Product)
 	.ttl('5m') // Required: time-to-live
 	.grace('1m') // Optional: stale-while-revalidate window
 	.timeout('10s') // Optional: fetch timeout (default 1s)
@@ -185,10 +185,10 @@ class UserService {
 		private db: DatabaseService
 	) {}
 
-	async getUser(accountUuid: string, userUuid: string): Promise<User | undefined> {
+	async getUser(tenantId: string, userUuid: string): Promise<User | undefined> {
 		return await this.cache.getOrSet(
 			UserCache,
-			{ accountUuid, userUuid }, // Must match cache params
+			{ tenantId, userUuid }, // Must match cache params
 			async (ctx) => {
 				// Factory runs on cache miss or stale
 				const user = await this.db.findUser(userUuid);
@@ -392,7 +392,7 @@ sf.forget(key);
 // Clear only cached error
 sf.forgetError(key);
 
-// Monitoring
+// Metrics
 sf.getInflightCount();
 sf.getErrorCount();
 
@@ -407,7 +407,7 @@ sf.clear();
 Grace periods allow serving stale data while refreshing in the background:
 
 ```typescript
-const MonitorCache = Cache.for(Entities.Monitor)
+const ProductCache = Cache.for(Entities.Product)
 	.ttl('5m') // Fresh for 5 minutes
 	.grace('1m') // Serve stale for 1 more minute while refreshing
 	.build();
@@ -443,12 +443,12 @@ If factory exceeds timeout:
 Entities automatically depend on their scope hierarchy:
 
 ```typescript
-const MonitorCache = Cache.for(Entities.Monitor).ttl('5m').build();
+const ProductCache = Cache.for(Entities.Product).ttl('5m').build();
 
 // Auto-derived dependencies:
-// MonitorCache.dependsOn = {
-//   Account: ['accountUuid'],
-//   Project: ['accountUuid', 'projectUuid']
+// ProductCache.dependsOn = {
+//   Account: ['tenantId'],
+//   Project: ['tenantId', 'workspaceId']
 // }
 ```
 
@@ -457,15 +457,15 @@ const MonitorCache = Cache.for(Entities.Monitor).ttl('5m').build();
 For same-level entity dependencies:
 
 ```typescript
-// MonitorStats depends on Monitor (both at project scope)
-const MonitorStatsCache = Cache.for(Entities.MonitorStats)
+// ProductStats depends on Product (both at project scope)
+const ProductStatsCache = Cache.for(Entities.ProductStats)
 	.ttl('1m')
-	.dependsOn(Entities.Monitor) // Params auto-derived from registry
+	.dependsOn(Entities.Product) // Params auto-derived from registry
 	.build();
 
-// MonitorStatsCache.dependsOn includes:
+// ProductStatsCache.dependsOn includes:
 // - Account, Project (hierarchy)
-// - Monitor: ['accountUuid', 'projectUuid', 'monitorUuid']
+// - Product: ['tenantId', 'workspaceId', 'productId']
 ```
 
 ### Explicit Params Override
@@ -475,7 +475,7 @@ When dependent entity uses different param names:
 ```typescript
 const OrderCache = Cache.for(Entities.Order)
 	.ttl('10m')
-	.dependsOn(Entities.Product, ['accountUuid', 'projectUuid', 'orderProductUuid'])
+	.dependsOn(Entities.Product, ['tenantId', 'workspaceId', 'orderProductUuid'])
 	.build();
 ```
 
@@ -490,11 +490,11 @@ When you invalidate an entity, all dependent caches are also cleared:
 ```
 Project invalidated
     ↓
-Monitor cache cleared (depends on Project)
+Product cache cleared (depends on Project)
     ↓
-Check cache cleared (depends on Monitor)
+Order cache cleared (depends on Product)
     ↓
-MonitorStats cache cleared (depends on Monitor)
+ProductStats cache cleared (depends on Product)
 ```
 
 ### Meta Keys (Redis Implementation)
@@ -520,15 +520,15 @@ When Account abc changes:
 
 ```typescript
 // Single entity invalidation (cascades by default)
-await cacheService.invalidate('User', { accountUuid: 'abc' });
+await cacheService.invalidate('User', { tenantId: 'abc' });
 
 // Non-cascading invalidation
-await cacheService.invalidate('UserPresence', { accountUuid, userUuid }, { cascade: false });
+await cacheService.invalidate('UserPresence', { tenantId, userUuid }, { cascade: false });
 
 // Batch invalidation (more efficient)
 await cacheService.invalidateMany([
-	{ entityType: 'User', params: { accountUuid: 'abc' } },
-	{ entityType: 'Project', params: { accountUuid: 'abc', projectUuid: 'def' } }
+	{ entityType: 'User', params: { tenantId: 'abc' } },
+	{ entityType: 'Project', params: { tenantId: 'abc', workspaceId: 'def' } }
 ]);
 ```
 
@@ -541,22 +541,22 @@ class ProjectService {
 
 		// This invalidates:
 		// - Project cache for this project
-		// - Monitor caches (depends on Project)
-		// - Check caches (depends on Monitor)
+		// - Product caches (depends on Project)
+		// - Order caches (depends on Product)
 		// - Any other caches that depend on Project
 		await this.cache.invalidate('Project', {
-			accountUuid: data.accountUuid,
-			projectUuid: projectId
+			tenantId: data.tenantId,
+			workspaceId: projectId
 		});
 	}
 
-	async deleteMonitor(projectId: string, monitorId: string): Promise<void> {
-		await this.db.deleteMonitor(monitorId);
+	async deleteProduct(projectId: string, productId: string): Promise<void> {
+		await this.db.deleteProduct(productId);
 
-		// Invalidate specific monitor AND the list cache
+		// Invalidate specific product AND the list cache
 		await this.cacheService.invalidateMany([
-			{ entityType: 'Monitor', params: { projectUuid: projectId, monitorUuid: monitorId } },
-			{ entityType: 'MonitorList', params: { projectUuid: projectId } }
+			{ entityType: 'Product', params: { workspaceId: projectId, productId: productId } },
+			{ entityType: 'ProductList', params: { workspaceId: projectId } }
 		]);
 	}
 }
@@ -573,7 +573,7 @@ Sometimes you need to invalidate caches that don't fit the normal scope hierarch
 Consider authentication caching:
 
 ```typescript
-// User entity is at account scope (requires accountUuid + fbAuthUid)
+// User entity is at account scope (requires tenantId + fbAuthUid)
 const UserCache = Cache.for(Entities.User).ttl('1h').build();
 
 // But auth guards only have fbAuthUid from the Firebase token
@@ -627,7 +627,7 @@ const UserCache = Cache.for(Entities.User)
 
 ```typescript
 // When User is invalidated...
-await cacheService.invalidate('User', { accountUuid: 'abc', fbAuthUid: 'user-123' });
+await cacheService.invalidate('User', { tenantId: 'abc', fbAuthUid: 'user-123' });
 
 // This happens:
 // 1. User cache entry is cleared (normal invalidation)
@@ -661,14 +661,14 @@ class UserRepositoryService {
 
 	// Called by auth guard (only has fbAuthUid from token)
 	async getUserForAuth(fbUid: string): Promise<UserWithRoles | undefined> {
-		// Step 1: Get accountUuid from UserAuth cache
+		// Step 1: Get tenantId from UserAuth cache
 		const userAuth = await this.cacheService.getOrSet(
 			this.UserAuthCache,
 			{ fbAuthUid: fbUid },
 			async (ctx) => {
 				const user = await this.db.getUserByFbUid(fbUid);
 				if (!user) return ctx.skip();
-				return { fbAuthUid: fbUid, accountUuid: user.accountUuid };
+				return { fbAuthUid: fbUid, tenantId: user.tenantId };
 			}
 		);
 
@@ -676,7 +676,7 @@ class UserRepositoryService {
 
 		// Step 2: Get full user with complete params
 		return this.getUser({
-			accountUuid: userAuth.accountUuid,
+			tenantId: userAuth.tenantId,
 			fbAuthUid: fbUid
 		});
 	}
@@ -763,13 +763,13 @@ async updateUser(id: string, data: UpdateDto): Promise<User> {
 Prefetch related data in parallel:
 
 ```typescript
-async getProjectWithMonitors(projectId: string): Promise<ProjectWithMonitors> {
-  const [project, monitors] = await Promise.all([
-    this.cache.getOrSet(ProjectCache, { projectId }, () => this.db.getProject(projectId)),
-    this.cache.getOrSet(MonitorListCache, { projectId }, () => this.db.listMonitors(projectId)),
+async getWorkspaceWithProducts(workspaceId: string): Promise<WorkspaceWithProducts> {
+  const [workspace, products] = await Promise.all([
+    this.cache.getOrSet(WorkspaceCache, { workspaceId }, () => this.db.getWorkspace(workspaceId)),
+    this.cache.getOrSet(ProductListCache, { workspaceId }, () => this.db.listProducts(workspaceId)),
   ]);
 
-  return { ...project, monitors };
+  return { ...workspace, products };
 }
 ```
 
@@ -780,8 +780,8 @@ Cache expensive computations that depend on multiple sources:
 ```typescript
 const ProjectStatsCache = Cache.for(Entities.ProjectStats)
   .ttl('1m')
-  .dependsOn(Entities.Monitor)  // Invalidate when monitors change
-  .dependsOn(Entities.Check)    // Invalidate when checks change
+  .dependsOn(Entities.Product)  // Invalidate when products change
+  .dependsOn(Entities.Order)    // Invalidate when orders change
   .build();
 
 async getProjectStats(projectId: string): Promise<ProjectStats> {
@@ -790,9 +790,9 @@ async getProjectStats(projectId: string): Promise<ProjectStats> {
     { projectId },
     async () => {
       // Expensive aggregation
-      const monitors = await this.db.listMonitors(projectId);
-      const recentChecks = await this.db.getRecentChecks(projectId, 1000);
-      return computeStats(monitors, recentChecks);
+      const products = await this.db.listProducts(workspaceId);
+      const recentOrders = await this.db.getRecentOrders(workspaceId, 1000);
+      return computeStats(products, recentOrders);
     }
   );
 }
@@ -860,10 +860,10 @@ async updateUser(id: string, data: UpdateDto): Promise<User> {
 ```typescript
 // Configure dependency tree properly
 const ProjectCache = Cache.for(Entities.Project).ttl('10m').build();
-const MonitorCache = Cache.for(Entities.Monitor).ttl('5m').build(); // Auto-depends on Project
-const CheckCache = Cache.for(Entities.Check).ttl('30s').dependsOn(Entities.Monitor).build();
+const ProductCache = Cache.for(Entities.Product).ttl('5m').build(); // Auto-depends on Project
+const OrderCache = Cache.for(Entities.Order).ttl('30s').dependsOn(Entities.Product).build();
 
-// Now: invalidating Project cascades to Monitor and Check
+// Now: invalidating Project cascades to Product and Order
 ```
 
 ### 5. Handle Cache Failures Gracefully
@@ -891,7 +891,7 @@ async getUser(id: string): Promise<User | undefined> {
 
 ```typescript
 // GOOD - all params specified
-await this.cache.getOrSet(UserCache, { accountUuid, userUuid }, factory);
+await this.cache.getOrSet(UserCache, { tenantId, userUuid }, factory);
 
 // BAD - missing required param throws error
 await this.cache.getOrSet(UserCache, { userUuid }, factory); // Error!
@@ -941,14 +941,14 @@ async function shutdown() {
 }
 ```
 
-### Monitoring Cache Hit Rates
+### Tracking Cache Hit Rates
 
 ```typescript
-// Log cache misses for monitoring
+// Log cache misses for observability
 async (ctx) => {
 	this.logger.debug('Cache miss', {
 		entity: 'User',
-		params: { accountUuid, userUuid },
+		params: { tenantId, userUuid },
 		hasStale: ctx.staleValue !== undefined,
 		staleAge: ctx.staleAge
 	});
@@ -961,12 +961,12 @@ async (ctx) => {
 
 ```typescript
 // Batch get with parallel singleflights
-async getUsers(accountUuid: string, userUuids: string[]): Promise<User[]> {
+async getUsers(tenantId: string, userUuids: string[]): Promise<User[]> {
   const results = await Promise.all(
     userUuids.map(userUuid =>
       this.cache.getOrSet(
         UserCache,
-        { accountUuid, userUuid },
+        { tenantId, userUuid },
         () => this.db.getUser(userUuid)
       )
     )
@@ -1129,18 +1129,18 @@ describe('Cache with Redis', () => {
 
 	it('should cascade invalidation through dependencies', async () => {
 		// Set up dependent caches
-		await cacheService.set(ProjectCache, { projectId: 'p1' }, { name: 'Project 1' });
-		await cacheService.set(MonitorCache, { projectId: 'p1', monitorId: 'm1' }, { name: 'Monitor 1' });
+		await cacheService.set(WorkspaceCache, { workspaceId: 'w1' }, { name: 'Workspace 1' });
+		await cacheService.set(ProductCache, { workspaceId: 'w1', productId: 'p1' }, { name: 'Product 1' });
 
-		// Invalidate project (should cascade to monitor)
-		await cacheService.invalidate('Project', { projectId: 'p1' });
+		// Invalidate workspace (should cascade to product)
+		await cacheService.invalidate('Workspace', { workspaceId: 'w1' });
 
 		// Both should be cleared
-		const project = await cacheService.get(ProjectCache, { projectId: 'p1' });
-		const monitor = await cacheService.get(MonitorCache, { projectId: 'p1', monitorId: 'm1' });
+		const workspace = await cacheService.get(WorkspaceCache, { workspaceId: 'w1' });
+		const product = await cacheService.get(ProductCache, { workspaceId: 'w1', productId: 'p1' });
 
-		expect(project).toBeNull();
-		expect(monitor).toBeNull();
+		expect(workspace).toBeNull();
+		expect(product).toBeNull();
 	});
 });
 ```

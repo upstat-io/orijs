@@ -1,5 +1,5 @@
 import type { Constructor, ConstructorDeps } from './types/index';
-import type { EventProvider, EventSystem, EventMessage } from '@orijs/events';
+import type { EventProvider, EventMessage } from '@orijs/events';
 import { InProcessEventProvider } from '@orijs/events';
 import type { Logger } from '@orijs/logging';
 import type { Container } from './container';
@@ -217,7 +217,8 @@ export class EventCoordinator {
 			} catch (error) {
 				// Call error hook if defined
 				if (consumer.onError) {
-					await consumer.onError(ctx, error as Error);
+					const err = error instanceof Error ? error : new Error(String(error));
+					await consumer.onError(ctx, err);
 				}
 				throw error;
 			}
@@ -272,15 +273,6 @@ export class EventCoordinator {
 		if (this.eventProvider) {
 			await this.eventProvider.stop();
 		}
-	}
-
-	/**
-	 * Returns the event system (for backward compatibility).
-	 * @deprecated Use getProvider() instead.
-	 */
-	public getEventSystem(): EventSystem<string> | null {
-		// Return null - the old event system API is deprecated
-		return null;
 	}
 
 	/**
