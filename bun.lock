@@ -9,7 +9,22 @@
         "fast-json-stable-stringify": "^2.1.0",
       },
       "devDependencies": {
-        "@orijs/test-utils": "*",
+        "@orijs/bullmq": "workspace:*",
+        "@orijs/cache": "workspace:*",
+        "@orijs/cache-redis": "workspace:*",
+        "@orijs/config": "workspace:*",
+        "@orijs/core": "workspace:*",
+        "@orijs/events": "workspace:*",
+        "@orijs/logging": "workspace:*",
+        "@orijs/mapper": "workspace:*",
+        "@orijs/orijs": "workspace:*",
+        "@orijs/sql": "workspace:*",
+        "@orijs/test-utils": "workspace:*",
+        "@orijs/validation": "workspace:*",
+        "@orijs/websocket": "workspace:*",
+        "@orijs/websocket-client": "workspace:*",
+        "@orijs/websocket-redis": "workspace:*",
+        "@orijs/workflows": "workspace:*",
         "@testcontainers/redis": "^10.7.2",
         "@types/bun": "^1.2.15",
         "bullmq": "^5.0.0",
@@ -96,9 +111,12 @@
       "name": "@orijs/core",
       "version": "0.0.1",
       "dependencies": {
+        "@orijs/cache": "workspace:*",
         "@orijs/config": "workspace:*",
         "@orijs/events": "workspace:*",
         "@orijs/logging": "workspace:*",
+        "@orijs/validation": "workspace:*",
+        "@orijs/websocket": "workspace:*",
         "@orijs/workflows": "workspace:*",
       },
       "devDependencies": {
@@ -144,6 +162,7 @@
         "@orijs/logging": "workspace:*",
         "@orijs/mapper": "workspace:*",
         "@orijs/validation": "workspace:*",
+        "@orijs/websocket": "workspace:*",
         "@orijs/workflows": "workspace:*",
       },
       "devDependencies": {
@@ -183,6 +202,46 @@
       "devDependencies": {
         "@types/bun": "^1.2.15",
         "typescript": "^5.9.2",
+      },
+    },
+    "packages/websocket": {
+      "name": "@orijs/websocket",
+      "version": "0.0.1",
+      "dependencies": {
+        "@orijs/logging": "workspace:*",
+        "@orijs/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.2.15",
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/websocket-client": {
+      "name": "@orijs/websocket-client",
+      "version": "0.0.1",
+      "dependencies": {
+        "@orijs/validation": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.2.15",
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/websocket-redis": {
+      "name": "@orijs/websocket-redis",
+      "version": "0.0.1",
+      "dependencies": {
+        "@orijs/logging": "workspace:*",
+        "@orijs/validation": "workspace:*",
+        "@orijs/websocket": "workspace:*",
+      },
+      "devDependencies": {
+        "@orijs/test-utils": "workspace:*",
+        "@types/bun": "^1.2.15",
+        "typescript": "^5.9.2",
+      },
+      "peerDependencies": {
+        "ioredis": ">=5.0.0",
       },
     },
     "packages/workflows": {
@@ -250,6 +309,12 @@
     "@orijs/test-utils": ["@orijs/test-utils@workspace:packages/test-utils"],
 
     "@orijs/validation": ["@orijs/validation@workspace:packages/validation"],
+
+    "@orijs/websocket": ["@orijs/websocket@workspace:packages/websocket"],
+
+    "@orijs/websocket-client": ["@orijs/websocket-client@workspace:packages/websocket-client"],
+
+    "@orijs/websocket-redis": ["@orijs/websocket-redis@workspace:packages/websocket-redis"],
 
     "@orijs/workflows": ["@orijs/workflows@workspace:packages/workflows"],
 
