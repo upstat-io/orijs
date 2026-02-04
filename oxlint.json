@@ -1,0 +1,137 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+
+	"plugins": ["typescript", "import", "unicorn", "promise", "node"],
+
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"pedantic": "off",
+		"perf": "warn",
+		"style": "off",
+		"restriction": "off",
+		"nursery": "off"
+	},
+
+	"env": {
+		"builtin": true,
+		"es2024": true,
+		"node": true
+	},
+
+	"globals": {
+		"Bun": "readonly",
+		"BunFile": "readonly"
+	},
+
+	"rules": {
+		"no-console": "error",
+		"no-debugger": "error",
+		"no-var": "error",
+		"prefer-const": "warn",
+		"eqeqeq": ["error", "always", { "null": "ignore" }],
+
+		"max-lines": ["warn", { "max": 500, "skipBlankLines": true, "skipComments": true }],
+		"max-params": ["warn", { "max": 6 }],
+
+		"no-useless-escape": "off",
+		"no-await-in-loop": "off",
+
+		"typescript/no-unused-vars": [
+			"warn",
+			{
+				"argsIgnorePattern": "^_",
+				"varsIgnorePattern": "^_",
+				"caughtErrorsIgnorePattern": "^_"
+			}
+		],
+		"typescript/no-explicit-any": "off",
+		"typescript/no-non-null-assertion": "off",
+		"typescript/ban-ts-comment": ["error", { "ts-expect-error": "allow-with-description" }],
+		"typescript/consistent-type-imports": [
+			"error",
+			{
+				"prefer": "type-imports",
+				"fixStyle": "separate-type-imports",
+				"disallowTypeAnnotations": false
+			}
+		],
+		"typescript/no-import-type-side-effects": "error",
+		"typescript/no-require-imports": "error",
+		"typescript/no-this-alias": "off",
+		"typescript/triple-slash-reference": "off",
+
+		"import/no-duplicates": "error",
+		"import/first": "error",
+		"import/no-self-import": "error",
+		"import/no-cycle": "warn",
+
+		"unicorn/no-thenable": "off",
+		"unicorn/no-null": "off",
+		"unicorn/prevent-abbreviations": "off",
+		"unicorn/filename-case": "off",
+		"unicorn/no-array-reduce": "off",
+		"unicorn/no-array-for-each": "off",
+		"unicorn/prefer-module": "error",
+		"unicorn/prefer-node-protocol": "error",
+		"unicorn/no-instanceof-array": "error",
+		"unicorn/throw-new-error": "error",
+		"unicorn/error-message": "warn",
+
+		"promise/no-return-wrap": "error",
+		"promise/param-names": "off",
+		"promise/no-new-statics": "error",
+
+		"node/no-exports-assign": "error"
+	},
+
+	"overrides": [
+		{
+			"files": ["**/__tests__/**/*.ts", "**/*.spec.ts", "**/*.test.ts"],
+			"rules": {
+				"no-console": "off",
+				"typescript/no-unused-vars": "off",
+				"typescript/no-extraneous-class": "off",
+				"unicorn/consistent-function-scoping": "off",
+				"no-useless-constructor": "off",
+				"max-lines": "off",
+				"no-extend-native": "off",
+				"unicorn/error-message": "off"
+			}
+		},
+		{
+			"files": ["**/example/**/*.ts", "**/benchmarks/**/*.ts"],
+			"rules": {
+				"no-console": "off"
+			}
+		},
+		{
+			"files": ["./packages/test-utils/**/*.ts"],
+			"rules": {
+				"no-console": "off",
+				"no-unused-vars": "off"
+			}
+		},
+		{
+			"files": ["**/logging/src/transports/*.ts"],
+			"rules": {
+				"no-console": "off"
+			}
+		},
+		{
+			"files": ["**/core/src/framework-error.ts", "**/core/src/application.ts"],
+			"rules": {
+				"no-console": "off"
+			}
+		},
+		{
+			"files": ["**/bullmq/src/**/*.ts"],
+			"rules": {
+				"no-console": "off",
+				"max-lines": "off"
+			}
+		}
+	],
+
+	"ignorePatterns": ["dist/", "node_modules/", "*.d.ts", "coverage/"]
+}

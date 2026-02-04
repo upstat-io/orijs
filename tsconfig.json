@@ -1,0 +1,74 @@
+{
+	"compilerOptions": {
+		// Modern target and module
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ESNext"],
+
+		// Workspace package paths
+		"baseUrl": ".",
+		"paths": {
+			"@orijs/core": ["./packages/core/src/index.ts"],
+			"@orijs/logging": ["./packages/logging/src/index.ts"],
+			"@orijs/config": ["./packages/config/src/index.ts"],
+			"@orijs/validation": ["./packages/validation/src/index.ts"],
+			"@orijs/mapper": ["./packages/mapper/src/index.ts"],
+			"@orijs/events": ["./packages/events/src/index.ts"],
+			"@orijs/workflows": ["./packages/workflows/src/index.ts"],
+			"@orijs/cache": ["./packages/cache/src/index.ts"],
+			"@orijs/cache-redis": ["./packages/cache-redis/src/index.ts"],
+			"@orijs/orijs": ["./packages/orijs/src/index.ts"],
+			"@orijs/test-utils": ["./packages/test-utils/src/index.ts"],
+			"@orijs/sql": ["./packages/sql/src/index.ts"],
+			"@orijs/websocket": ["./packages/websocket/src/index.ts"],
+			"@orijs/websocket-redis": ["./packages/websocket-redis/src/index.ts"],
+			"@orijs/websocket-client": ["./packages/websocket-client/src/index.ts"]
+		},
+
+		// Strict type checking (all of them)
+		"strict": true,
+		"noImplicitAny": true,
+		"strictNullChecks": true,
+		"strictFunctionTypes": true,
+		"strictBindCallApply": true,
+		"strictPropertyInitialization": true,
+		"noImplicitThis": true,
+		"useUnknownInCatchVariables": true,
+		"alwaysStrict": true,
+
+		// Additional strict checks
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+
+		// No decorators
+		"experimentalDecorators": false,
+
+		// Module settings
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"isolatedModules": true,
+
+		// Output settings
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"outDir": "./dist",
+		"noEmit": true,
+
+		// Other
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"types": ["bun-types"]
+	},
+	"include": ["src/**/*", "__tests__/**/*", "packages/**/*"],
+	"exclude": ["node_modules", "dist", "**/ori-bullmq/**", "**/test-harness/**"]
+}

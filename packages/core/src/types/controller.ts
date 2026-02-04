@@ -1,0 +1,187 @@
+import type { RequestContext } from '../controllers/request-context.ts';
+import type { HandlerInput } from './context';
+import type { HttpMethod } from './http';
+import type { GuardClass, InterceptorClass, PipeClass } from './middleware';
+import type { Schema } from '@orijs/validation';
+
+/**
+ * Schema options for route validation.
+ * Each field accepts a TypeBox schema or custom validator function.
+ */
+export interface RouteSchemaOptions {
+	/** Schema for URL path parameters */
+	params?: Schema;
+	/** Schema for query string parameters */
+	query?: Schema;
+	/** Schema for request body */
+	body?: Schema;
+}
+
+/**
+ * Controller interface that all controllers must implement.
+ * Controllers define routes via the configure method.
+ *
+ * @typeParam TState - The state variables type for this controller's context.
+ *   Guards set state via `ctx.set()`, handlers access via `ctx.state`.
+ *
+ * @example
+ * ```ts
+ * interface AuthState {
+ *   user: UserWithAccountAndRoles;
+ * }
+ *
+ * class UserController implements OriController<AuthState> {
+ *   configure(r: RouteBuilder<AuthState>) {
+ *     r.guard(AuthGuard);
+ *     r.get('/me', this.getMe);
+ *   }
+ *
+ *   private getMe = async (ctx: Context<AuthState>) => {
+ *     return Response.json(ctx.state.user);  // Fully typed!
+ *   };
+ * }
+ * ```
+ */
+export interface OriController<TState extends object = Record<string, unknown>> {
+	/**
+	 * Configures routes for this controller using the RouteBuilder.
+	 * @param route - The route builder instance
+	 */
+	configure(route: RouteBuilder<TState>): void;
+}
+
+/** Constructor type for Controller classes */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ControllerClass = new (...args: any[]) => OriController<any>;
+
+/** Internal route definition after building */
+export interface RouteDefinition {
+	method: HttpMethod;
+	path: string;
+	handler: HandlerInput;
+	guards: GuardClass[];
+	interceptors: InterceptorClass[];
+	pipes: Array<{ pipe: PipeClass; schema?: Schema }>;
+	schema?: RouteSchemaOptions;
+}
+
+/**
+ * Handler function type for a specific context.
+ * @typeParam TState - The state variables type for the context
+ */
+export type ContextHandler<TState extends object = Record<string, unknown>> = (
+	ctx: RequestContext<TState>
+) => Response | Promise<Response>;
+
+/**
+ * Handler input - either a function or a static Response.
+ * @typeParam TState - The state variables type for the context
+ */
+export type ContextHandlerInput<TState extends object = Record<string, unknown>> =
+	| ContextHandler<TState>
+	| Response;
+
+/**
+ * Fluent API for defining routes within a controller.
+ *
+ * @typeParam TState - The state variables type for this builder's handlers.
+ *   Declared at the controller level for type-safe `ctx.state` access.
+ *
+ * @example
+ * ```ts
+ * interface AuthState { user: User }
+ *
+ * class UserController implements OriController<AuthState> {
+ *   configure(r: RouteBuilder<AuthState>) {
+ *     r.guard(AuthGuard);
+ *
+ *     r.get('/me', this.getMe);
+ *     r.post('/update', this.update);
+ *   }
+ *
+ *   private getMe = async (ctx: Context<AuthState>) => {
+ *     return Response.json(ctx.state.user);  // Fully typed!
+ *   };
+ * }
+ * ```
+ */
+export interface RouteBuilder<TState extends object = Record<string, unknown>> {
+	/**
+	 * Adds a guard to the current route or controller.
+	 * @param guard - The guard class to add
+	 */
+	guard(guard: GuardClass): RouteBuilder<TState>;
+
+	/**
+	 * Replaces all guards for the current route or controller.
+	 * @param guards - The guard classes to use
+	 */
+	guards(guards: GuardClass[]): RouteBuilder<TState>;
+
+	/** Removes all inherited and controller-level guards */
+	clearGuards(): RouteBuilder<TState>;
+
+	/**
+	 * Adds an interceptor to the current route or controller.
+	 * @param interceptor - The interceptor class to add
+	 */
+	intercept(interceptor: InterceptorClass): RouteBuilder<TState>;
+
+	/**
+	 * Replaces all interceptors for the current route or controller.
+	 * @param interceptors - The interceptor classes to use
+	 */
+	interceptors(interceptors: InterceptorClass[]): RouteBuilder<TState>;
+
+	/** Removes all inherited and controller-level interceptors */
+	clearInterceptors(): RouteBuilder<TState>;
+
+	/**
+	 * Adds a validation pipe to the current route or controller.
+	 * @param pipe - The pipe class to use
+	 * @param schema - Optional validation schema
+	 */
+	pipe(pipe: PipeClass, schema?: Schema): RouteBuilder<TState>;
+
+	/** Removes all guards and interceptors */
+	clear(): RouteBuilder<TState>;
+
+	/**
+	 * Registers a GET route.
+	 * Pass Response directly for zero-allocation static routes.
+	 */
+	get(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+
+	/** Registers a POST route. */
+	post(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+
+	/** Registers a PUT route. */
+	put(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+
+	/** Registers a PATCH route. */
+	patch(
+		path: string,
+		handler: ContextHandlerInput<TState>,
+		schema?: RouteSchemaOptions
+	): RouteBuilder<TState>;
+
+	/** Registers a DELETE route. */
+	delete(
+		path: string,
+		handler: ContextHandlerInput<TState>,
+		schema?: RouteSchemaOptions
+	): RouteBuilder<TState>;
+
+	/** Registers a HEAD route. */
+	head(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+
+	/** Registers an OPTIONS route. */
+	options(
+		path: string,
+		handler: ContextHandlerInput<TState>,
+		schema?: RouteSchemaOptions
+	): RouteBuilder<TState>;
+
+	/** Returns all registered routes (internal use) */
+	getRoutes(): readonly RouteDefinition[];
+}

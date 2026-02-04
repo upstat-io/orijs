@@ -1,0 +1,19 @@
+[package]
+name = "orijs-compile"
+version = "0.1.0"
+edition = "2021"
+description = "AOT compiler for OriJS - generates optimized route handlers"
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# File handling
+walkdir = "2"
+
+# Error handling
+anyhow = "1"
+
+# JSON parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

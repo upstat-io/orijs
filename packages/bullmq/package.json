@@ -1,0 +1,30 @@
+{
+	"name": "@orijs/bullmq",
+	"version": "0.0.1",
+	"description": "BullMQ event and workflow providers for OriJS",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"types": "src/index.ts",
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@orijs/cache-redis": "*",
+		"@orijs/core": "*",
+		"@orijs/events": "*",
+		"@orijs/logging": "*",
+		"@orijs/orijs": "*",
+		"@orijs/workflows": "*",
+		"bullmq": "^5.0.0"
+	},
+	"devDependencies": {
+		"@orijs/test-utils": "*",
+		"@testcontainers/redis": "*",
+		"@types/bun": "*",
+		"redis": "^5.10.0",
+		"testcontainers": "*",
+		"typescript": "^5.9.2"
+	}
+}

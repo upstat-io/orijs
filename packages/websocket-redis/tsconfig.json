@@ -1,0 +1,32 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"declaration": true,
+		"outDir": "dist",
+		"types": ["bun-types"],
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"baseUrl": ".",
+		"paths": {
+			"@orijs/core": ["../../../../frameworks/orijs/packages/core/src/index.ts"],
+			"@orijs/logging": ["../../../../frameworks/orijs/packages/logging/src/index.ts"],
+			"@orijs/config": ["../../../../frameworks/orijs/packages/config/src/index.ts"],
+			"@orijs/validation": ["../../../../frameworks/orijs/packages/validation/src/index.ts"],
+			"@orijs/mapper": ["../../../../frameworks/orijs/packages/mapper/src/index.ts"],
+			"@orijs/events": ["../../../../frameworks/orijs/packages/events/src/index.ts"],
+			"@orijs/workflows": ["../../../../frameworks/orijs/packages/workflows/src/index.ts"],
+			"@orijs/cache": ["../../../../frameworks/orijs/packages/cache/src/index.ts"],
+			"@orijs/cache-redis": ["../../../../frameworks/orijs/packages/cache-redis/src/index.ts"],
+			"@orijs/websocket": ["../../../../frameworks/orijs/packages/websocket/src/index.ts"],
+			"@orijs/orijs": ["../../../../frameworks/orijs/packages/orijs/src/index.ts"],
+			"@orijs/test-utils": ["../../../../frameworks/orijs/packages/test-utils/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*", "__tests__/**/*"],
+	"exclude": ["node_modules"]
+}

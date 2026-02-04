@@ -1,0 +1,34 @@
+{
+	"name": "@orijs/websocket-redis",
+	"version": "0.0.1",
+	"description": "Redis WebSocket provider for OriJS horizontal scaling",
+	"main": "src/index.ts",
+	"module": "src/index.ts",
+	"types": "src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts",
+			"require": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"license": "MIT",
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@orijs/websocket": "workspace:*",
+		"@orijs/logging": "workspace:*",
+		"@orijs/validation": "workspace:*"
+	},
+	"devDependencies": {
+		"@orijs/test-utils": "workspace:*",
+		"@types/bun": "^1.2.15",
+		"typescript": "^5.9.2"
+	},
+	"peerDependencies": {
+		"ioredis": ">=5.0.0"
+	}
+}

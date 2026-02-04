@@ -1,0 +1,4 @@
+[test]
+preload = ["./__tests__/preload.ts"]
+timeout = 120000
+bail = true
