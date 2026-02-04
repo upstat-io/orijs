@@ -1,6 +1,8 @@
 # OriJS Development Rules
 
-ALWAYS USE ultrathink
+**CRITICAL: Use only Opus 4.5 model.**
+
+**GitHub**: https://github.com/upstat-io/orijs
 
 ---
 
