@@ -30,7 +30,7 @@ class AuthGuard implements Guard {
 // Rate limit guard that uses context state
 class RateLimitGuard implements Guard {
 	async canActivate(ctx: RequestContext): Promise<boolean> {
-		ctx.state.set('rateLimit', { remaining: 99, limit: 100 });
+		ctx.set('rateLimit', { remaining: 99, limit: 100 });
 		return true;
 	}
 }

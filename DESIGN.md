@@ -328,14 +328,14 @@ export { UserMapperService } from './services/mapper/user-mapper.service';
 
 ```typescript
 // apps/backend-public-server/src/providers.ts
-import { Application } from '@upstat/orijs';
+import { Application } from '@orijs/orijs';
 import { SQL } from 'bun';
 import {
 	DbSqlService,
 	DbUserService,
 	UserMapperService
 	// ... only import what this app needs
-} from '@upstat/ori-db-shared';
+} from '@orijs/mapper';
 
 export function addDatabase(app: Application, sql: SQL): Application {
 	return app
@@ -359,7 +359,7 @@ export function addServices(app: Application): Application {
 
 ```typescript
 // apps/backend-public-server/src/app.ts
-import { Ori } from '@upstat/orijs';
+import { Ori } from '@orijs/orijs';
 import { SQL } from 'bun';
 import { addDatabase, addRepositories, addServices } from './providers';
 import { HealthController } from './controllers/health.controller';

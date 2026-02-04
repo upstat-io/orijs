@@ -31,13 +31,13 @@ mkdir my-app && cd my-app
 bun init -y
 
 # Install OriJS
-bun add @upstat/orijs
+bun add @orijs/orijs
 ```
 
 ### Existing Project
 
 ```bash
-bun add @upstat/orijs
+bun add @orijs/orijs
 ```
 
 ### Optional Dependencies
@@ -62,7 +62,7 @@ bun add postgres
 Create `app.ts`:
 
 ```typescript
-import { Ori, RouteBuilder, RequestContext } from '@upstat/orijs';
+import { Ori, RouteBuilder, RequestContext } from '@orijs/orijs';
 
 // Define a controller
 class HealthController {
@@ -147,7 +147,7 @@ export class UserService {
 Create `controllers/user.controller.ts`:
 
 ```typescript
-import { RouteBuilder, RequestContext, OriController } from '@upstat/orijs';
+import { RouteBuilder, RequestContext, OriController } from '@orijs/orijs';
 import { UserService } from '../services/user.service';
 
 export class UserController implements OriController {
@@ -185,7 +185,7 @@ export class UserController implements OriController {
 Update `app.ts`:
 
 ```typescript
-import { Ori } from '@upstat/orijs';
+import { Ori } from '@orijs/orijs';
 import { UserService } from './services/user.service';
 import { UserController } from './controllers/user.controller';
 
@@ -253,7 +253,7 @@ As your app grows, organize related providers into extension functions:
 
 ```typescript
 // src/providers/database.ts
-import { Application } from '@upstat/orijs';
+import { Application } from '@orijs/orijs';
 import { SQL } from 'postgres';
 
 export function addDatabase(app: Application, sql: SQL): Application {
@@ -286,7 +286,7 @@ Ori.create()
 ## Adding Logging
 
 ```typescript
-import { Ori, FileTransport } from '@upstat/orijs';
+import { Ori, FileTransport } from '@orijs/orijs';
 
 Ori.create()
 	.logger({
@@ -323,12 +323,12 @@ Ori.create()
 	.controller('/api/users', UserController, [UserService]); // Then use
 ```
 
-### "Cannot find module '@upstat/orijs'"
+### "Cannot find module '@orijs/orijs'"
 
 Ensure you've installed the package:
 
 ```bash
-bun add @upstat/orijs
+bun add @orijs/orijs
 ```
 
 ### Server doesn't start

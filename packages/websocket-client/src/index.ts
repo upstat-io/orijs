@@ -11,18 +11,21 @@
  *
  * @example
  * ```typescript
- * import { SocketClient, Connected, JoinRoom } from '@orijs/websocket-client';
- * import { IncidentCreated, IncidentUpdated } from '@upstat/ori-message-definitions';
+ * import { SocketClient, Connected, JoinRoom, ClientMessage } from '@orijs/websocket-client';
+ *
+ * // Define message types for your application
+ * const OrderCreated = ClientMessage.define<{ orderId: string; total: number }>('order.created');
+ * const OrderUpdated = ClientMessage.define<{ orderId: string; status: string }>('order.updated');
  *
  * const client = new SocketClient('wss://api.example.com/ws');
  *
  * // Type-safe handlers - data type is inferred from message definition
- * client.on(IncidentCreated, (data) => {
- *   console.log('New incident:', data.uuid, data.title);
+ * client.on(OrderCreated, (data) => {
+ *   console.log('New order:', data.orderId, data.total);
  * });
  *
- * client.on(IncidentUpdated, (data) => {
- *   console.log('Incident updated:', data.uuid);
+ * client.on(OrderUpdated, (data) => {
+ *   console.log('Order updated:', data.orderId, data.status);
  * });
  *
  * // Connection lifecycle

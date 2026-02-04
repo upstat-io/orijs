@@ -1,8 +1,8 @@
 /**
  * Functional test verifying oriSql works with Tables-style definitions.
  *
- * This test uses mock Tables that follow the same pattern as the real
- * @upstat/ori-db-shared Tables, ensuring the integration will work correctly.
+ * This test uses mock Tables that follow the same pattern as the
+ * Mapper.defineTable API, ensuring the integration will work correctly.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -10,7 +10,7 @@ import { createOriSql } from '../src/ori-sql';
 import { createMockSql } from './helpers/mock-sql';
 
 // =============================================================================
-// MOCK TABLES (follows @upstat/ori-db-shared pattern)
+// MOCK TABLES (follows Mapper.defineTable pattern)
 // =============================================================================
 
 /**

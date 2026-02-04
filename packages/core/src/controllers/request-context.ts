@@ -223,7 +223,10 @@ export class RequestContext<
 	 *
 	 * @example
 	 * ```ts
-	 * import { UserCreated } from '@upstat/types-shared';
+	 * // Define event with Event.define() in your app
+	 * const UserCreated = Event.define('user.created')
+	 *   .payload(Type.Object({ userId: Type.String(), email: Type.String() }))
+	 *   .build();
 	 *
 	 * private createUser = async (ctx: Context) => {
 	 *   const user = await this.userService.create(ctx.body);
@@ -261,7 +264,11 @@ export class RequestContext<
 	 *
 	 * @example
 	 * ```ts
-	 * import { SendWelcomeEmail } from '@upstat/types-shared';
+	 * // Define workflow with Workflow.define() in your app
+	 * const SendWelcomeEmail = Workflow.define('send-welcome-email')
+	 *   .input(Type.Object({ to: Type.String(), userId: Type.String() }))
+	 *   .output(Type.Object({ sent: Type.Boolean() }))
+	 *   .build();
 	 *
 	 * private createUser = async (ctx: Context) => {
 	 *   const user = await this.userService.create(ctx.body);

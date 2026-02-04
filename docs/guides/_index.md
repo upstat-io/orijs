@@ -73,7 +73,7 @@ OriJS is ideal for teams building REST APIs, background workers, or microservice
 
 ```bash
 # Required
-bun add @upstat/orijs
+bun add @orijs/orijs
 
 # Optional (based on features used)
 bun add ioredis        # For Redis-based caching
@@ -95,7 +95,7 @@ bun add bullmq         # For queue-based events/workflows
 ## Quick Start
 
 ```typescript
-import { Ori, RouteBuilder, RequestContext } from '@upstat/orijs';
+import { Ori, RouteBuilder, RequestContext } from '@orijs/orijs';
 
 class HealthController {
 	configure(r: RouteBuilder) {

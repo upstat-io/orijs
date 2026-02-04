@@ -19,6 +19,7 @@ import {
 	type WorkerOptions,
 	type ConnectionOptions
 } from 'bullmq';
+import type { Logger } from '@orijs/logging';
 
 /**
  * Full passthrough to BullMQ's JobsOptions.
@@ -172,6 +173,8 @@ export interface QueueManagerOptions {
 		processor: (job: Job) => Promise<unknown>,
 		options: { connection: ConnectionOptions }
 	) => IWorkerLike;
+	/** Optional logger for error reporting */
+	readonly logger?: Logger;
 }
 
 /**
@@ -222,6 +225,7 @@ export class QueueManager implements IQueueManager {
 	private readonly connection: ConnectionOptions;
 	private readonly queuePrefix: string;
 	private readonly metrics?: QueueMetrics;
+	private readonly logger?: Logger;
 	private readonly defaultRetry: Required<RetryOptions>;
 	private readonly defaultJobOptions: Partial<JobsOptions>;
 	private readonly defaultWorkerOptions: Partial<WorkerOptions>;
@@ -243,6 +247,7 @@ export class QueueManager implements IQueueManager {
 		this.connection = options.connection;
 		this.queuePrefix = options.queuePrefix ?? DEFAULT_QUEUE_PREFIX;
 		this.metrics = options.metrics;
+		this.logger = options.logger;
 		this.defaultRetry = {
 			attempts: options.defaultRetry?.attempts ?? 3,
 			backoffType: options.defaultRetry?.backoffType ?? 'exponential',
@@ -289,7 +294,7 @@ export class QueueManager implements IQueueManager {
 		// Handle queue errors per BullMQ docs
 		queue.on('error', (err: unknown) => {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error(`[QueueManager] Queue error for ${eventName}:`, message);
+			this.logger?.error('Queue error', { eventName, error: message });
 		});
 
 		this.queues.set(queueName, queue);
@@ -363,7 +368,7 @@ export class QueueManager implements IQueueManager {
 		// Handle worker errors
 		worker.on('error', (err: unknown) => {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error(`[QueueManager] Worker error for ${eventName}:`, message);
+			this.logger?.error('Worker error', { eventName, error: message });
 		});
 
 		// Add metrics event listeners if configured
@@ -418,7 +423,7 @@ export class QueueManager implements IQueueManager {
 			if (message.includes('Connection is closed')) {
 				return; // Silently ignore expected shutdown errors
 			}
-			console.error('[QueueManager] Redis connection error during shutdown:', message);
+			this.logger?.error('Redis connection error during shutdown', { error: message });
 		};
 
 		// Close workers first (stop processing, wait for jobs to finish)

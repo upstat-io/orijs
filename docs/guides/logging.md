@@ -20,7 +20,7 @@ The logging system features:
 ### Logger Instance
 
 ```typescript
-import { Logger } from '@upstat/orijs';
+import { Logger } from '@orijs/orijs';
 
 const log = new Logger('MyService');
 
@@ -49,7 +49,7 @@ log.error('Error message', { error: err.message });
 Configure logging when creating your application:
 
 ```typescript
-import { Ori, FileTransport, ConsoleTransport } from '@upstat/orijs';
+import { Ori, FileTransport, ConsoleTransport } from '@orijs/orijs';
 
 Ori.create()
 	.logger({
@@ -132,7 +132,7 @@ class UserController implements OriController {
 Outputs to stdout with colors:
 
 ```typescript
-import { ConsoleTransport } from '@upstat/orijs';
+import { ConsoleTransport } from '@orijs/orijs';
 
 const transport = new ConsoleTransport();
 ```
@@ -142,7 +142,7 @@ const transport = new ConsoleTransport();
 Writes to rotating log files:
 
 ```typescript
-import { FileTransport } from '@upstat/orijs';
+import { FileTransport } from '@orijs/orijs';
 
 const transport = new FileTransport('./logs');
 // Creates files like: logs/app-2026-01-09.log
@@ -153,7 +153,7 @@ const transport = new FileTransport('./logs');
 Filter logs by level or custom criteria:
 
 ```typescript
-import { FilterTransport, ConsoleTransport, FileTransport } from '@upstat/orijs';
+import { FilterTransport, ConsoleTransport, FileTransport } from '@orijs/orijs';
 
 // Send only errors to a separate file
 const errorTransport = new FilterTransport({
@@ -173,7 +173,7 @@ const consoleTransport = new FilterTransport({
 Fan out to multiple destinations:
 
 ```typescript
-import { MultiTransport, ConsoleTransport, FileTransport } from '@upstat/orijs';
+import { MultiTransport, ConsoleTransport, FileTransport } from '@orijs/orijs';
 
 const transport = new MultiTransport([
 	new ConsoleTransport(),
@@ -267,7 +267,7 @@ private onUserCreated = async (ctx: EventContext) => {
 ### Static Configuration
 
 ```typescript
-import { Logger } from '@upstat/orijs';
+import { Logger } from '@orijs/orijs';
 
 Logger.configure({
 	level: 'debug',

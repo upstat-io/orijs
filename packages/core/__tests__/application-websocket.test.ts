@@ -528,7 +528,7 @@ describe('Application WebSocket Integration', () => {
 				.websocket()
 				.onWebSocket({
 					open: () => {},
-					message: (_ws: WebSocketConnection<unknown>, message: string | ArrayBuffer) => {
+					message: (_ws: WebSocketConnection<unknown>, message: string | Buffer<ArrayBufferLike>) => {
 						receivedMessages.push(message.toString());
 					},
 					close: () => {}

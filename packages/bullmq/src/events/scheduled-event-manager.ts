@@ -11,6 +11,7 @@
  */
 
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
+import type { Logger } from '@orijs/logging';
 
 /**
  * Default queue name prefix for scheduled events.
@@ -101,6 +102,8 @@ export interface ScheduledEventManagerOptions {
 	readonly queuePrefix?: string;
 	/** Optional queue class override (for testing) */
 	readonly QueueClass?: new (name: string, options: { connection: ConnectionOptions }) => IScheduleQueueLike;
+	/** Optional logger for error reporting */
+	readonly logger?: Logger;
 }
 
 /**
@@ -147,6 +150,7 @@ export interface IScheduledEventManager {
 export class ScheduledEventManager implements IScheduledEventManager {
 	private readonly connection: ConnectionOptions;
 	private readonly queuePrefix: string;
+	private readonly logger?: Logger;
 	private readonly queues = new Map<string, IScheduleQueueLike>();
 	private readonly schedules = new Map<string, Map<string, ScheduleInfo>>();
 	private readonly QueueClass: new (
@@ -162,6 +166,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 	public constructor(options: ScheduledEventManagerOptions) {
 		this.connection = options.connection;
 		this.queuePrefix = options.queuePrefix ?? DEFAULT_SCHEDULED_PREFIX;
+		this.logger = options.logger;
 		this.QueueClass = options.QueueClass ?? (Queue as unknown as typeof this.QueueClass);
 	}
 
@@ -191,7 +196,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 		// Handle queue errors per BullMQ docs
 		queue.on('error', (err: unknown) => {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error(`[ScheduledEventManager] Queue error for ${eventName}:`, message);
+			this.logger?.error('Scheduled queue error', { eventName, error: message });
 		});
 
 		this.queues.set(queueName, queue);
@@ -367,7 +372,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 			if (message.includes('Connection is closed')) {
 				return; // Silently ignore expected shutdown errors
 			}
-			console.error('[ScheduledEventManager] Redis connection error during shutdown:', message);
+			this.logger?.error('Redis connection error during shutdown', { error: message });
 		};
 
 		for (const queue of this.queues.values()) {

@@ -1292,7 +1292,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 					safeCall('open', () => handlers?.open?.(wrappedWs));
 				}
 			},
-			message: (ws: WebSocketConnection<unknown>, message: string | ArrayBuffer) => {
+			message: (ws: WebSocketConnection<unknown>, message: string | Buffer<ArrayBufferLike>) => {
 				// Route through socket controllers first if any registered
 				if (hasSocketRouters && typeof message === 'string') {
 					try {

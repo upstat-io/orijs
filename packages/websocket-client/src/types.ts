@@ -38,18 +38,17 @@ export const PONG_FRAME = '3';
  *
  * @example
  * ```typescript
- * // Use server-side definitions directly
- * import { IncidentCreated } from '@upstat/ori-message-definitions';
+ * import { ClientMessage } from '@orijs/websocket-client';
  *
- * client.on(IncidentCreated, (data) => {
- *   // data is typed: { uuid: string, title: string, ... }
+ * // Define message types using ClientMessage.define()
+ * const OrderCreated = ClientMessage.define<{ orderId: string; total: number }>('order.created');
+ *
+ * client.on(OrderCreated, (data) => {
+ *   // data is typed: { orderId: string, total: number }
  * });
  *
- * // Or define client-only message types
- * const CustomMessage: ClientMessageDefinition<{ id: string }> = {
- *   name: 'custom.message',
- *   _data: undefined as unknown as { id: string }
- * };
+ * // Or use server-side SocketMessage definitions directly
+ * // (they are compatible with client.on())
  * ```
  */
 export interface ClientMessageDefinition<TData> {

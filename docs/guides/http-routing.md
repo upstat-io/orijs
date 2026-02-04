@@ -11,7 +11,7 @@ Controllers group related routes and their handlers.
 ### Basic Controller
 
 ```typescript
-import { RouteBuilder, RequestContext, OriController } from '@upstat/orijs';
+import { RouteBuilder, RequestContext, OriController } from '@orijs/orijs';
 
 class UserController implements OriController {
 	configure(r: RouteBuilder) {
@@ -454,7 +454,7 @@ Guards run before the route handler and can reject requests.
 ### Creating a Guard
 
 ```typescript
-import { Guard, RequestContext } from '@upstat/orijs';
+import { Guard, RequestContext } from '@orijs/orijs';
 
 class AuthGuard implements Guard {
 	constructor(private jwtService: JwtService) {}
@@ -570,7 +570,7 @@ Interceptors wrap route handlers, allowing pre/post processing.
 ### Creating an Interceptor
 
 ```typescript
-import { Interceptor, RequestContext } from '@upstat/orijs';
+import { Interceptor, RequestContext } from '@orijs/orijs';
 
 class TimingInterceptor implements Interceptor {
 	async intercept(ctx: RequestContext, next: () => Promise<Response>): Promise<Response> {
@@ -701,7 +701,7 @@ Pipes transform request data before it reaches the handler.
 ### Creating a Pipe
 
 ```typescript
-import { Pipe, RequestContext } from '@upstat/orijs';
+import { Pipe, RequestContext } from '@orijs/orijs';
 import { Type, Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
@@ -810,7 +810,7 @@ The `ResponseFactory` provides helper methods for common responses.
 ### Using ResponseFactory
 
 ```typescript
-import { ResponseFactory } from '@upstat/orijs';
+import { ResponseFactory } from '@orijs/orijs';
 
 const rf = new ResponseFactory();
 
@@ -860,7 +860,7 @@ private streamUpdates = async (ctx: RequestContext) => {
 ## Complete Example
 
 ```typescript
-import { Ori, RouteBuilder, RequestContext, OriController, Guard, Interceptor } from '@upstat/orijs';
+import { Ori, RouteBuilder, RequestContext, OriController, Guard, Interceptor } from '@orijs/orijs';
 import { Type } from '@sinclair/typebox';
 import { Params, Query } from '@orijs/validation';
 

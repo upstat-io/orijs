@@ -1,5 +1,5 @@
 {
-	"name": "@upstat/orijs",
+	"name": "@orijs/orijs",
 	"version": "0.0.1",
 	"description": "Lightweight NestJS-inspired framework for Bun",
 	"private": true,

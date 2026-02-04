@@ -22,7 +22,7 @@ The configuration system features:
 The simplest configuration provider:
 
 ```typescript
-import { EnvConfig } from '@upstat/orijs';
+import { EnvConfig } from '@orijs/orijs';
 
 const config = new EnvConfig({
 	DATABASE_URL: { required: true },
@@ -39,7 +39,7 @@ const port = await config.get('PORT'); // Returns string | undefined
 ### Using with Application
 
 ```typescript
-import { Ori, EnvConfig } from '@upstat/orijs';
+import { Ori, EnvConfig } from '@orijs/orijs';
 
 const config = new EnvConfig({
 	DATABASE_URL: { required: true },
@@ -59,7 +59,7 @@ For type-safe configuration with runtime validation, use `ValidatedConfig`:
 
 ```typescript
 import { Type, Static } from '@sinclair/typebox';
-import { ValidatedConfig, EnvConfig } from '@upstat/orijs';
+import { ValidatedConfig, EnvConfig } from '@orijs/orijs';
 
 const ConfigSchema = Type.Object({
 	// Required strings
@@ -178,7 +178,7 @@ class CacheService {
 Organize config by prefix:
 
 ```typescript
-import { NamespacedConfig, EnvConfig } from '@upstat/orijs';
+import { NamespacedConfig, EnvConfig } from '@orijs/orijs';
 
 const baseConfig = new EnvConfig({
 	DATABASE_URL: { required: true },
@@ -320,7 +320,7 @@ try {
 
 ```typescript
 import { Type, Static } from '@sinclair/typebox';
-import { Ori, EnvConfig, ValidatedConfig, AppContext } from '@upstat/orijs';
+import { Ori, EnvConfig, ValidatedConfig, AppContext } from '@orijs/orijs';
 
 // 1. Define schema
 const ConfigSchema = Type.Object({

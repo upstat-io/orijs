@@ -65,7 +65,7 @@ bun install
 ### Step 3: Install OriJS
 
 ```bash
-bun add @upstat/orijs
+bun add @orijs/orijs
 bun remove @nestjs/core @nestjs/common @nestjs/platform-express reflect-metadata
 ```
 
@@ -146,7 +146,7 @@ export class UserController {
 
 ```typescript
 // OriJS
-import { RouteBuilder, RequestContext, OriController } from '@upstat/orijs';
+import { RouteBuilder, RequestContext, OriController } from '@orijs/orijs';
 
 export class UserController implements OriController {
   constructor(private readonly userService: UserService) {}
@@ -200,7 +200,7 @@ export class UserModule {}
 
 ```typescript
 // OriJS - Use extension functions
-import { Application } from '@upstat/orijs';
+import { Application } from '@orijs/orijs';
 
 export function addUserModule(app: Application): Application {
 	return app
@@ -253,7 +253,7 @@ export class ProtectedController {}
 
 ```typescript
 // OriJS
-import { Guard, RequestContext } from '@upstat/orijs';
+import { Guard, RequestContext } from '@orijs/orijs';
 
 export class AuthGuard implements Guard {
   constructor(private jwtService: JwtService) {}
@@ -311,7 +311,7 @@ export class LoggingInterceptor implements NestInterceptor {
 
 ```typescript
 // OriJS
-import { Interceptor, RequestContext } from '@upstat/orijs';
+import { Interceptor, RequestContext } from '@orijs/orijs';
 
 export class LoggingInterceptor implements Interceptor {
   async intercept(
@@ -411,7 +411,7 @@ handleUserCreated(payload: { userId: string }) {
 
 ```typescript
 // OriJS
-import { EventRegistry, AppContext, EventContext } from '@upstat/orijs';
+import { EventRegistry, AppContext, EventContext } from '@orijs/orijs';
 
 // Define events
 const Events = EventRegistry.create()
@@ -479,7 +479,7 @@ describe('UserService', () => {
 ```typescript
 // OriJS
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { Container } from '@upstat/orijs';
+import { Container } from '@orijs/orijs';
 
 describe('UserService', () => {
 	let service: UserService;
@@ -524,7 +524,7 @@ bootstrap();
 
 ```typescript
 // OriJS
-import { Ori } from '@upstat/orijs';
+import { Ori } from '@orijs/orijs';
 
 Ori.create()
 	.logger({ level: 'info' })

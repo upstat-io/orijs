@@ -151,7 +151,7 @@ describe('WebSocket E2E', () => {
 					open: (_ws: WebSocketConnection<unknown>) => {
 						// Clients will subscribe via message
 					},
-					message: (ws: WebSocketConnection<unknown>, message: string | ArrayBuffer) => {
+					message: (ws: WebSocketConnection<unknown>, message: string | Buffer<ArrayBufferLike>) => {
 						// Process subscribe requests from clients
 						try {
 							const data = JSON.parse(message.toString());

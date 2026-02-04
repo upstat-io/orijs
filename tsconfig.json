@@ -67,7 +67,7 @@
 		// Other
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
-		"types": ["bun-types"]
+		"types": ["bun"]
 	},
 	"include": ["src/**/*", "__tests__/**/*", "packages/**/*"],
 	"exclude": ["node_modules", "dist", "**/ori-bullmq/**", "**/test-harness/**"]

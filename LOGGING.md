@@ -73,7 +73,7 @@ Application-specific fields are configured via `Logger.configure()` at startup a
 
 ```typescript
 // In application startup (e.g., app.ts)
-import { Logger, ANSI_COLORS } from '@upstat/orijs';
+import { Logger, ANSI_COLORS } from '@orijs/orijs';
 
 Logger.configure({
 	level: 'debug',

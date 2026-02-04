@@ -1104,7 +1104,7 @@ describe('grace period', () => {
 
 ```typescript
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { createRedisTestHelper } from '@upstat/ori-test-infrastructure';
+import { createRedisTestHelper } from '@orijs/test-utils';
 import { RedisCacheProvider, CacheService } from '@orijs/cache-redis';
 
 describe('Cache with Redis', () => {
