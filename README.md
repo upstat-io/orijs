@@ -64,8 +64,8 @@ For detailed documentation, see the [`docs/guides/`](./docs/guides/) folder:
 ## Quick Start
 
 ```typescript
-import { Ori, Type, Params } from 'orijs';
-import type { OriController, RouteBuilder, Context } from 'orijs';
+import { Ori, Type, Params } from '@orijs/orijs';
+import type { OriController, RouteBuilder, Context } from '@orijs/orijs';
 
 class UserService {
 	findAll() {
@@ -108,7 +108,7 @@ Ori.create().provider(UserService).controller('/users', UsersController, [UserSe
 Controllers define routes by implementing the `OriController` interface:
 
 ```typescript
-import type { OriController, RouteBuilder, Context } from 'orijs';
+import type { OriController, RouteBuilder, Context } from '@orijs/orijs';
 
 class UsersController implements OriController {
 	constructor(private users: UserService) {}
@@ -226,7 +226,7 @@ container.registerInstance(MyService, mockInstance);
 Guards handle authentication and authorization. They run before the handler and can block requests.
 
 ```typescript
-import type { Guard, Context } from 'orijs';
+import type { Guard, Context } from '@orijs/orijs';
 
 class AuthGuard implements Guard {
 	canActivate(ctx: Context): boolean | Promise<boolean> {
@@ -290,7 +290,7 @@ configure(r: RouteBuilder) {
 Interceptors wrap request handling in an onion model. Use them for logging, timing, response transformation, caching, etc.
 
 ```typescript
-import type { Interceptor, Context } from 'orijs';
+import type { Interceptor, Context } from '@orijs/orijs';
 
 class LoggingInterceptor implements Interceptor {
 	async intercept(ctx: Context, next: () => Promise<Response>): Promise<Response> {
@@ -355,7 +355,7 @@ OriJS supports two validation approaches:
 ### TypeBox Validation
 
 ```typescript
-import { Type, Params, Query } from 'orijs';
+import { Type, Params, Query } from '@orijs/orijs';
 
 class UsersController implements OriController {
 	configure(r: RouteBuilder) {
@@ -387,7 +387,7 @@ class UsersController implements OriController {
 **Params** — URL path parameter validation:
 
 ```typescript
-import { Params } from 'orijs';
+import { Params } from '@orijs/orijs';
 
 // Single UUID
 Params.uuid('id');
@@ -405,7 +405,7 @@ Params.number('page', { min: 1 });
 **Query** — Query string validation:
 
 ```typescript
-import { Query } from 'orijs';
+import { Query } from '@orijs/orijs';
 
 // Pagination: ?page=1&limit=20
 Query.pagination({ defaultPage: 1, defaultLimit: 20, maxLimit: 100 });
@@ -481,7 +481,7 @@ OriJS includes a Pino-inspired structured logging system with automatic request 
 ### Basic Usage
 
 ```typescript
-import { Logger } from 'orijs';
+import { Logger } from '@orijs/orijs';
 
 const log = new Logger('MyService');
 
@@ -534,7 +534,7 @@ class UsersController implements OriController {
 Use `requestContext()` to access the current request's logger from anywhere:
 
 ```typescript
-import { requestContext } from 'orijs';
+import { requestContext } from '@orijs/orijs';
 
 class UserService {
 	findById(id: string) {
@@ -552,7 +552,7 @@ class UserService {
 Configure where logs go:
 
 ```typescript
-import { transports } from 'orijs';
+import { transports } from '@orijs/orijs';
 
 Ori.create()
 	.logger({
@@ -616,7 +616,7 @@ test('should return user by id', async () => {
 ### Testing Route Configuration
 
 ```typescript
-import { RouteBuilder } from 'orijs';
+import { RouteBuilder } from '@orijs/orijs';
 
 test('should configure routes correctly', () => {
 	const controller = new UsersController(mockUsers);
@@ -634,7 +634,7 @@ test('should configure routes correctly', () => {
 
 ```typescript
 import { test, expect, afterEach } from 'bun:test';
-import { Ori } from 'orijs';
+import { Ori } from '@orijs/orijs';
 
 let server: ReturnType<typeof Bun.serve>;
 

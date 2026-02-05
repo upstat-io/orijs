@@ -398,6 +398,10 @@ export class QueueManager implements IQueueManager {
 
 		// Store worker for cleanup
 		this.workers.set(queueName, worker);
+
+		this.logger?.info(`Event Worker Created -> [${queueName}]`, {
+			concurrency: this.defaultWorkerOptions.concurrency ?? 1
+		});
 	}
 
 	/**

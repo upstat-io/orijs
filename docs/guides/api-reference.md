@@ -56,7 +56,6 @@ Main application class with fluent configuration API.
 | ---------------------------- | --------------------------------- | -------------------------------------- |
 | `.context`                   | `AppContext`                      | Application context (always available) |
 | `.getContainer()`            | `() => Container`                 | Get DI container                       |
-| `.getAppContext()`           | `() => AppContext`                | **Deprecated**: Use `.context` instead |
 | `.getCacheService()`         | `() => CacheService \| null`      | Get cache service                      |
 | `.getEventSystem()`          | `() => EventSystem \| null`       | Get event system                       |
 | `.getWorkflowProvider()`     | `() => WorkflowProvider \| null`  | Get workflow provider                  |

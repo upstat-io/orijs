@@ -83,7 +83,7 @@ export class EventCoordinator {
 		}
 
 		this.eventDefinitions.set(eventName, definition as EventDefinition<unknown, unknown>);
-		this.logger.debug(`Event Definition Registered: ${eventName}`);
+		this.logger.info(`Event Definition Registered -> [${eventName}]`);
 	}
 
 	/**
@@ -135,7 +135,7 @@ export class EventCoordinator {
 			// Track that this event has a consumer
 			this.registeredConsumerEvents.add(eventName);
 
-			this.logger.debug(`Event Consumer Registered: ${consumerClass.name} -> ${eventName}`);
+			this.logger.info(`Event Consumer Registered -> [${eventName}] [${consumerClass.name}]`);
 		}
 
 		this.pendingConsumers = [];
@@ -262,7 +262,16 @@ export class EventCoordinator {
 	public async start(): Promise<void> {
 		if (this.eventProvider) {
 			await this.eventProvider.start();
-			this.logger.debug('Event Provider Started');
+			const consumerCount = this.registeredConsumerEvents.size;
+			const defCount = this.eventDefinitions.size;
+			if (consumerCount > 0) {
+				const events = Array.from(this.registeredConsumerEvents).join(', ');
+				this.logger.info(`Event Provider Started -> [${consumerCount} Consumers] [${defCount} Definitions] [${events}]`);
+			} else if (defCount > 0) {
+				this.logger.info(`Event Provider Started -> [Emitter Only] [${defCount} Definitions]`);
+			} else {
+				this.logger.info('Event Provider Started');
+			}
 		}
 	}
 

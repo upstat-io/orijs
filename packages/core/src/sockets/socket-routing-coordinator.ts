@@ -54,10 +54,10 @@ export class SocketRoutingCoordinator<TSocket extends SocketEmitter = SocketEmit
 	 */
 	public registerRouters(): void {
 		for (const config of this.routerConfigs) {
-			// Register router with container
-			// Type assertion needed because SocketRouterClass has dynamic constructor signature
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(this.container.register as (service: any, deps: any) => void)(config.router, config.deps);
+			// Register router with container using registerWithTokenDeps which accepts InjectionToken[]
+			// This is necessary because SocketRouterConfig.deps is Constructor[] without
+			// the exact type information that ConstructorDeps<T> requires
+			this.container.registerWithTokenDeps(config.router, config.deps);
 
 			// Resolve router instance
 			const router = this.container.resolve<OriSocketRouter>(config.router);

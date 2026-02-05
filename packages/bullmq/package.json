@@ -23,11 +23,11 @@
 		"@orijs/core": "*",
 		"@orijs/events": "*",
 		"@orijs/logging": "*",
-		"@orijs/orijs": "*",
 		"@orijs/workflows": "*",
 		"bullmq": "^5.0.0"
 	},
 	"devDependencies": {
+		"@orijs/orijs": "*",
 		"@orijs/test-utils": "*",
 		"@testcontainers/redis": "*",
 		"@types/bun": "*",

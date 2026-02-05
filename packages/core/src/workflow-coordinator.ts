@@ -29,15 +29,6 @@ interface PendingWorkflowConsumer<TData = unknown, TResult = unknown> {
 export type WorkflowProviderFactory = () => WorkflowProvider;
 
 /**
- * Coordinates workflow system concerns.
- * Handles workflow definition registration, consumer instantiation, and lifecycle.
- *
- * The new definition-based API:
- * - Workflow definitions are registered with `registerWorkflowDefinition()`
- * - Consumers are registered with `addWorkflowConsumer()`
- * - On bootstrap, `registerConsumers()` instantiates consumers via DI
- */
-/**
  * Instantiated workflow consumer with its definition.
  */
 interface InstantiatedWorkflowConsumer {
@@ -45,6 +36,40 @@ interface InstantiatedWorkflowConsumer {
 	consumer: IWorkflowConsumer<unknown, unknown>;
 }
 
+/**
+ * Coordinates workflow system concerns for the OriJS application.
+ *
+ * This coordinator manages the complete workflow lifecycle:
+ * - Registration of workflow definitions and consumers
+ * - Instantiation of consumers via dependency injection
+ * - Provider lifecycle (start/stop)
+ * - Creating executors for request-bound workflow access
+ *
+ * The definition-based API:
+ * - Workflow definitions are registered with `registerWorkflowDefinition()`
+ * - Consumers are registered with `addWorkflowConsumer()`
+ * - On bootstrap, `registerConsumers()` instantiates consumers via DI
+ *
+ * @example
+ * ```typescript
+ * // Used internally by Application - not typically instantiated directly
+ * const coordinator = new WorkflowCoordinator(logger, container);
+ *
+ * // Register a workflow definition
+ * coordinator.registerWorkflowDefinition(SendEmailWorkflow);
+ *
+ * // Register a consumer for the workflow
+ * coordinator.addWorkflowConsumer(SendEmailWorkflow, SendEmailConsumer, [EmailService]);
+ *
+ * // During bootstrap
+ * coordinator.registerConsumers();
+ * await coordinator.start();
+ *
+ * // Create executor for request context
+ * const executor = coordinator.createExecutor();
+ * await executor.execute(SendEmailWorkflow, { to: 'user@example.com' });
+ * ```
+ */
 export class WorkflowCoordinator {
 	/** The workflow provider (set via extension like addBullMQWorkflows) */
 	private workflowProvider: WorkflowProvider | null = null;

@@ -48,6 +48,19 @@ export interface InProcessEventProviderOptions {
 	 * Custom logger (for testing).
 	 */
 	readonly log?: EventDeliveryLogger;
+
+	/**
+	 * TTL for idempotency keys in milliseconds.
+	 * Keys older than this are removed during cleanup.
+	 * Default: 300000 (5 minutes)
+	 */
+	readonly idempotencyKeyTtlMs?: number;
+
+	/**
+	 * Interval for cleaning up expired idempotency keys in milliseconds.
+	 * Default: 60000 (1 minute)
+	 */
+	readonly idempotencyCleanupIntervalMs?: number;
 }
 
 /**
@@ -89,10 +102,14 @@ export class InProcessEventProvider implements EventProvider {
 	private readonly pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
 	/**
 	 * Tracks processed idempotency keys to prevent duplicate event delivery.
-	 * Maps idempotencyKey -> timestamp for potential TTL-based cleanup.
+	 * Maps idempotencyKey -> timestamp for TTL-based cleanup.
 	 */
 	private readonly processedIdempotencyKeys = new Map<string, number>();
 	private started = false;
+	/** TTL for idempotency keys in milliseconds */
+	private readonly idempotencyKeyTtlMs: number;
+	/** Interval for cleaning up expired idempotency keys */
+	private idempotencyCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 	/**
 	 * Creates a new InProcessEventProvider.
@@ -101,6 +118,7 @@ export class InProcessEventProvider implements EventProvider {
 	 */
 	public constructor(options: InProcessEventProviderOptions = {}) {
 		this.registry = options.registry ?? new HandlerRegistry();
+		this.idempotencyKeyTtlMs = options.idempotencyKeyTtlMs ?? 5 * 60 * 1000; // 5 minutes default
 
 		// Create delivery engine with injected or default components
 		const log = options.log ?? new Logger('EventSystem');
@@ -111,6 +129,26 @@ export class InProcessEventProvider implements EventProvider {
 				log,
 				createChainedEmit: createChainedEmitFactory(this.emit.bind(this))
 			});
+
+		// Start cleanup interval for idempotency keys
+		const cleanupIntervalMs = options.idempotencyCleanupIntervalMs ?? 60 * 1000; // 1 minute default
+		this.idempotencyCleanupInterval = setInterval(() => {
+			this.cleanupExpiredIdempotencyKeys();
+		}, cleanupIntervalMs);
+		// Don't keep process alive just for cleanup
+		this.idempotencyCleanupInterval.unref?.();
+	}
+
+	/**
+	 * Removes idempotency keys older than the TTL.
+	 */
+	private cleanupExpiredIdempotencyKeys(): void {
+		const now = Date.now();
+		for (const [key, timestamp] of this.processedIdempotencyKeys) {
+			if (now - timestamp > this.idempotencyKeyTtlMs) {
+				this.processedIdempotencyKeys.delete(key);
+			}
+		}
 	}
 
 	/**
@@ -195,6 +233,10 @@ export class InProcessEventProvider implements EventProvider {
 		}
 		this.pendingTimeouts.clear();
 		this.processedIdempotencyKeys.clear();
+		if (this.idempotencyCleanupInterval) {
+			clearInterval(this.idempotencyCleanupInterval);
+			this.idempotencyCleanupInterval = null;
+		}
 		this.started = false;
 	}
 

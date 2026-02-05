@@ -364,7 +364,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				rollbackCtx.log.error('Rollback Failed', {
 					step: step.name,
 					durationMs,
-					error: (rollbackError as Error).message
+					error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
 				});
 			}
 		}
@@ -535,9 +535,10 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 			result = (await handler(data, meta, state.results)) as TResult;
 		} catch (handlerError) {
 			flowState.status = 'failed';
-			flowState.error = handlerError as Error;
+			const error = handlerError instanceof Error ? handlerError : new Error(String(handlerError));
+			flowState.error = error;
 			if (flowState.reject) {
-				flowState.reject(handlerError as Error);
+				flowState.reject(error);
 			}
 			this.scheduleCleanup(flowId);
 			return;
@@ -654,8 +655,9 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				} as StepSuccess;
 			} catch (err) {
 				const durationMs = Math.round(performance.now() - startTime);
-				stepCtx.log.debug('Step Failed', { durationMs, error: (err as Error).message });
-				return { name: stepDef.name, error: err as Error, durationMs } as StepFailure;
+				const error = err instanceof Error ? err : new Error(String(err));
+				stepCtx.log.debug('Step Failed', { durationMs, error: error.message });
+				return { name: stepDef.name, error, durationMs } as StepFailure;
 			}
 		};
 

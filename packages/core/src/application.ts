@@ -232,8 +232,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 *   .listen(3000);
 	 * ```
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	public config(factoryOrProvider: ConfigProvider | ((app: any) => Promise<void>)): this {
+	public config(factoryOrProvider: ConfigProvider | ((app: OriApplication<TSocket>) => Promise<void>)): this {
 		if (typeof factoryOrProvider === 'function') {
 			this.pendingAsyncConfig = factoryOrProvider(this);
 		} else {
@@ -652,13 +651,15 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	/**
 	 * Returns the cache service (useful for testing and direct access).
 	 * Returns null if no cache configured.
+	 * Throws if cache is configured but has dependency/resolution errors.
 	 */
 	public getCacheService(): CacheService | null {
-		try {
-			return this.container.resolve(CacheService);
-		} catch {
+		// Check if cache is registered before resolving
+		// This avoids masking genuine configuration errors as "not configured"
+		if (!this.container.has(CacheService)) {
 			return null;
 		}
+		return this.container.resolve(CacheService);
 	}
 
 	/**
@@ -1292,7 +1293,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 					safeCall('open', () => handlers?.open?.(wrappedWs));
 				}
 			},
-			message: (ws: WebSocketConnection<unknown>, message: string | Buffer<ArrayBufferLike>) => {
+			message: (ws: WebSocketConnection<unknown>, message: string | Buffer) => {
 				// Route through socket controllers first if any registered
 				if (hasSocketRouters && typeof message === 'string') {
 					try {

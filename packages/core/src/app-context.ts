@@ -91,6 +91,7 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 
 	/**
 	 * Get typed config. Use this when you need app-specific config properties.
+	 * @throws {Error} If config provider is not initialized (NullConfigProvider)
 	 * @example
 	 * ```ts
 	 * const config = app.context.getConfig<AppConfig>();
@@ -98,6 +99,9 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 	 * ```
 	 */
 	public getConfig<T>(): T {
+		if (this.configProvider instanceof NullConfigProvider) {
+			throw new Error('Config not configured. Call .config(provider) when creating the application.');
+		}
 		return this.configProvider as unknown as T;
 	}
 
@@ -273,6 +277,24 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 
 	/**
 	 * Resolve a service from the DI container.
+	 *
+	 * @internal For lifecycle hooks and bootstrap only.
+	 * DO NOT use at request-time - use constructor injection instead.
+	 *
+	 * @example
+	 * ```ts
+	 * // Good: Use in lifecycle hooks
+	 * app.context.onStartup(async () => {
+	 *   const db = app.context.resolve(DatabaseService);
+	 *   await db.runMigrations();
+	 * });
+	 *
+	 * // Bad: Don't use at request-time - use constructor injection
+	 * class MyController {
+	 *   // Bad: this.ctx.resolve(OtherService)
+	 *   // Good: constructor(private other: OtherService) {}
+	 * }
+	 * ```
 	 */
 	public resolve<T>(service: Constructor<T>): T {
 		return this.container.resolve(service);
@@ -281,6 +303,9 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 	/**
 	 * Resolve a service asynchronously, supporting async constructors.
 	 * Use this when your service has a constructor that returns a Promise.
+	 *
+	 * @internal For lifecycle hooks and bootstrap only.
+	 * DO NOT use at request-time - use constructor injection instead.
 	 */
 	public resolveAsync<T>(service: Constructor<T>): Promise<T> {
 		return this.container.resolveAsync(service);
@@ -296,7 +321,7 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 
 	/**
 	 * Execute all startup hooks in FIFO order.
-	 * Errors fail fast (first error stops execution).
+	 * Each hook completes before the next starts. Errors fail fast.
 	 */
 	public async executeStartupHooks(): Promise<void> {
 		this.currentPhase = 'starting';
@@ -307,7 +332,7 @@ export class AppContext<TSocket extends SocketEmitter = SocketEmitter> implement
 
 	/**
 	 * Execute all ready hooks in FIFO order.
-	 * Errors fail fast (first error stops execution).
+	 * Each hook completes before the next starts. Errors fail fast.
 	 */
 	public async executeReadyHooks(): Promise<void> {
 		for (const hook of this.readyHooks) {

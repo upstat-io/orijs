@@ -63,7 +63,7 @@ export interface WebSocketHandlers<TData = unknown> {
 	/** Called when a new connection is established */
 	open?(ws: WebSocketConnection<TData>): void | Promise<void>;
 	/** Called when a message is received */
-	message?(ws: WebSocketConnection<TData>, message: string | Buffer<ArrayBufferLike>): void | Promise<void>;
+	message?(ws: WebSocketConnection<TData>, message: string | Buffer): void | Promise<void>;
 	/** Called when the connection is closed */
 	close?(ws: WebSocketConnection<TData>, code: number, reason: string): void | Promise<void>;
 	/** Called when a ping is received */

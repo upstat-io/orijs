@@ -1094,6 +1094,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			stepResults?: Record<string, unknown>
 		) => Promise<unknown>,
 		stepGroups?: readonly StepGroup[],
+		// Step handlers use 'any' due to TypeScript contravariance: handlers with specific
+		// WorkflowContext<TData> types cannot be assigned to WorkflowContext<unknown>.
+		// Type safety is enforced at consumer definition level, not at registration.
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		stepHandlers?: Record<string, { execute: (ctx: any) => any; rollback?: (ctx: any) => any }>,
 		onError?: (

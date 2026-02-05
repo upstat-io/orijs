@@ -58,6 +58,13 @@ export interface WorkflowContext<TData = unknown> {
 	readonly meta: PropagationMeta;
 
 	/**
+	 * Correlation ID for distributed tracing.
+	 * Links this workflow execution to the originating request or event chain.
+	 * Extracted from meta for convenience.
+	 */
+	readonly correlationId: string;
+
+	/**
 	 * Optional provider instance identifier.
 	 *
 	 * In distributed deployments, this identifies which provider instance
@@ -77,6 +84,8 @@ export interface WorkflowContext<TData = unknown> {
  * Immutable - all properties are readonly.
  */
 export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<TData> {
+	public readonly correlationId: string;
+
 	public constructor(
 		public readonly flowId: string,
 		public readonly data: TData,
@@ -84,7 +93,10 @@ export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<
 		public readonly log: Logger,
 		public readonly meta: PropagationMeta,
 		public readonly providerId?: string
-	) {}
+	) {
+		// Extract correlationId from meta for convenience access
+		this.correlationId = (meta.correlationId as string) ?? flowId;
+	}
 }
 
 /**

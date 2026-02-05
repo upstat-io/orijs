@@ -260,8 +260,12 @@ export class RedisWsProvider implements WebSocketProvider {
 			const channels = Array.from(this.redisSubscriptions);
 			try {
 				await this.subscriber.unsubscribe(...channels);
-			} catch {
-				// Ignore unsubscribe errors during shutdown
+			} catch (err) {
+				// Log but don't fail during shutdown - connection may already be closed
+				this.logger.debug('Unsubscribe failed during shutdown', {
+					channelCount: channels.length,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				});
 			}
 		}
 		this.redisSubscriptions.clear();
@@ -273,6 +277,14 @@ export class RedisWsProvider implements WebSocketProvider {
 			clearTimeout(timeoutId);
 		}
 		this.retryTimeouts.clear();
+
+		// Remove event listeners before closing connections
+		if (this.publisher) {
+			this.publisher.removeAllListeners();
+		}
+		if (this.subscriber) {
+			this.subscriber.removeAllListeners();
+		}
 
 		// Close Redis connections gracefully
 		await this.closeRedisConnection(this.publisher, 'publisher');
@@ -366,8 +378,9 @@ export class RedisWsProvider implements WebSocketProvider {
 	public send(socketId: string, message: string | ArrayBuffer): void {
 		validateSocketId(socketId);
 		// Publish to socket-specific channel (fire-and-forget)
+		// Note: publish() logs errors internally before rejecting, so empty catch is intentional
 		const topic = `__socket__:${socketId}`;
-		this.publish(topic, message).catch(() => {}); // Errors already logged in publish()
+		this.publish(topic, message).catch(() => {});
 	}
 
 	/**
@@ -375,7 +388,8 @@ export class RedisWsProvider implements WebSocketProvider {
 	 * Uses the special __broadcast__ topic.
 	 */
 	public broadcast(message: string | ArrayBuffer): void {
-		this.publish('__broadcast__', message).catch(() => {}); // Errors already logged in publish()
+		// Note: publish() logs errors internally before rejecting, so empty catch is intentional
+		this.publish('__broadcast__', message).catch(() => {});
 	}
 
 	/**

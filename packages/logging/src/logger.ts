@@ -176,20 +176,22 @@ export class Logger {
 	 *
 	 * This method:
 	 * 1. Stops the LogBuffer timer and flushes buffered logs to transports
-	 * 2. Awaits flush() on all transports (ensures async buffers like file transport are written)
-	 * 3. Awaits close() on all transports (cleanup file handles, connections, etc.)
+	 * 2. Flushes all transports in parallel (ensures async buffers like file transport are written)
+	 * 3. Closes all transports in parallel (cleanup file handles, connections, etc.)
+	 *
+	 * Uses Promise.allSettled to ensure all transports complete shutdown regardless of
+	 * individual failures. This prevents one failing transport from blocking others.
 	 */
 	static async shutdown(): Promise<void> {
 		// Stop timer and flush LogBuffer (writes to transports synchronously)
 		logBuffer.shutdown();
 		Logger.flush();
 
-		// Await transport flush and close
+		// Flush and close all transports in parallel
+		// Using allSettled ensures all transports get a chance to close even if some fail
 		const transports = Logger.globalTransports ?? [];
-		for (const transport of transports) {
-			await transport.flush();
-			await transport.close();
-		}
+		await Promise.allSettled(transports.map((transport) => transport.flush()));
+		await Promise.allSettled(transports.map((transport) => transport.close()));
 	}
 
 	debug(msg: string, data?: Record<string, unknown>): void {
