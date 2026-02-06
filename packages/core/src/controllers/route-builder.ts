@@ -10,6 +10,7 @@ import type {
 	PipeClass
 } from '../types/index.ts';
 import type { Schema } from '@orijs/validation';
+import type { ParamValidatorClass } from './param-validators';
 
 /**
  * Fluent API for defining routes within a controller.
@@ -43,6 +44,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	private controllerGuards: GuardClass[] = [];
 	private controllerInterceptors: InterceptorClass[] = [];
 	private controllerPipes: Array<{ pipe: PipeClass; schema?: Schema }> = [];
+	private controllerParams: Map<string, ParamValidatorClass> = new Map();
 	private currentRoute: RouteDefinition | null = null;
 	private routeGuardsOverride: GuardClass[] | null = null;
 	private routeInterceptorsOverride: InterceptorClass[] | null = null;
@@ -209,6 +211,30 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	}
 
 	/**
+	 * Declares a path parameter validator at the controller level.
+	 * Automatically applies to all routes that contain `:name` in their path.
+	 *
+	 * Built-in validators: UuidParam, StringParam, NumberParam.
+	 * Provide your own by implementing the ParamValidator interface.
+	 *
+	 * @param name - Parameter name (matches `:name` in route paths)
+	 * @param validator - ParamValidator class to validate the parameter
+	 * @returns this for method chaining
+	 *
+	 * @example
+	 * ```ts
+	 * r.param('uuid', UuidParam);
+	 * r.get('/:uuid', this.getOne);        // uuid validated
+	 * r.delete('/:uuid', this.remove);      // uuid validated
+	 * r.get('/', this.list);                // no param validation
+	 * ```
+	 */
+	public param(name: string, validator: ParamValidatorClass): this {
+		this.controllerParams.set(name, validator);
+		return this;
+	}
+
+	/**
 	 * Clears all guards and interceptors.
 	 *
 	 * Convenience method equivalent to calling clearGuards() and clearInterceptors().
@@ -324,6 +350,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 		handler: HandlerInput,
 		schema?: RouteSchemaOptions
 	): this {
+		const paramValidators = this.buildParamValidators(path);
 		this.currentRoute = {
 			method,
 			path,
@@ -331,12 +358,30 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 			guards: this.getEffectiveGuards(),
 			interceptors: this.getEffectiveInterceptors(),
 			pipes: [...this.controllerPipes],
-			schema
+			schema,
+			paramValidators
 		};
 		this.routeGuardsOverride = null;
 		this.routeInterceptorsOverride = null;
 		this.routes.push(this.currentRoute);
 		return this;
+	}
+
+	/**
+	 * Builds a param validators map for a route, only including
+	 * params that appear in the route path as `:name` segments.
+	 */
+	private buildParamValidators(path: string): Map<string, ParamValidatorClass> | undefined {
+		if (this.controllerParams.size === 0) return undefined;
+
+		const validators = new Map<string, ParamValidatorClass>();
+		for (const [name, validator] of this.controllerParams) {
+			if (path.includes(`:${name}`)) {
+				validators.set(name, validator);
+			}
+		}
+
+		return validators.size > 0 ? validators : undefined;
 	}
 
 	private getEffectiveGuards(): GuardClass[] {

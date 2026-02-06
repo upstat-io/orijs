@@ -4,7 +4,7 @@
 
 import type { Constructor } from './context';
 import type { ControllerClass } from './controller';
-import type { Transport } from './logging';
+import type { Transport, TraceFieldDef } from './logging';
 
 /**
  * Configuration for a registered controller.
@@ -40,6 +40,8 @@ export interface AppLoggerOptions {
 	transports?: Transport[];
 	/** Clear console on application startup (default: false) */
 	clearConsole?: boolean;
+	/** Application-specific trace fields shown as abbreviated colored prefixes in log output */
+	traceFields?: Record<string, TraceFieldDef>;
 }
 
 /**

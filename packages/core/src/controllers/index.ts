@@ -34,6 +34,10 @@ export { ResponseFactory, responseFactory } from './response';
 export { OriResponse } from './ori-response';
 export { RequestBoundSocketEmitter } from './request-bound-emitters';
 
+// Param validators
+export { UuidParam, StringParam, NumberParam } from './param-validators';
+export type { ParamValidator, ParamValidatorClass } from './param-validators';
+
 // Types
 export type { CompiledRoute, BunRequest, BunRouteHandler } from './request-pipeline';
 export type { SseEvent, SseStreamOptions } from './response';

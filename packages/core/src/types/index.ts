@@ -38,6 +38,9 @@ export type {
 	ContextHandlerInput
 } from './controller';
 
+// Param validators
+export type { ParamValidator, ParamValidatorClass } from '../controllers/param-validators';
+
 // HTTP
 export type { HttpMethod } from './http';
 

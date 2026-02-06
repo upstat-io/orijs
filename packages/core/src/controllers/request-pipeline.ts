@@ -6,6 +6,7 @@ import type {
 	RouteSchemaOptions,
 	RouteDefinition
 } from '../types/index.ts';
+import type { ParamValidator } from './param-validators';
 import type { Container } from '../container.ts';
 import type { ResponseFactory } from './response';
 import {
@@ -120,20 +121,27 @@ export class RequestPipeline {
 		// Pre-resolve interceptors at route registration time (singleton instances)
 		const interceptors = hasInterceptors ? route.interceptors.map((I) => this.container.resolve(I)) : [];
 
+		// Pre-instantiate param validators at route registration time (no DI needed)
+		const paramValidators = route.paramValidators
+			? new Map<string, ParamValidator>([...route.paramValidators].map(([k, V]) => [k, new V()]))
+			: null;
+
 		// Create response finalizer that adds CORS headers if configured
 		const finalizeResponse = corsHeaders
 			? (response: Response) => this.addCorsHeaders(response, corsHeaders)
 			: (response: Response) => response;
 
-		// Fast path: no guards, no interceptors, no schema - minimal overhead
+		// Fast path: no guards, no interceptors, no schema, no param validators - minimal overhead
 		// Still use runWithContext for correlation ID propagation (needed for distributed tracing)
 		// Optimization: Use sync wrapper with try-catch + .catch() instead of async/await (~23% faster)
-		if (!hasGuards && !hasInterceptors && !hasSchema) {
+		if (!hasGuards && !hasInterceptors && !hasSchema && !paramValidators) {
 			return (req: BunRequest): Promise<Response> => {
 				const params = req.params || {};
 				const ctx = contextFactory.create(req, params);
 				const trace = this.extractTraceContext(req);
 				const correlationId = this.extractCorrelationId(req);
+
+				ctx.log.debug(`${method} ${route.fullPath}`);
 
 				const handleError = (error: unknown): Response => {
 					this.appLogger.error('Unhandled error in request handler', {
@@ -171,6 +179,17 @@ export class RequestPipeline {
 						const guardResult = await this.runGuards(guards, ctx);
 						if (guardResult) {
 							return finalizeResponse(guardResult);
+						}
+					}
+
+					// Log after guards so ctx.log includes setMeta fields (e.g. userId)
+					ctx.log.debug(`${method} ${route.fullPath}`);
+
+					// Validate path parameters if param validators are defined
+					if (paramValidators) {
+						const paramResult = this.validateParams(paramValidators, params);
+						if (paramResult) {
+							return finalizeResponse(paramResult);
 						}
 					}
 
@@ -266,6 +285,20 @@ export class RequestPipeline {
 			const normalizedPath = e.path.startsWith('/') ? e.path.slice(1).replace(/\//g, '.') : e.path;
 			return { ...e, path: normalizedPath ? `${prefix}.${normalizedPath}` : prefix };
 		});
+	}
+
+	private validateParams(
+		validators: Map<string, ParamValidator>,
+		params: Record<string, string>
+	): Response | null {
+		const errors: ValidationError[] = [];
+		for (const [name, validator] of validators) {
+			const value = params[name];
+			if (value === undefined || !validator.validate(value)) {
+				errors.push({ path: `params.${name}`, message: `Invalid value for path parameter '${name}'` });
+			}
+		}
+		return errors.length > 0 ? this.responseFactory.validationError(errors) : null;
 	}
 
 	private async validateRequest(

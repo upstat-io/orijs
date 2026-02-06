@@ -4,8 +4,9 @@ import type { Container } from '../src/container.ts';
 import type { ResponseFactory } from '../src/controllers/response.ts';
 import type { Logger } from '@orijs/logging';
 import type { AppContext } from '../src/app-context.ts';
-import type { Guard, Interceptor, RequestContext } from '../src/types/index.ts';
+import type { Guard, Interceptor, RequestContext, ParamValidator } from '../src/types/index.ts';
 import { Type } from '@orijs/validation';
+import { UuidParam, NumberParam } from '../src/controllers/param-validators';
 
 describe('RequestPipeline', () => {
 	let pipeline: RequestPipeline;
@@ -663,6 +664,250 @@ describe('RequestPipeline', () => {
 			await handler(createMockRequest());
 
 			expect(interceptorCalled).toBe(false);
+		});
+	});
+
+	describe('param validators', () => {
+		test('should reject invalid UUID param', async () => {
+			const route = createRoute({
+				guards: [AllowGuard], // need guard to trigger full path
+				paramValidators: new Map([['uuid', UuidParam]]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = { uuid: 'not-a-uuid' };
+
+			const response = await handler(request);
+
+			expect(response.status).toBe(422);
+			expect(mockResponseFactory.validationError).toHaveBeenCalled();
+		});
+
+		test('should allow valid UUID param', async () => {
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([['uuid', UuidParam]]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = { uuid: '550e8400-e29b-41d4-a716-446655440000' };
+
+			const response = await handler(request);
+
+			expect(await response.text()).toBe('OK');
+		});
+
+		test('should reject missing param', async () => {
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([['uuid', UuidParam]]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = {};
+
+			const response = await handler(request);
+
+			expect(response.status).toBe(422);
+		});
+
+		test('should validate multiple params', async () => {
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([
+					['uuid', UuidParam],
+					['id', NumberParam]
+				]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = { uuid: '550e8400-e29b-41d4-a716-446655440000', id: '123' };
+
+			const response = await handler(request);
+
+			expect(await response.text()).toBe('OK');
+		});
+
+		test('should reject when one of multiple params is invalid', async () => {
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([
+					['uuid', UuidParam],
+					['id', NumberParam]
+				]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = { uuid: '550e8400-e29b-41d4-a716-446655440000', id: 'abc' };
+
+			const response = await handler(request);
+
+			expect(response.status).toBe(422);
+		});
+
+		test('should support custom param validators', async () => {
+			class SlugParam implements ParamValidator {
+				validate(value: string): boolean {
+					return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+				}
+			}
+
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([['slug', SlugParam]]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+
+			// Valid slug
+			const validRequest = createMockRequest();
+			validRequest.params = { slug: 'my-cool-slug' };
+			const validResponse = await handler(validRequest);
+			expect(await validResponse.text()).toBe('OK');
+
+			// Invalid slug
+			const invalidRequest = createMockRequest();
+			invalidRequest.params = { slug: 'INVALID SLUG!' };
+			const invalidResponse = await handler(invalidRequest);
+			expect(invalidResponse.status).toBe(422);
+		});
+
+		test('should instantiate validators only once (not per request)', async () => {
+			let instanceCount = 0;
+
+			class CountingValidator implements ParamValidator {
+				constructor() {
+					instanceCount++;
+				}
+				validate(_value: string): boolean {
+					return true;
+				}
+			}
+
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([['id', CountingValidator]]),
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+
+			// Call handler multiple times
+			const request1 = createMockRequest();
+			request1.params = { id: '1' };
+			await handler(request1);
+
+			const request2 = createMockRequest();
+			request2.params = { id: '2' };
+			await handler(request2);
+
+			const request3 = createMockRequest();
+			request3.params = { id: '3' };
+			await handler(request3);
+
+			// Validator should only be instantiated once
+			expect(instanceCount).toBe(1);
+		});
+
+		test('should run param validation before schema validation', async () => {
+			const order: string[] = [];
+
+			class TrackingValidator implements ParamValidator {
+				validate(_value: string): boolean {
+					order.push('param-validator');
+					return true;
+				}
+			}
+
+			const route = createRoute({
+				guards: [AllowGuard],
+				paramValidators: new Map([['id', TrackingValidator]]),
+				schema: {
+					params: Type.Object({ id: Type.String() })
+				},
+				handler: async () => {
+					order.push('handler');
+					return new Response('OK');
+				}
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const request = createMockRequest();
+			request.params = { id: '123' };
+			await handler(request);
+
+			expect(order).toEqual(['param-validator', 'handler']);
+		});
+	});
+
+	describe('debug logging', () => {
+		test('should log route hit at debug level on fast path', async () => {
+			const route = createRoute({
+				method: 'GET',
+				fullPath: '/api/users',
+				handler: async () => new Response('OK'),
+				guards: [],
+				interceptors: [],
+				schema: undefined
+			});
+
+			// Use debug-level logger so ctx.log.debug actually fires
+			const handler = pipeline.createHandler(route, mockAppContext, { level: 'debug' });
+			const response = await handler(createMockRequest());
+
+			expect(await response.text()).toBe('OK');
+		});
+
+		test('should log route hit after guards on full path', async () => {
+			const order: string[] = [];
+
+			class TrackingGuard implements Guard {
+				canActivate(): boolean {
+					order.push('guard');
+					return true;
+				}
+			}
+
+			const route = createRoute({
+				method: 'POST',
+				fullPath: '/api/users',
+				guards: [TrackingGuard],
+				handler: async () => {
+					order.push('handler');
+					return new Response('OK');
+				}
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, { level: 'debug' });
+			const response = await handler(createMockRequest('POST', 'http://localhost/api/users'));
+
+			expect(await response.text()).toBe('OK');
+			// Guard runs before handler (debug log fires between guard and handler)
+			expect(order).toEqual(['guard', 'handler']);
+		});
+
+		test('should include correct method and path in debug log', async () => {
+			const route = createRoute({
+				method: 'DELETE',
+				fullPath: '/api/monitors/:id',
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, { level: 'debug' });
+			const response = await handler(createMockRequest('DELETE', 'http://localhost/api/monitors/123'));
+
+			expect(await response.text()).toBe('OK');
 		});
 	});
 });

@@ -263,7 +263,8 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 		// Configure global defaults for all loggers (flushes any buffered logs)
 		Logger.configure({
 			level: options.level ?? 'info',
-			transports: options.transports
+			transports: options.transports,
+			traceFields: options.traceFields
 		});
 
 		// Update shared logger options for request contexts

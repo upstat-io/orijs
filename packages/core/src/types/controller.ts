@@ -3,6 +3,7 @@ import type { HandlerInput } from './context';
 import type { HttpMethod } from './http';
 import type { GuardClass, InterceptorClass, PipeClass } from './middleware';
 import type { Schema } from '@orijs/validation';
+import type { ParamValidatorClass } from '../controllers/param-validators';
 
 /**
  * Schema options for route validation.
@@ -63,6 +64,7 @@ export interface RouteDefinition {
 	interceptors: InterceptorClass[];
 	pipes: Array<{ pipe: PipeClass; schema?: Schema }>;
 	schema?: RouteSchemaOptions;
+	paramValidators?: Map<string, ParamValidatorClass>;
 }
 
 /**
@@ -89,14 +91,17 @@ export type ContextHandlerInput<TState extends object = Record<string, unknown>>
  *
  * @example
  * ```ts
+ * import { UuidParam } from '@orijs/orijs';
+ *
  * interface AuthState { user: User }
  *
  * class UserController implements OriController<AuthState> {
  *   configure(r: RouteBuilder<AuthState>) {
  *     r.guard(AuthGuard);
+ *     r.param('uuid', UuidParam);
  *
  *     r.get('/me', this.getMe);
- *     r.post('/update', this.update);
+ *     r.get('/:uuid', this.getById);
  *   }
  *
  *   private getMe = async (ctx: Context<AuthState>) => {
@@ -106,6 +111,17 @@ export type ContextHandlerInput<TState extends object = Record<string, unknown>>
  * ```
  */
 export interface RouteBuilder<TState extends object = Record<string, unknown>> {
+	/**
+	 * Declares a path parameter validator at the controller level.
+	 * Applies automatically to all routes that contain `:name` in their path.
+	 *
+	 * Built-in validators: UuidParam, StringParam, NumberParam.
+	 * Provide your own by implementing the ParamValidator interface.
+	 *
+	 * @param name - Parameter name (matches `:name` in route paths)
+	 * @param validator - ParamValidator class to validate the parameter
+	 */
+	param(name: string, validator: ParamValidatorClass): RouteBuilder<TState>;
 	/**
 	 * Adds a guard to the current route or controller.
 	 * @param guard - The guard class to add

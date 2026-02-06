@@ -90,7 +90,10 @@ export {
 	RequestContextFactory,
 	ResponseFactory,
 	responseFactory,
-	OriResponse
+	OriResponse,
+	UuidParam,
+	StringParam,
+	NumberParam
 } from './controllers/index';
 
 /**
@@ -112,6 +115,8 @@ export type {
 	Pipe,
 	PipeClass,
 	PipeMetadata,
+	ParamValidator,
+	ParamValidatorClass,
 	OriController,
 	ControllerClass,
 	Constructor,

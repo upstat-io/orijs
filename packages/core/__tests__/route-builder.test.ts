@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 import { RouteBuilder } from '../src/controllers/route-builder.ts';
-import type { Guard, Interceptor, RequestContext, Pipe } from '../src/types/index.ts';
+import type { Guard, Interceptor, RequestContext, Pipe, ParamValidator } from '../src/types/index.ts';
+import { UuidParam, StringParam, NumberParam } from '../src/controllers/param-validators';
 
 class MockGuard implements Guard {
 	canActivate(): boolean {
@@ -230,6 +231,81 @@ describe('RouteBuilder', () => {
 
 			expect(result).toBe(builder);
 			expect(builder.getRoutes()).toHaveLength(2);
+		});
+	});
+
+	describe('param validators', () => {
+		test('should attach UuidParam to routes with :uuid param', () => {
+			builder.param('uuid', UuidParam);
+			builder.get('/:uuid', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.paramValidators).toBeDefined();
+			expect(routes[0]!.paramValidators!.get('uuid')).toBe(UuidParam);
+		});
+
+		test('should not attach validators to routes without matching param', () => {
+			builder.param('uuid', UuidParam);
+			builder.get('/', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.paramValidators).toBeUndefined();
+		});
+
+		test('should support multiple param validators', () => {
+			builder.param('uuid', UuidParam);
+			builder.param('id', NumberParam);
+			builder.get('/:uuid/items/:id', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.paramValidators!.size).toBe(2);
+			expect(routes[0]!.paramValidators!.get('uuid')).toBe(UuidParam);
+			expect(routes[0]!.paramValidators!.get('id')).toBe(NumberParam);
+		});
+
+		test('should only include params present in the route path', () => {
+			builder.param('uuid', UuidParam);
+			builder.param('id', NumberParam);
+			builder.get('/:uuid', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.paramValidators!.size).toBe(1);
+			expect(routes[0]!.paramValidators!.has('id')).toBe(false);
+		});
+
+		test('should support custom param validators', () => {
+			class SlugParam implements ParamValidator {
+				validate(value: string): boolean {
+					return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+				}
+			}
+
+			builder.param('slug', SlugParam);
+			builder.get('/:slug', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.paramValidators!.get('slug')).toBe(SlugParam);
+		});
+
+		test('built-in UuidParam should validate UUIDs correctly', () => {
+			const validator = new UuidParam();
+			expect(validator.validate('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+			expect(validator.validate('not-a-uuid')).toBe(false);
+			expect(validator.validate('')).toBe(false);
+		});
+
+		test('built-in StringParam should validate non-empty strings', () => {
+			const validator = new StringParam();
+			expect(validator.validate('hello')).toBe(true);
+			expect(validator.validate('')).toBe(false);
+		});
+
+		test('built-in NumberParam should validate numeric strings', () => {
+			const validator = new NumberParam();
+			expect(validator.validate('123')).toBe(true);
+			expect(validator.validate('0')).toBe(true);
+			expect(validator.validate('abc')).toBe(false);
+			expect(validator.validate('')).toBe(false);
 		});
 	});
 });

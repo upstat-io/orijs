@@ -362,4 +362,78 @@ describe('Logger', () => {
 			expect(Logger.inspect(true)).toContain('true');
 		});
 	});
+
+	describe('setMeta()', () => {
+		test('should include meta fields in subsequent log output', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] });
+
+			log.setMeta({ userId: 'user-123', accountUuid: 'acc-456' });
+			log.info('request handled');
+
+			expect(mockTransport.logs).toHaveLength(1);
+			expect(mockTransport.logs[0]!.userId).toBe('user-123');
+			expect(mockTransport.logs[0]!.accountUuid).toBe('acc-456');
+		});
+
+		test('should merge with existing context from .with()', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] }).with({
+				correlationId: 'corr-789'
+			});
+
+			log.setMeta({ userId: 'user-123' });
+			log.info('after setMeta');
+
+			expect(mockTransport.logs[0]!.correlationId).toBe('corr-789');
+			expect(mockTransport.logs[0]!.userId).toBe('user-123');
+		});
+
+		test('should persist across multiple log calls', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] });
+
+			log.setMeta({ userId: 'user-123' });
+			log.info('first');
+			log.info('second');
+			log.warn('third');
+
+			expect(mockTransport.logs).toHaveLength(3);
+			expect(mockTransport.logs[0]!.userId).toBe('user-123');
+			expect(mockTransport.logs[1]!.userId).toBe('user-123');
+			expect(mockTransport.logs[2]!.userId).toBe('user-123');
+		});
+
+		test('should call setMetaCallback when registered', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] });
+
+			const callbackMeta: Record<string, unknown>[] = [];
+			log.onSetMeta((meta) => callbackMeta.push(meta));
+
+			log.setMeta({ userId: 'user-123', accountUuid: 'acc-456' });
+
+			expect(callbackMeta).toHaveLength(1);
+			expect(callbackMeta[0]).toEqual({ userId: 'user-123', accountUuid: 'acc-456' });
+		});
+
+		test('should preserve setMetaCallback on child logger from .with()', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] });
+
+			const callbackMeta: Record<string, unknown>[] = [];
+			log.onSetMeta((meta) => callbackMeta.push(meta));
+
+			const child = log.with({ correlationId: 'corr-1' });
+			child.setMeta({ userId: 'user-123' });
+
+			expect(callbackMeta).toHaveLength(1);
+			expect(callbackMeta[0]).toEqual({ userId: 'user-123' });
+		});
+
+		test('should override previous meta values with same key', () => {
+			const log = new Logger('Test', { level: 'info', transports: [mockTransport] });
+
+			log.setMeta({ userId: 'user-1' });
+			log.setMeta({ userId: 'user-2' });
+			log.info('final');
+
+			expect(mockTransport.logs[0]!.userId).toBe('user-2');
+		});
+	});
 });
