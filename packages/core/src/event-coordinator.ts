@@ -156,7 +156,9 @@ export class EventCoordinator {
 			if (!Value.Check(definition.dataSchema, rawPayload)) {
 				const errors = [...Value.Errors(definition.dataSchema, rawPayload)];
 				const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-				throw new Error(`Event "${definition.name}" payload validation failed: ${errorDetails}`);
+				const errorMessage = `Event "${definition.name}" payload validation failed: ${errorDetails}`;
+				this.logger.error(errorMessage, { eventName: definition.name, eventId: message.eventId });
+				throw new Error(errorMessage);
 			}
 
 			const payload = rawPayload as TPayload;
@@ -205,7 +207,9 @@ export class EventCoordinator {
 				if (!Value.Check(definition.resultSchema, response)) {
 					const errors = [...Value.Errors(definition.resultSchema, response)];
 					const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-					throw new Error(`Event "${definition.name}" response validation failed: ${errorDetails}`);
+					const errorMessage = `Event "${definition.name}" response validation failed: ${errorDetails}`;
+					this.logger.error(errorMessage, { eventName: definition.name, eventId: message.eventId });
+					throw new Error(errorMessage);
 				}
 
 				// Call success hook if defined

@@ -167,8 +167,7 @@ export class Container {
 	private resolveInternalSync<T>(token: InjectionToken<T>): T {
 		this.checkResolutionTimeout(token);
 
-		const existing = this.instances.get(token);
-		if (existing) return existing as T;
+		if (this.instances.has(token)) return this.instances.get(token) as T;
 
 		const { service, deps } = this.prepareResolution(token);
 
@@ -193,8 +192,7 @@ export class Container {
 	private async resolveInternalAsync<T>(token: InjectionToken<T>): Promise<T> {
 		this.checkResolutionTimeout(token);
 
-		const existing = this.instances.get(token);
-		if (existing) return existing as T;
+		if (this.instances.has(token)) return this.instances.get(token) as T;
 
 		const { service, deps } = this.prepareResolution(token);
 

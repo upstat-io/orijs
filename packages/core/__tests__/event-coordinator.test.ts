@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { EventCoordinator } from '../src/event-coordinator.ts';
 import { Container } from '../src/container.ts';
 import { Logger } from '@orijs/logging';
@@ -422,6 +422,94 @@ describe('EventCoordinator', () => {
 
 			// Verify handler received payload
 			expect(receivedPayload).toEqual({ userId: 123 });
+
+			await coordinator.stop();
+		});
+	});
+
+	describe('Validation Error Logging', () => {
+		it('should log error when payload validation fails', async () => {
+			const { InProcessEventProvider } = await import('@orijs/events');
+			const realProvider = new InProcessEventProvider();
+
+			const errorSpy = mock(() => {});
+			const spyLogger = new Logger('test');
+			spyLogger.error = errorSpy as any;
+
+			const StrictEvent = Event.define({
+				name: 'strict.event',
+				data: Type.Object({ required: Type.String() }),
+				result: Type.Object({ ok: Type.Boolean() })
+			});
+
+			class StrictConsumer implements IEventConsumer<(typeof StrictEvent)['_data'], (typeof StrictEvent)['_result']> {
+				onEvent = async () => ({ ok: true });
+			}
+
+			const coordinator = new EventCoordinator(container, spyLogger, () => realProvider);
+			coordinator.registerEventDefinition(StrictEvent);
+			coordinator.addEventConsumer(StrictEvent, StrictConsumer, []);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			// Emit with invalid payload (missing required field)
+			const provider = coordinator.getProvider()!;
+			try {
+				await provider.emit('strict.event', { wrong: 'field' }).toPromise();
+			} catch {
+				// Expected to throw
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(errorSpy).toHaveBeenCalled();
+			const errorMessage = errorSpy.mock.calls[0][0] as string;
+			expect(errorMessage).toContain('payload validation failed');
+			expect(errorMessage).toContain('strict.event');
+
+			await coordinator.stop();
+		});
+
+		it('should log error when response validation fails', async () => {
+			const { InProcessEventProvider } = await import('@orijs/events');
+			const realProvider = new InProcessEventProvider();
+
+			const errorSpy = mock(() => {});
+			const spyLogger = new Logger('test');
+			spyLogger.error = errorSpy as any;
+
+			const ResponseEvent = Event.define({
+				name: 'response.event',
+				data: Type.Object({ input: Type.String() }),
+				result: Type.Object({ count: Type.Number() })
+			});
+
+			// Consumer returns wrong response type
+			class BadResponseConsumer implements IEventConsumer<(typeof ResponseEvent)['_data'], (typeof ResponseEvent)['_result']> {
+				onEvent = async () => ({ count: 'not-a-number' }) as any;
+			}
+
+			const coordinator = new EventCoordinator(container, spyLogger, () => realProvider);
+			coordinator.registerEventDefinition(ResponseEvent);
+			coordinator.addEventConsumer(ResponseEvent, BadResponseConsumer, []);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			const provider = coordinator.getProvider()!;
+			try {
+				await provider.emit('response.event', { input: 'test' }).toPromise();
+			} catch {
+				// Expected to throw
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(errorSpy).toHaveBeenCalled();
+			const errorMessage = errorSpy.mock.calls[0][0] as string;
+			expect(errorMessage).toContain('response validation failed');
+			expect(errorMessage).toContain('response.event');
 
 			await coordinator.stop();
 		});
