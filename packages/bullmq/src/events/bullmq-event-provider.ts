@@ -182,7 +182,11 @@ export class BullMQEventProvider implements EventProvider {
 		this.completionTracker =
 			options.completionTracker ?? new CompletionTracker({ connection: this.connection });
 		this.scheduledEventManager =
-			options.scheduledEventManager ?? new ScheduledEventManager({ connection: this.connection });
+			options.scheduledEventManager ??
+			new ScheduledEventManager({
+				connection: this.connection,
+				queueManager: this.queueManager
+			});
 	}
 
 	/**

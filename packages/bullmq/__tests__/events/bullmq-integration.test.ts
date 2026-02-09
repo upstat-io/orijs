@@ -491,6 +491,32 @@ describe('BullMQEventProvider Integration', () => {
 			// Should not throw
 			await provider.unscheduleEvent(eventName('health.ping'), 'non-existent');
 		});
+
+		it('should deliver scheduled events to subscribe() handlers', async () => {
+			const received: unknown[] = [];
+			const uniqueEvent = `scheduled.e2e.${crypto.randomUUID().slice(0, 8)}`;
+
+			// Register subscriber first (creates worker on event.* queue)
+			await provider.subscribe(uniqueEvent, async (msg: EventMessage) => {
+				received.push(msg.payload);
+			});
+
+			await provider.start();
+
+			// Schedule event with short interval
+			await provider.scheduleEvent(uniqueEvent, {
+				scheduleId: 'fast-e2e',
+				every: 100,
+				payload: { scheduled: true }
+			});
+
+			// Scheduled jobs should reach the subscribe() handler
+			await waitFor(() => received.length >= 2, 3000);
+
+			expect(received[0]).toEqual({ scheduled: true });
+
+			await provider.unscheduleEvent(uniqueEvent, 'fast-e2e');
+		});
 	});
 });
 

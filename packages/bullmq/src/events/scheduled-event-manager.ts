@@ -12,6 +12,8 @@
 
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import type { Logger } from '@orijs/logging';
+import { EVENT_MESSAGE_VERSION } from '@orijs/events';
+import type { IQueueManager } from './queue-manager';
 
 /**
  * Default queue name prefix for scheduled events.
@@ -104,6 +106,13 @@ export interface ScheduledEventManagerOptions {
 	readonly QueueClass?: new (name: string, options: { connection: ConnectionOptions }) => IScheduleQueueLike;
 	/** Optional logger for error reporting */
 	readonly logger?: Logger;
+	/**
+	 * Optional QueueManager to delegate queue creation to.
+	 * When provided, scheduled jobs are added to `event.{eventName}` queues
+	 * (the same queues that subscribe() workers listen on), bridging the gap
+	 * between scheduled job creation and event consumption.
+	 */
+	readonly queueManager?: IQueueManager;
 }
 
 /**
@@ -157,6 +166,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 		name: string,
 		options: { connection: ConnectionOptions }
 	) => IScheduleQueueLike;
+	private readonly queueManager?: IQueueManager;
 
 	/**
 	 * Creates a new ScheduledEventManager.
@@ -168,6 +178,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 		this.queuePrefix = options.queuePrefix ?? DEFAULT_SCHEDULED_PREFIX;
 		this.logger = options.logger;
 		this.QueueClass = options.QueueClass ?? (Queue as unknown as typeof this.QueueClass);
+		this.queueManager = options.queueManager;
 	}
 
 	/**
@@ -180,8 +191,14 @@ export class ScheduledEventManager implements IScheduledEventManager {
 
 	/**
 	 * Gets or creates a queue for scheduled events.
+	 * When a queueManager is provided, delegates to it so scheduled jobs
+	 * land on `event.{eventName}` queues where subscribe() workers listen.
 	 */
 	private getQueue(eventName: string): IScheduleQueueLike {
+		if (this.queueManager) {
+			return this.queueManager.getQueue(eventName) as unknown as IScheduleQueueLike;
+		}
+
 		const queueName = this.getQueueName(eventName);
 
 		const existingQueue = this.queues.get(queueName);
@@ -283,12 +300,24 @@ export class ScheduledEventManager implements IScheduledEventManager {
 			repeatOptions.every = options.every;
 		}
 
-		// Add job data
-		const jobData = {
-			payload: options.payload,
-			meta: options.meta ?? {},
-			scheduledAt: Date.now()
-		};
+		// When routing through QueueManager, wrap in EventMessage envelope
+		// so subscribe() worker handlers can process the scheduled jobs.
+		// Without queueManager, use the legacy format for standalone usage.
+		const jobData = this.queueManager
+			? {
+					version: EVENT_MESSAGE_VERSION,
+					eventId: crypto.randomUUID(),
+					eventName,
+					payload: options.payload,
+					meta: options.meta ?? {},
+					correlationId: crypto.randomUUID(),
+					timestamp: Date.now()
+				}
+			: {
+					payload: options.payload,
+					meta: options.meta ?? {},
+					scheduledAt: Date.now()
+				};
 
 		// Add repeatable job
 		const job = await queue.add('event', jobData, {
