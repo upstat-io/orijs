@@ -8,7 +8,7 @@
  * See __tests__/contract/ for the shared test suite.
  */
 
-import { Logger } from '@orijs/logging';
+import type { Logger } from '@orijs/logging';
 
 import { InProcessWorkflowProvider } from '../src/in-process-workflow-provider.ts';
 import { workflowProviderContractTests, type ProviderConfig } from './contract/index';

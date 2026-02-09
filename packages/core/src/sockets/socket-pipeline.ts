@@ -10,7 +10,7 @@ import type {
 	SocketHandler,
 	SocketResponse
 } from '../types/socket-router';
-import { SocketContext, SocketContextFactory } from './socket-context';
+import { SocketContextFactory, type SocketContext } from './socket-context';
 import { validate, type ValidationError, type Schema } from '@orijs/validation';
 import { runWithContext, createTraceContext } from '@orijs/logging';
 

@@ -32,13 +32,13 @@
  * ```
  */
 
-// Re-export pure type extractors (no consumer dependencies)
-export type { Data, Result, MessageData } from './type-extractors';
-
 // Import types needed for consumer-related utilities
 import type { EventDefinition, EventContext } from './event-definition';
 import type { WorkflowDefinition, WorkflowContext } from './workflow-definition';
 import type { IEventConsumer, IWorkflowConsumer } from './consumer';
+
+// Re-export pure type extractors (no consumer dependencies)
+export type { Data, Result, MessageData } from './type-extractors';
 
 // ============================================================================
 // Event Consumer Types

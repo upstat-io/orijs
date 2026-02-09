@@ -64,14 +64,14 @@
  * @see emitter.ts for EventEmitter and WorkflowExecutor
  */
 
+// Import context types for use in this file
+import type { EventContext } from './event-definition';
+import type { WorkflowContext, StepContext } from './workflow-definition';
+
 // Re-export context types from their canonical locations
 // EventContext lives with EventDefinition, WorkflowContext with WorkflowDefinition
 export type { EventContext } from './event-definition';
 export type { WorkflowContext, StepContext } from './workflow-definition';
-
-// Import context types for use in this file
-import type { EventContext } from './event-definition';
-import type { WorkflowContext, StepContext } from './workflow-definition';
 
 /**
  * Interface for event consumers.

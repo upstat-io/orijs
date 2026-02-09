@@ -106,7 +106,7 @@
 			}
 		},
 		{
-			"files": ["./packages/test-utils/**/*.ts"],
+			"files": ["**/test-utils/**/*.ts"],
 			"rules": {
 				"no-console": "off",
 				"no-unused-vars": "off"

@@ -4,7 +4,7 @@ import type { Container } from '../src/container.ts';
 import type { ResponseFactory } from '../src/controllers/response.ts';
 import type { Logger } from '@orijs/logging';
 import type { AppContext } from '../src/app-context.ts';
-import type { Guard, Interceptor, RequestContext, ParamValidator } from '../src/types/index.ts';
+import type { Guard, Interceptor, RequestContext, ParamValidator, ParamValidatorClass } from '../src/types/index.ts';
 import { Type } from '@orijs/validation';
 import { UuidParam, NumberParam } from '../src/controllers/param-validators';
 
@@ -720,7 +720,7 @@ describe('RequestPipeline', () => {
 		test('should validate multiple params', async () => {
 			const route = createRoute({
 				guards: [AllowGuard],
-				paramValidators: new Map([
+				paramValidators: new Map<string, ParamValidatorClass>([
 					['uuid', UuidParam],
 					['id', NumberParam]
 				]),
@@ -739,7 +739,7 @@ describe('RequestPipeline', () => {
 		test('should reject when one of multiple params is invalid', async () => {
 			const route = createRoute({
 				guards: [AllowGuard],
-				paramValidators: new Map([
+				paramValidators: new Map<string, ParamValidatorClass>([
 					['uuid', UuidParam],
 					['id', NumberParam]
 				]),

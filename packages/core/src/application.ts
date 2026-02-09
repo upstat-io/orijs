@@ -13,8 +13,7 @@ import type { EventProvider } from '@orijs/events';
 import type { WorkflowProvider } from '@orijs/workflows';
 import type { EventDefinition } from './types/event-definition';
 import type { WorkflowDefinition } from './types/workflow-definition';
-import type { IEventConsumer } from './types/consumer';
-import type { IWorkflowConsumer } from './types/consumer';
+import type { IEventConsumer, IWorkflowConsumer } from './types/consumer';
 import { CacheService, InMemoryCacheProvider, type CacheProvider } from '@orijs/cache';
 import {
 	SocketCoordinator,

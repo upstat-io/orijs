@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { Application, Ori } from '../src/index.ts';
+import { type Application, Ori } from '../src/index.ts';
 import { Event } from '../src/types/event-definition.ts';
 import { Workflow } from '../src/types/workflow-definition.ts';
 import { Type } from '@orijs/validation';

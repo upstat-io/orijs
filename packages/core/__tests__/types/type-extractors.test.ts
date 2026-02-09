@@ -29,29 +29,21 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { Type, type Static } from '@sinclair/typebox';
+import { Type } from '@orijs/validation';
 import type { Data, Result } from '../../src/types/type-extractors';
-import type { EventDefinition } from '../../src/types/event-definition';
-import type { WorkflowDefinition } from '../../src/types/workflow-definition';
+import { Event } from '../../src/types/event-definition';
+import { Workflow } from '../../src/types/workflow-definition';
 
 describe('Data type extractor for events', () => {
 	it('should extract data type from EventDefinition', () => {
-		const DataSchema = Type.Object({
-			userId: Type.String(),
-			email: Type.String()
-		});
-		const ResultSchema = Type.Void();
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const UserCreated: EventDefinition<TData, TResult> = {
+		const UserCreated = Event.define({
 			name: 'user.created',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult
-		};
+			data: Type.Object({
+				userId: Type.String(),
+				email: Type.String()
+			}),
+			result: Type.Void()
+		});
 
 		// Type-level test: Data<T> extracts the correct type
 		type ExtractedData = Data<typeof UserCreated>;
@@ -79,22 +71,14 @@ describe('Data type extractor for events', () => {
 
 describe('Result type extractor for events', () => {
 	it('should extract result type from EventDefinition', () => {
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Object({
-			processed: Type.Boolean(),
-			timestamp: Type.String()
-		});
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const TestEvent: EventDefinition<TData, TResult> = {
+		const TestEvent = Event.define({
 			name: 'test.event',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({
+				processed: Type.Boolean(),
+				timestamp: Type.String()
+			})
+		});
 
 		type ExtractedResult = Result<typeof TestEvent>;
 
@@ -104,19 +88,11 @@ describe('Result type extractor for events', () => {
 	});
 
 	it('should handle void result type', () => {
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Void();
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const VoidEvent: EventDefinition<TData, TResult> = {
+		const VoidEvent = Event.define({
 			name: 'void.event',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Void()
+		});
 
 		type ExtractedResult = Result<typeof VoidEvent>;
 
@@ -127,24 +103,14 @@ describe('Result type extractor for events', () => {
 
 describe('Data type extractor for workflows', () => {
 	it('should extract data type from WorkflowDefinition', () => {
-		const DataSchema = Type.Object({
-			orderId: Type.String(),
-			items: Type.Array(Type.Object({ sku: Type.String() }))
-		});
-		const ResultSchema = Type.Object({ success: Type.Boolean() });
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const ProcessOrder: WorkflowDefinition<TData, TResult> = {
+		const ProcessOrder = Workflow.define({
 			name: 'process-order',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			stepGroups: [],
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult,
-			_steps: undefined as unknown as Record<never, never>
-		};
+			data: Type.Object({
+				orderId: Type.String(),
+				items: Type.Array(Type.Object({ sku: Type.String() }))
+			}),
+			result: Type.Object({ success: Type.Boolean() })
+		});
 
 		type ExtractedData = Data<typeof ProcessOrder>;
 
@@ -156,24 +122,14 @@ describe('Data type extractor for workflows', () => {
 
 describe('Result type extractor for workflows', () => {
 	it('should extract result type from WorkflowDefinition', () => {
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Object({
-			completed: Type.Boolean(),
-			output: Type.String()
-		});
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const TestWorkflow: WorkflowDefinition<TData, TResult> = {
+		const TestWorkflow = Workflow.define({
 			name: 'test-workflow',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			stepGroups: [],
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult,
-			_steps: undefined as unknown as Record<never, never>
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({
+				completed: Type.Boolean(),
+				output: Type.String()
+			})
+		});
 
 		type ExtractedResult = Result<typeof TestWorkflow>;
 
@@ -183,31 +139,21 @@ describe('Result type extractor for workflows', () => {
 	});
 
 	it('should handle complex nested result types', () => {
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Object({
-			status: Type.Union([Type.Literal('success'), Type.Literal('failure')]),
-			details: Type.Object({
-				steps: Type.Array(
-					Type.Object({
-						name: Type.String(),
-						duration: Type.Number()
-					})
-				)
+		const ComplexWorkflow = Workflow.define({
+			name: 'complex-workflow',
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({
+				status: Type.Union([Type.Literal('success'), Type.Literal('failure')]),
+				details: Type.Object({
+					steps: Type.Array(
+						Type.Object({
+							name: Type.String(),
+							duration: Type.Number()
+						})
+					)
+				})
 			})
 		});
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const ComplexWorkflow: WorkflowDefinition<TData, TResult> = {
-			name: 'complex-workflow',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			stepGroups: [],
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult,
-			_steps: undefined as unknown as Record<never, never>
-		};
 
 		type ExtractedResult = Result<typeof ComplexWorkflow>;
 
@@ -226,23 +172,15 @@ describe('type extractors independence', () => {
 	it('should work without importing consumer types', () => {
 		// This test verifies that type-extractors.ts has no consumer dependencies
 		// by only using the types exported from it
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Object({ ok: Type.Boolean() });
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const Event: EventDefinition<TData, TResult> = {
+		const TestEvent = Event.define({
 			name: 'test',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({ ok: Type.Boolean() })
+		});
 
 		// All these types work without consumer.ts
-		type D = Data<typeof Event>;
-		type R = Result<typeof Event>;
+		type D = Data<typeof TestEvent>;
+		type R = Result<typeof TestEvent>;
 
 		const d: D = { id: 'test' };
 		const r: R = { ok: true };
@@ -253,35 +191,23 @@ describe('type extractors independence', () => {
 
 	it('should work for both EventDefinition and WorkflowDefinition', () => {
 		// Data<T> and Result<T> work for both definition types
-		const DataSchema = Type.Object({ id: Type.String() });
-		const ResultSchema = Type.Object({ ok: Type.Boolean() });
-
-		type TData = Static<typeof DataSchema>;
-		type TResult = Static<typeof ResultSchema>;
-
-		const Event: EventDefinition<TData, TResult> = {
+		const TestEvent = Event.define({
 			name: 'test-event',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({ ok: Type.Boolean() })
+		});
 
-		const Workflow: WorkflowDefinition<TData, TResult> = {
+		const TestWorkflow = Workflow.define({
 			name: 'test-workflow',
-			dataSchema: DataSchema,
-			resultSchema: ResultSchema,
-			stepGroups: [],
-			_data: undefined as unknown as TData,
-			_result: undefined as unknown as TResult,
-			_steps: undefined as unknown as Record<never, never>
-		};
+			data: Type.Object({ id: Type.String() }),
+			result: Type.Object({ ok: Type.Boolean() })
+		});
 
 		// Same utility types work for both
-		type EventData = Data<typeof Event>;
-		type WorkflowData = Data<typeof Workflow>;
-		type EventResult = Result<typeof Event>;
-		type WorkflowResult = Result<typeof Workflow>;
+		type EventData = Data<typeof TestEvent>;
+		type WorkflowData = Data<typeof TestWorkflow>;
+		type EventResult = Result<typeof TestEvent>;
+		type WorkflowResult = Result<typeof TestWorkflow>;
 
 		const ed: EventData = { id: 'event' };
 		const wd: WorkflowData = { id: 'workflow' };

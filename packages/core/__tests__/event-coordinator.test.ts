@@ -432,7 +432,7 @@ describe('EventCoordinator', () => {
 			const { InProcessEventProvider } = await import('@orijs/events');
 			const realProvider = new InProcessEventProvider();
 
-			const errorSpy = mock(() => {});
+			const errorSpy = mock((..._args: unknown[]) => {});
 			const spyLogger = new Logger('test');
 			spyLogger.error = errorSpy as any;
 
@@ -464,7 +464,7 @@ describe('EventCoordinator', () => {
 			await new Promise((resolve) => setTimeout(resolve, 50));
 
 			expect(errorSpy).toHaveBeenCalled();
-			const errorMessage = errorSpy.mock.calls[0][0] as string;
+			const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? '');
 			expect(errorMessage).toContain('payload validation failed');
 			expect(errorMessage).toContain('strict.event');
 
@@ -475,7 +475,7 @@ describe('EventCoordinator', () => {
 			const { InProcessEventProvider } = await import('@orijs/events');
 			const realProvider = new InProcessEventProvider();
 
-			const errorSpy = mock(() => {});
+			const errorSpy = mock((..._args: unknown[]) => {});
 			const spyLogger = new Logger('test');
 			spyLogger.error = errorSpy as any;
 
@@ -507,7 +507,7 @@ describe('EventCoordinator', () => {
 			await new Promise((resolve) => setTimeout(resolve, 50));
 
 			expect(errorSpy).toHaveBeenCalled();
-			const errorMessage = errorSpy.mock.calls[0][0] as string;
+			const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? '');
 			expect(errorMessage).toContain('response validation failed');
 			expect(errorMessage).toContain('response.event');
 

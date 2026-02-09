@@ -11,7 +11,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { Application, Ori } from '../src/index.ts';
+import { type Application, Ori } from '../src/index.ts';
 import { Logger } from '@orijs/logging';
 import type {
 	OriSocketRouter,
