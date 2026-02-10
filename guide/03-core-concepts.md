@@ -1,415 +1,700 @@
 # Chapter 3: Core Concepts
 
-This chapter covers the foundational concepts of OriJS: the application lifecycle, dependency injection, and the `AppContext` that provides application-level services to your code.
+This chapter covers the foundational concepts that everything else in OriJS builds on: the application lifecycle, dependency injection, AppContext, extension functions, and lifecycle hooks. Understanding these concepts deeply will make every subsequent chapter easier to follow.
 
-## The Application
+## The Application Lifecycle
 
-Every OriJS application starts with `Ori.create()`:
+When you call `Ori.create()`, several things happen in sequence. Understanding this sequence helps you reason about when your code runs and why certain things are available at certain times.
+
+### Phase 1: Creation
 
 ```typescript
 const app = Ori.create();
 ```
 
-This creates an `OriApplication` instance that serves as the central configuration point. The application is configured through a **fluent builder API** — each method returns `this`, so you can chain calls:
+This creates:
+- A **DI Container** — the dependency injection container that manages all your services
+- An **AppContext** — the application-wide context that provides logging, config, events, and other cross-cutting concerns
+- Coordinator factories for routing, events, workflows, and WebSockets
+
+At this point, nothing is instantiated. The container is empty, and no services exist yet.
+
+### Phase 2: Configuration
 
 ```typescript
-Ori.create()
-  .logger({ level: 'info', transport: 'pretty' })
-  .provider(UserService, [UserRepository])
-  .controller(UserController, [UserService])
-  .globalGuard(AuthGuard, [AuthService])
-  .listen(3000);
+app
+  .use(addInfrastructure)
+  .use(addUsers)
+  .use(addPosts)
+  .guard(AuthGuard)
+  .intercept(LoggingInterceptor);
 ```
 
-The order of most registration calls doesn't matter — providers, controllers, guards, and interceptors are all collected during configuration and resolved during the `listen()` bootstrap phase. The exception is `.use()` for extension functions, which executes immediately in order (so earlier extensions can set up providers that later extensions depend on).
+During configuration, you register providers, controllers, guards, interceptors, and extension functions. Each `.provider()` call adds a registration to the container. Each `.controller()` call adds both a registration and a route definition.
 
-### What Happens When You Call `.listen()`
+**Nothing is instantiated during this phase.** The container only records *how* to create each service — what class, what dependencies, what options. Actual instantiation happens lazily or during bootstrap.
 
-The `listen()` method triggers a multi-phase startup:
+This is different from NestJS, where module initialization can trigger provider instantiation during the configuration phase. OriJS's lazy approach means configuration is fast — you're just building a recipe, not cooking the meal.
 
-1. **Bootstrap**: The DI container resolves all providers and validates the dependency graph. Missing dependencies, circular references, and type mismatches are caught here.
-
-2. **Register**: Controllers are registered with the routing system. Guards, interceptors, and validators are attached to their routes.
-
-3. **Compile**: Routes are compiled into Bun's native `Bun.serve({ routes })` format. This pre-computes route matching for optimal performance.
-
-4. **Startup Hooks**: Any registered `onStartup` hooks run (e.g., database connection, cache warming).
-
-5. **Server Start**: `Bun.serve()` is called and the server begins accepting requests.
-
-6. **Ready Hooks**: Any registered `onReady` hooks run (e.g., health check registration, metric reporting).
+### Phase 3: Bootstrap (inside `listen()`)
 
 ```typescript
-app.context.onStartup(async () => {
-  await database.connect();
-  console.log('Database connected');
-});
-
-app.context.onReady(async () => {
-  console.log('Server is ready to accept requests');
-});
+app.listen(3000);
 ```
+
+When you call `listen()`, the framework bootstraps the application:
+
+1. **Container validation** — Checks that all registered dependencies exist and there are no circular dependencies. If something is missing, you get a clear error message listing exactly which dependency is unresolved and which service needs it.
+
+2. **Eager provider instantiation** — Services registered with `{ eager: true }` are instantiated immediately. This is useful for services that need to initialize connections (like database pools) before the server accepts requests.
+
+3. **Controller instantiation** — All controllers are instantiated, and their `configure()` methods are called. This builds the route table.
+
+4. **Route compilation** — Routes are compiled into Bun's optimized `Bun.serve({ routes })` format. Bun uses a radix tree internally, so route matching is O(log n) regardless of how many routes you have.
+
+5. **Event/Workflow provider startup** — If you've configured events or workflows, their providers are started (connecting to Redis/BullMQ, registering consumers).
+
+6. **Startup hooks** — All `onStartup` hooks execute in FIFO order. These run before the server accepts connections.
+
+7. **Server start** — Bun's HTTP server starts listening on the specified port.
+
+8. **Ready hooks** — All `onReady` hooks execute in FIFO order. These run after the server is accepting connections.
+
+### Phase 4: Running
+
+The application is now serving requests. Each request flows through:
+
+```
+Request → CORS → Global Guards → Controller Guards → Route Guards
+        → Global Interceptors (pre) → Controller Interceptors (pre) → Route Interceptors (pre)
+        → Validation (params, query, body)
+        → Handler
+        → Route Interceptors (post) → Controller Interceptors (post) → Global Interceptors (post)
+        → Response
+```
+
+### Phase 5: Shutdown
+
+When the process receives SIGTERM or SIGINT (or you call `app.stop()`):
+
+1. **Server stops accepting new connections**
+2. **Shutdown hooks execute** in LIFO (last-in, first-out) order — this ensures that dependencies are cleaned up before the services that depend on them
+3. **Event/Workflow providers stop** — gracefully draining queues and closing connections
+4. **WebSocket connections close**
+5. **Process exits**
+
+The shutdown timeout (default: 10 seconds) ensures the process doesn't hang indefinitely. Configure it with `app.setShutdownTimeout(30_000)` for applications that need more time to drain.
 
 ## Dependency Injection
 
-Dependency injection (DI) is the backbone of OriJS application architecture. Instead of classes creating their own dependencies, they declare what they need, and the framework provides it.
+Dependency injection is how OriJS manages the creation and wiring of your services. If you've used NestJS, Spring, or .NET Core, the concept is familiar — but the implementation is deliberately different.
 
-### Why Dependency Injection?
+### The Problem DI Solves
 
-Consider this code without DI:
+Without DI, services create their own dependencies:
 
 ```typescript
 // Without DI — tight coupling
-class UserController {
-  private service = new UserService(
-    new UserRepository(new DatabaseConnection('postgres://...'))
-  );
+class UserService {
+  private repo = new UserRepository(new DatabaseConnection('postgres://...'));
+  private cache = new RedisCache('redis://...');
+
+  async getUser(id: string) {
+    // How do you test this? You can't swap the real DB for a fake one.
+    // How do you share the DB connection? Each service creates its own.
+  }
 }
 ```
 
-Problems:
-- `UserController` knows how to construct `UserService`, `UserRepository`, and `DatabaseConnection`
-- Testing requires either complex mocking or a real database
-- Changing the database connection string means finding every place it's used
-
-With DI:
+With DI, services *receive* their dependencies:
 
 ```typescript
 // With DI — loose coupling
-class UserController {
-  constructor(private service: UserService) {}
-}
+class UserService {
+  constructor(
+    private repo: UserRepository,
+    private cache: CacheProvider,
+  ) {}
 
-// Registration — dependencies declared once
-app.provider(UserService, [UserRepository])
-   .provider(UserRepository, [DatabaseConnection])
-   .controller(UserController, [UserService]);
+  async getUser(id: string) {
+    // In tests, inject a FakeUserRepository and InMemoryCacheProvider.
+    // In production, inject the real ones. UserService doesn't know or care.
+  }
+}
 ```
 
-Now each class only knows about its direct dependencies. The DI container handles construction, ordering, and lifetime management.
+### How OriJS DI Works
 
-### Registering Providers
-
-A **provider** is any class that can be injected into other classes. Register providers with `.provider()`:
+OriJS uses explicit registration — you tell the container what each service needs:
 
 ```typescript
-// No dependencies
-app.provider(Logger);
-
-// With dependencies (must match constructor parameter order)
-app.provider(UserRepository, [Logger, DatabaseService]);
-
-// The above means: new UserRepository(logger, databaseService)
+app
+  .provider(DatabaseConnection)                           // No deps
+  .provider(UserRepository, [DatabaseConnection])         // One dep
+  .provider(UserService, [UserRepository, CacheProvider]) // Two deps
 ```
 
-The deps array is an ordered list of constructor types. OriJS uses the concrete class as the DI token — when `UserService` declares a dependency on `UserRepository`, the container looks for a registered provider keyed by `UserRepository`.
+When the container needs to create a `UserService`, it:
 
-**This is the key insight of OriJS's DI system**: the dependency array replaces the work that NestJS's `reflect-metadata` does at runtime. Instead of reading TypeScript type metadata (which requires `emitDecoratorMetadata` and the `reflect-metadata` polyfill), you explicitly list dependencies. The trade-off is a small amount of duplication (the deps array mirrors the constructor), but the benefits are significant:
+1. Looks up `UserRepository` — if it already exists (singleton), use it; otherwise, create it first
+2. Looks up `CacheProvider` — same logic
+3. Calls `new UserService(userRepository, cacheProvider)`
+4. Caches the instance (all providers are singletons)
 
-- **Zero runtime overhead**: No metadata reflection
-- **TypeScript catches mismatches**: If you change the constructor, the deps array type-check will fail
-- **Works with any constructor**: No `@Injectable()` decorator needed
+### Why Explicit Registration?
+
+NestJS uses TypeScript's `reflect-metadata` to automatically read constructor parameter types at runtime:
+
+```typescript
+// NestJS — implicit DI
+@Injectable()
+export class UserService {
+  constructor(private repo: UserRepository) {} // NestJS reads "UserRepository" from metadata
+}
+```
+
+This looks cleaner, but has significant downsides:
+
+**1. Metadata requires `emitDecoratorMetadata`.**
+This TypeScript compiler option generates extra code for every decorated class. In a large application with hundreds of services, this adds measurable startup overhead (5-15% in benchmarks) and increases bundle size.
+
+**2. Metadata only works with concrete classes.**
+If your constructor takes an interface or abstract class, NestJS can't resolve it from metadata alone — you need `@Inject()` tokens anyway. OriJS's explicit approach works the same for concrete classes and abstract types.
+
+**3. Refactoring can silently break DI.**
+Change a constructor parameter type, and NestJS might resolve the wrong service if metadata isn't regenerated. With OriJS, the deps array is type-checked — a mismatch is a compile error.
+
+**4. Tree-shaking.**
+Decorator metadata creates runtime references that bundlers can't safely remove. Without metadata, dead code elimination works correctly.
+
+The trade-off is a small amount of duplication: you list dependencies in both the constructor and the registration. But this duplication is *checked by the compiler*:
+
+```typescript
+class UserService {
+  constructor(
+    private repo: UserRepository,
+    private cache: CacheProvider,
+  ) {}
+}
+
+// Type error! Constructor expects [UserRepository, CacheProvider]
+// but you provided [UserRepository]
+app.provider(UserService, [UserRepository]);
+```
 
 ### Singleton Scope
 
-All providers in OriJS are **singletons**. When you register `UserService`, exactly one instance is created and shared across the entire application:
+All providers in OriJS are singletons. When the container creates a `UserRepository`, that same instance is shared everywhere it's injected.
+
+**Why singleton-only?** NestJS supports request-scoped providers — a new instance per HTTP request. This sounds useful but creates serious problems:
+
+- **Performance.** Creating new instances per request means allocating memory, running constructors, and setting up state — for every single request. For high-throughput APIs, this is a measurable cost.
+- **Complexity.** Request-scoped providers "bubble up" — if a request-scoped provider is injected into a singleton, the singleton also becomes request-scoped, or you get stale data. This is a common source of bugs in NestJS applications.
+- **Testing difficulty.** Request-scoped providers make unit testing harder because you need to simulate the request scope.
+
+OriJS uses `RequestContext` instead. Per-request state lives in the context object that flows through guards, interceptors, and handlers:
 
 ```typescript
-app.provider(UserService, [UserRepository]);
-// Every class that depends on UserService gets the same instance
-```
-
-**Why singletons only?**
-
-NestJS supports three scopes: singleton, request-scoped, and transient. OriJS deliberately supports only singletons:
-
-1. **Performance**: Request-scoped providers require creating a new instance for every HTTP request, which adds garbage collection pressure and construction overhead.
-
-2. **Simplicity**: Scope management is one of the most confusing aspects of NestJS DI. "Scope bubbling" (where a singleton depending on a request-scoped provider must also become request-scoped) causes subtle bugs.
-
-3. **Request context solves the same problem**: If you need per-request data (like the current user), use the `RequestContext` that's passed to every handler, guard, and interceptor — not request-scoped DI.
-
-```typescript
-// NestJS way — request-scoped injection
-@Injectable({ scope: Scope.REQUEST })
-class RequestLogger {
-  constructor(@Inject(REQUEST) private request: Request) {}
-}
-
-// OriJS way — use RequestContext
-private handleRequest = async (ctx: RequestContext) => {
-  ctx.log.info('Processing request', { userId: ctx.state.user.id });
-};
-```
-
-### Injection Tokens
-
-Sometimes you need to inject a value that isn't a class — a configuration object, a database connection, or a primitive value. Use **injection tokens**:
-
-```typescript
-import { createToken } from '@orijs/core';
-
-// Create a typed token
-const DATABASE_URL = createToken<string>('DATABASE_URL');
-const DB_POOL = createToken<Pool>('DB_POOL');
-
-// Register with token
-app.providerWithToken(DATABASE_URL, {
-  useFactory: () => process.env.DATABASE_URL ?? 'postgres://localhost:5432/mydb',
-});
-
-app.providerWithToken(DB_POOL, {
-  useFactory: (url: string) => new Pool({ connectionString: url }),
-  deps: [DATABASE_URL],
-});
-
-// Inject in a class using tokensFor
-class UserRepository {
-  constructor(private pool: Pool) {}
-}
-
-app.provider(UserRepository, [DB_POOL]);
-```
-
-Tokens give you a named, typed handle for non-class dependencies. The `createToken<T>()` function creates a token that carries its type information, so the container enforces type safety at registration and resolution time.
-
-### Lazy vs Eager Providers
-
-By default, providers are **lazy** — they're only instantiated when first requested by a dependent class. You can make a provider **eager** so it's instantiated during bootstrap:
-
-```typescript
-// Lazy (default) — created when first needed
-app.provider(UserService, [UserRepository]);
-
-// Eager — created at bootstrap
-app.provider(CacheWarmer, [CacheService], { eager: true });
-```
-
-Use eager providers for services that need to do work at startup, like warming a cache, establishing a connection pool, or registering event listeners.
-
-### Container Validation
-
-During the bootstrap phase, the DI container validates the entire dependency graph:
-
-```
-Error: Missing provider: DatabaseService
-  Required by: UserRepository
-  Dependency chain: UserController -> UserService -> UserRepository -> DatabaseService
-```
-
-This catches:
-- **Missing providers**: A class depends on something that wasn't registered
-- **Circular dependencies**: A -> B -> C -> A
-- **Duplicate registrations**: The same class registered twice (the second registration wins, with a warning)
-
-Container validation happens before any provider is instantiated, so you get fast, clear error messages at startup — not cryptic runtime errors when a service is first used.
-
-## AppContext
-
-The `AppContext` is the application-level context object available to all services. It provides access to shared infrastructure:
-
-```typescript
-class NotificationService {
-  constructor(private ctx: AppContext) {}
-
-  public async notifyUser(userId: string, message: string) {
-    this.ctx.log.info('Sending notification', { userId });
-
-    await this.ctx.events.emit(UserNotified, {
-      userId,
-      message,
-      timestamp: new Date(),
-    });
+class AuthGuard implements Guard {
+  async canActivate(ctx: RequestContext): Promise<boolean> {
+    const user = await this.authService.verify(ctx.request);
+    ctx.set('user', user); // Per-request state
+    return true;
   }
 }
 
-// Register — AppContext is automatically available
-app.provider(NotificationService, [AppContext]);
+// Later in a handler:
+const user = ctx.get('user'); // Access per-request state
 ```
 
-### What's on AppContext?
+This is simpler, faster, and more explicit. You always know where per-request state comes from — it's on the context, not hidden in a scoped injection.
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `log` | `Logger` | Application-level structured logger |
-| `events` | `EventEmitter` | Type-safe event emitter (if events configured) |
-| `workflows` | `WorkflowExecutor` | Workflow executor (if workflows configured) |
-| `config` | `ConfigProvider` | Configuration values |
-| `sockets` | `SocketEmitter` | WebSocket publisher (if WebSocket configured) |
+### Provider Tokens
 
-`AppContext` is registered as a provider automatically — you just list it as a dependency. It's the recommended way to access cross-cutting infrastructure without tight coupling to specific implementations.
+Sometimes you need to inject an interface or a value that isn't a class. OriJS supports several token types:
 
-### Lifecycle Hooks
-
-Register hooks to run code at specific points in the application lifecycle:
+**Class tokens** (most common):
 
 ```typescript
-// Startup hooks — run FIFO (first registered, first executed)
+app.provider(UserRepository);
+app.provider(UserService, [UserRepository]);
+```
+
+**Instance tokens** (pre-created values):
+
+```typescript
+import { SQL } from 'bun:sql';
+
+const sql = new SQL({ url: Bun.env.DATABASE_URL });
+app.providerInstance(SQL, sql);
+```
+
+**Named tokens** (for interfaces or multiple implementations):
+
+```typescript
+import { Token } from '@orijs/core';
+
+const CacheToken = new Token<CacheProvider>('cache');
+app.providerInstance(CacheToken, new RedisCacheProvider(redisUrl));
+app.providerWithTokens(UserService, [UserRepository, CacheToken]);
+```
+
+### Eager vs Lazy Instantiation
+
+By default, providers are created lazily — only when first requested. For services that need to initialize early (like database connections), use eager instantiation:
+
+```typescript
+app.provider(DatabasePool, [], { eager: true });
+```
+
+Eager providers are instantiated during bootstrap, before the server accepts requests. This ensures that slow initialization (connecting to databases, warming caches) doesn't affect the first request.
+
+### Container Validation
+
+During bootstrap, the container validates the entire dependency graph:
+
+```typescript
+// This will throw during listen() with a clear error:
+// "Missing dependency: UserRepository is required by UserService but not registered"
+app.provider(UserService, [UserRepository]);
+// Oops — forgot to register UserRepository!
+
+app.listen(3000);
+```
+
+The validator catches:
+- **Missing dependencies** — a service needs something that isn't registered
+- **Circular dependencies** — A needs B needs A
+- **Constructor arity mismatches** — the deps array length doesn't match the constructor
+- **Missing peer dependencies** — npm packages that need to be installed
+
+This fail-fast validation means you find wiring errors at startup, not at runtime when a request happens to need the broken service.
+
+## AppContext
+
+AppContext is the application-wide context that provides cross-cutting concerns to your services. Think of it as the "application bag" — it holds things that any part of your application might need.
+
+### What's in AppContext
+
+```typescript
+class AppContext {
+  readonly log: Logger;              // Application logger
+  readonly config: ConfigProvider;   // Configuration
+  readonly event?: EventSystem;      // Event emitter (if configured)
+  readonly workflows: WorkflowExecutor; // Workflow executor (if configured)
+  readonly socket: SocketEmitter;    // WebSocket emitter (if configured)
+  readonly phase: LifecyclePhase;    // Current lifecycle phase
+}
+```
+
+### Accessing AppContext
+
+AppContext is available everywhere through `RequestContext`:
+
+```typescript
+class UserController implements OriController {
+  configure(r: RouteBuilder) {
+    r.get('/', this.list);
+  }
+
+  private list = async (ctx: RequestContext) => {
+    ctx.app.log.info('Listing users');           // Application logger
+    const dbUrl = ctx.app.config.get('DB_URL');  // Configuration
+    ctx.app.event?.emit(UserListedEvent, {});    // Events
+    // ...
+  };
+}
+```
+
+It's also available in lifecycle hooks:
+
+```typescript
 app.context.onStartup(async () => {
-  await database.connect();
-});
-
-app.context.onStartup(async () => {
-  await cache.warm();
-});
-
-// Ready hooks — run FIFO after server starts
-app.context.onReady(async () => {
-  healthCheck.register();
-});
-
-// Shutdown hooks — run LIFO (last registered, first executed)
-app.context.onShutdown(async () => {
-  await cache.flush();
-});
-
-app.context.onShutdown(async () => {
-  await database.disconnect();
+  app.context.log.info('Running migrations...');
+  const db = app.context.resolve(DatabaseService);
+  await db.migrate();
 });
 ```
 
-The lifecycle phases are:
+### Lifecycle Phase
 
-```
-created → bootstrapped → starting → ready → stopping → stopped
-```
-
-- **Startup hooks** run during `starting` (before the server accepts requests)
-- **Ready hooks** run after the server is listening (during `ready`)
-- **Shutdown hooks** run during `stopping` (in reverse order, so cleanup happens in the opposite order of setup)
-
-**Why LIFO for shutdown?** If your startup sequence is: (1) connect database, (2) warm cache, then shutdown should be: (1) flush cache, (2) disconnect database. LIFO order ensures resources are cleaned up in the reverse order they were acquired, which prevents errors like trying to flush a cache after the database it reads from has been disconnected.
-
-### Graceful Shutdown
-
-OriJS handles `SIGINT` and `SIGTERM` signals automatically:
+AppContext tracks which phase the application is in:
 
 ```typescript
-const app = Ori.create()
-  .setShutdownTimeout(15000)  // 15 second timeout (default: 10s)
-  .listen(3000);
+type LifecyclePhase =
+  | 'created'       // After Ori.create()
+  | 'bootstrapped'  // After container validation
+  | 'starting'      // During startup hooks
+  | 'ready'         // Server is accepting requests
+  | 'stopping'      // During shutdown
+  | 'stopped';      // After shutdown complete
 ```
 
-When a signal is received:
-1. The server stops accepting new connections
-2. Shutdown hooks execute in LIFO order
-3. WebSocket connections receive a close frame (`1001 Going Away`)
-4. Event consumers and workflow workers drain
-5. If hooks don't complete within the timeout, the process exits forcefully
-
-For tests, disable signal handling to prevent interference with the test runner:
-
-```typescript
-const app = Ori.create()
-  .disableSignalHandling()
-  .listen(0);  // Port 0 = random available port
-```
+This is useful for guards or interceptors that need to behave differently during shutdown (like rejecting new requests with 503 Service Unavailable).
 
 ## Extension Functions
 
-Extension functions are the OriJS replacement for NestJS modules. They're plain functions that configure an application:
+Extension functions are OriJS's replacement for NestJS modules. They're the primary way to organize provider registrations into reusable, composable units.
+
+### Basic Extension Function
 
 ```typescript
-import type { OriApplication } from '@orijs/orijs';
+// src/providers/users.ts
+import type { Application } from '@orijs/orijs';
+import { UserRepository } from '../users/user.repository';
+import { UserService } from '../users/user.service';
+import { UserController } from '../users/user.controller';
 
-export function useMonitoring(app: OriApplication) {
-  app
-    .provider(MetricsCollector, [AppContext])
-    .provider(HealthChecker, [MetricsCollector])
-    .controller(HealthController, [HealthChecker]);
-
-  // Can also register lifecycle hooks
-  app.context.onStartup(async () => {
-    const metrics = app.getContainer().resolve(MetricsCollector);
-    await metrics.start();
-  });
-}
-```
-
-### Composing Extensions
-
-Extensions can depend on each other. Since they operate on the same container, an extension can use providers registered by earlier extensions:
-
-```typescript
-// Database extension — registers the connection
-export function useDatabase(app: OriApplication) {
-  app.provider(DatabaseService);
-
-  app.context.onStartup(async () => {
-    const db = app.getContainer().resolve(DatabaseService);
-    await db.connect();
-  });
-}
-
-// User extension — depends on database
-export function useUsers(app: OriApplication) {
-  app
-    .provider(UserRepository, [DatabaseService])  // Uses DatabaseService from above
+export function addUsers(app: Application): Application {
+  return app
+    .provider(UserRepository)
     .provider(UserService, [UserRepository])
-    .controller(UserController, [UserService]);
+    .controller('/users', UserController, [UserService]);
 }
-
-// Application — compose in dependency order
-Ori.create()
-  .use(useDatabase)  // First: sets up database
-  .use(useUsers)     // Second: uses database
-  .listen(3000);
 ```
 
-### Conditional Extensions
+### Parameterized Extension Functions
 
-Because extensions are functions, conditional composition is natural:
+Extension functions can accept parameters for configuration:
 
 ```typescript
-const app = Ori.create()
-  .use(useDatabase)
-  .use(useAuth)
-  .use(useUsers);
-
-if (process.env.NODE_ENV === 'development') {
-  app.use(useDevTools);
-  app.use(useSwaggerDocs);
+function addCors(origins: string[]) {
+  return (app: Application): Application => {
+    return app.cors({
+      origin: origins,
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      credentials: true,
+    });
+  };
 }
 
-if (process.env.ENABLE_ADMIN === 'true') {
-  app.use(useAdmin);
+// Usage
+app.use(addCors(['https://myapp.com', 'https://admin.myapp.com']));
+```
+
+### Conditional Composition
+
+Since extension functions are just functions, you can conditionally apply them:
+
+```typescript
+const app = Ori.create();
+
+app.use(addUsers);
+app.use(addPosts);
+
+if (Bun.env.NODE_ENV === 'development') {
+  app.use(addDevTools);    // Debug endpoints, mock data
+  app.use(addSwaggerDocs); // API documentation
+}
+
+if (Bun.env.ENABLE_ADMIN === 'true') {
+  app.use(addAdmin);       // Admin panel
 }
 
 app.listen(3000);
 ```
 
-### Deferred Extensions
+Try doing this with NestJS modules. You'd need `DynamicModule.forRootAsync()`, conditional `imports` arrays, and careful management of module metadata. With extension functions, it's an `if` statement.
 
-Some extensions need access to configuration that isn't available until later. Use `.useDeferred()` for extensions that should run after `.config()` is processed:
+### Composing Extension Functions
+
+Extension functions compose naturally:
 
 ```typescript
-export function useCaching(app: OriApplication) {
-  const config = app.context.config.get<CacheConfig>('cache');
+// Each feature has its own extension function
+function addUsers(app: Application) { /* ... */ }
+function addPosts(app: Application) { /* ... */ }
+function addComments(app: Application) { /* ... */ }
+function addNotifications(app: Application) { /* ... */ }
 
-  if (config.provider === 'redis') {
-    app.provider(RedisCacheService, [RedisClient]);
-  } else {
-    app.provider(InMemoryCacheService);
-  }
+// A higher-level extension combines related features
+function addSocialFeatures(app: Application): Application {
+  return app
+    .use(addPosts)
+    .use(addComments)
+    .use(addNotifications);
 }
 
+// The app just uses the high-level extensions
 Ori.create()
-  .config(configProvider)       // Config set here
-  .useDeferred(useCaching)      // Runs after config is ready
+  .use(addUsers)
+  .use(addSocialFeatures)
   .listen(3000);
 ```
 
-## Summary
+### Extension Functions vs NestJS Modules: A Detailed Comparison
 
-The core concepts of OriJS are:
+NestJS modules:
 
-1. **Fluent builder API**: Configure everything through chained method calls on the application instance
-2. **Explicit DI**: Dependencies listed as arrays, no decorators or metadata reflection
-3. **Singleton scope**: One instance per provider, use `RequestContext` for per-request data
-4. **AppContext**: Application-level context for cross-cutting concerns (logging, events, config)
-5. **Lifecycle hooks**: Startup (FIFO), ready (FIFO), shutdown (LIFO) with graceful shutdown
-6. **Extension functions**: Composable, testable, conditional application configuration
+```typescript
+// NestJS — lots of ceremony
+@Module({
+  imports: [DatabaseModule, CacheModule.register({ ttl: 300 })],
+  controllers: [UserController],
+  providers: [UserService, UserRepository],
+  exports: [UserService], // Must export for other modules to use
+})
+export class UserModule {}
 
-These concepts form the foundation for everything else in OriJS. The next chapter builds on them to show how controllers and routing work.
+@Module({
+  imports: [UserModule], // Must import to use UserService
+  controllers: [PostController],
+  providers: [PostService],
+})
+export class PostModule {}
+```
 
-[Previous: Quick Start ←](./02-quick-start.md) | [Next: Controllers & Routing →](./04-controllers-and-routing.md)
+OriJS extension functions:
+
+```typescript
+// OriJS — plain functions, no ceremony
+function addUsers(app: Application) {
+  return app
+    .provider(UserRepository)
+    .provider(UserService, [UserRepository])
+    .controller('/users', UserController, [UserService]);
+}
+
+function addPosts(app: Application) {
+  return app
+    .provider(PostService, [UserService]) // Just use it — no import/export needed
+    .controller('/posts', PostController, [PostService]);
+}
+```
+
+Key differences:
+
+| Aspect | NestJS Modules | OriJS Extension Functions |
+|--------|---------------|--------------------------|
+| Syntax | Decorator + metadata object | Plain function |
+| Visibility | Explicit `imports`/`exports` | Global container — all providers available |
+| Circular deps | Common problem with cross-module references | Not possible — functions can't circularly import |
+| Dynamic modules | `forRoot()`, `forRootAsync()`, `register()` | Function parameters |
+| Conditional | Complex `DynamicModule` logic | `if` statement |
+| Testing | Requires `Test.createTestingModule()` | Create container, register providers, done |
+| Type safety | Limited (metadata is loosely typed) | Full (deps array is type-checked) |
+
+The NestJS `imports`/`exports` system exists to control visibility — which modules can see which providers. OriJS intentionally uses a flat global container. The argument for module isolation is that it prevents accidental coupling. The counter-argument is that it creates a different class of bugs — forgetting to export or import a provider is one of the most common NestJS errors, and the error messages are cryptic.
+
+## Lifecycle Hooks
+
+Lifecycle hooks let you run code at specific points in the application's lifecycle.
+
+### onStartup
+
+Runs after bootstrap, before the server accepts connections. Use this for initialization that must complete before handling requests:
+
+```typescript
+app.context.onStartup(async () => {
+  // Run database migrations
+  const db = app.context.resolve(DatabasePool);
+  await db.migrate();
+
+  // Warm caches
+  const cache = app.context.resolve(CacheService);
+  await cache.warmup();
+
+  app.context.log.info('Startup complete');
+});
+```
+
+Startup hooks execute in FIFO (first-in, first-out) order. If any hook throws, the application fails to start — this is intentional. If your database migrations fail, you don't want the server accepting requests.
+
+### onReady
+
+Runs after the server starts listening. Use this for actions that should happen after the server is available:
+
+```typescript
+app.context.onReady(async () => {
+  app.context.log.info('Server accepting connections on port 3000');
+
+  // Register with service discovery
+  await serviceRegistry.register({
+    name: 'user-api',
+    port: 3000,
+    health: '/health',
+  });
+});
+```
+
+Ready hooks also execute in FIFO order and fail fast.
+
+### onShutdown
+
+Runs when the application is shutting down (SIGTERM, SIGINT, or `app.stop()`). Use this for cleanup:
+
+```typescript
+app.context.onShutdown(async () => {
+  app.context.log.info('Shutting down...');
+
+  // Close database connections
+  const db = app.context.resolve(DatabasePool);
+  await db.close();
+
+  // Deregister from service discovery
+  await serviceRegistry.deregister('user-api');
+});
+```
+
+**Shutdown hooks execute in LIFO (last-in, first-out) order.** This is critical for correct cleanup. Consider:
+
+```typescript
+app.context.onShutdown(async () => {
+  await database.close(); // Registered first — runs last
+});
+
+app.context.onShutdown(async () => {
+  await cache.flush();    // Registered second — runs first
+});
+```
+
+The cache flush runs before the database close. If the cache needs to write through to the database during flush, the database connection is still available. LIFO order ensures that dependencies are cleaned up after the services that depend on them.
+
+Shutdown hooks continue executing even if one throws an error (the error is logged). This ensures that a failure in one cleanup step doesn't prevent others from running.
+
+### Lifecycle Hook Best Practices
+
+1. **Keep hooks focused.** Each hook should do one thing. Register multiple hooks rather than one large hook.
+
+2. **Handle timeouts.** If your shutdown hook talks to an external service that might be unavailable, set a timeout:
+
+```typescript
+app.context.onShutdown(async () => {
+  const timeout = setTimeout(() => {
+    app.context.log.warn('Service deregistration timed out');
+  }, 5000);
+
+  try {
+    await serviceRegistry.deregister('user-api');
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+```
+
+3. **Set shutdown timeout appropriately.** The default is 10 seconds. If your shutdown hooks need more time (draining long-running requests, flushing large caches), increase it:
+
+```typescript
+app.setShutdownTimeout(30_000); // 30 seconds
+```
+
+4. **Use `disableSignalHandling()` in tests.** When running tests, you don't want SIGTERM handlers interfering with the test runner:
+
+```typescript
+const app = Ori.create();
+app.disableSignalHandling();
+// ... run tests ...
+await app.stop(); // Explicit shutdown
+```
+
+## RequestContext Deep Dive
+
+`RequestContext` is created fresh for every incoming request and flows through the entire request pipeline: guards, interceptors, validation, and your handler.
+
+### What's Available
+
+```typescript
+interface RequestContext<TState = {}> {
+  // Application context
+  readonly app: AppContext;
+
+  // Request data
+  readonly request: Request;              // Native Request object
+  readonly params: Record<string, string>; // Path parameters
+  readonly query: Record<string, string | string[]>; // Query string (lazy)
+
+  // Validated body (available after validation)
+  readonly body: TBody;
+
+  // Request metadata
+  readonly correlationId: string;         // Request ID (lazy)
+  readonly log: Logger;                   // Request logger (lazy)
+  readonly signal: AbortSignal;           // Cancellation signal
+
+  // State management
+  get<K extends keyof TState>(key: K): TState[K];
+  set<K extends keyof TState>(key: K, value: TState[K]): void;
+
+  // Body parsing
+  json<T>(): Promise<T>;
+  text(): Promise<string>;
+
+  // Param validation
+  getValidatedParam(key: string): string;  // Alphanumeric + - _
+  getValidatedUUID(key: string): string;   // UUID v4 format
+
+  // Request-scoped services
+  readonly events: EventEmitter;           // Request-bound events (lazy)
+  readonly workflows: WorkflowExecutor;    // Request-bound workflows (lazy)
+  readonly socket: SocketEmitter;          // Request-bound WebSocket (lazy)
+}
+```
+
+### Performance: Lazy Evaluation
+
+Notice the `(lazy)` annotations. OriJS avoids work until it's needed:
+
+- **Query parsing** — The URL's query string isn't parsed until you access `ctx.query`. Most API endpoints use path parameters, not query strings, so parsing is skipped entirely for those requests.
+- **Correlation ID** — Generated only when accessed. If your handler doesn't log or emit events, the UUID is never created.
+- **Logger** — The request logger (which includes the correlation ID as context) is created on first access.
+- **State object** — Allocated on first `set()` call.
+
+This lazy approach means a simple "health check" endpoint (`GET /health` → `new Response('OK')`) allocates almost nothing beyond the context object itself.
+
+### Correlation ID
+
+Every request gets a correlation ID for tracing. OriJS checks for an incoming `X-Correlation-Id` header first — if present, it reuses that ID. Otherwise, it generates a new UUID v4.
+
+This means if your API is called by another service that includes a correlation ID, the same ID flows through your logs, events, and downstream calls. This is essential for distributed tracing.
+
+```typescript
+private createUser = async (ctx: RequestContext) => {
+  ctx.log.info('Creating user'); // Logs include { correlationId: "abc-123-..." }
+
+  // Events carry the correlation ID automatically
+  ctx.events.emit(UserCreatedEvent, { userId: user.id });
+  // The event consumer sees the same correlation ID
+};
+```
+
+### State: Passing Data Between Pipeline Stages
+
+State is how guards pass data to handlers:
+
+```typescript
+// Guard sets state
+class AuthGuard implements Guard {
+  async canActivate(ctx: RequestContext): Promise<boolean> {
+    const user = await this.authService.verify(ctx.request);
+    if (!user) return false;
+    ctx.set('user', user);
+    ctx.set('permissions', user.permissions);
+    return true;
+  }
+}
+
+// Handler reads state
+private createPost = async (ctx: RequestContext) => {
+  const user = ctx.get('user');
+  const permissions = ctx.get('permissions');
+  // ...
+};
+```
+
+State is type-safe when you define the state shape:
+
+```typescript
+interface AppState {
+  user: AuthenticatedUser;
+  permissions: string[];
+}
+
+// The guard and handler both use RequestContext<AppState>
+// TypeScript enforces that only valid keys are used
+```
+
+## What's Next
+
+Now that you understand the core concepts — lifecycle, DI, AppContext, extension functions, and RequestContext — you're ready to learn about the architecture that makes OriJS unique: the provider system. The next chapter explains how every infrastructure component in OriJS is a swappable provider, and how to write your own.
+
+[Next: The Provider Architecture →](./04-the-provider-architecture.md)
