@@ -36,7 +36,9 @@ All OriJS packages are published under `@orijs/*`:
 
 ### Documentation
 
-**For how to USE OriJS**: See [docs/guides/\_llms.md](./docs/guides/_llms.md) - AI navigation index to all documentation.
+**For how to USE OriJS**:
+- API reference & config: [docs/guides/\_llms.md](./docs/guides/_llms.md) - AI navigation index to all documentation
+- Comprehensive guide: [guide/README.md](./guide/README.md) - 17-chapter OSS guide with real-world examples
 
 ---
 
