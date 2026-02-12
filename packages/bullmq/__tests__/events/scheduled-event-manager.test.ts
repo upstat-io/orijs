@@ -1,7 +1,7 @@
 /**
  * ScheduledEventManager Unit Tests
  *
- * Tests scheduled/repeatable job management using BullMQ's repeatable jobs feature.
+ * Tests scheduled/repeatable job management using BullMQ's Job Scheduler API (v5).
  * Uses mocked Queue class.
  */
 
@@ -9,10 +9,10 @@ import { describe, it, expect, mock } from 'bun:test';
 
 describe('ScheduledEventManager', () => {
 	describe('schedule creation', () => {
-		it('should create repeatable job with cron pattern', async () => {
+		it('should create job scheduler with cron pattern', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key-1' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -31,22 +31,22 @@ describe('ScheduledEventManager', () => {
 				payload: { monitorId: '123' }
 			});
 
-			expect(mockQueue.add).toHaveBeenCalledWith(
-				'event',
-				expect.objectContaining({
-					payload: { monitorId: '123' }
-				}),
-				expect.objectContaining({
-					repeat: { pattern: '0 * * * *' },
-					jobId: 'hourly-check'
-				})
+			expect(mockQueue.upsertJobScheduler).toHaveBeenCalledWith(
+				'hourly-check',
+				{ pattern: '0 * * * *' },
+				{
+					name: 'event',
+					data: expect.objectContaining({
+						payload: { monitorId: '123' }
+					})
+				}
 			);
 		});
 
-		it('should create repeatable job with interval (every X ms)', async () => {
+		it('should create job scheduler with interval (every X ms)', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key-1' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -65,13 +65,13 @@ describe('ScheduledEventManager', () => {
 				payload: {}
 			});
 
-			expect(mockQueue.add).toHaveBeenCalledWith(
-				'event',
-				expect.objectContaining({ payload: {} }),
-				expect.objectContaining({
-					repeat: { every: 30000 },
-					jobId: 'health-ping'
-				})
+			expect(mockQueue.upsertJobScheduler).toHaveBeenCalledWith(
+				'health-ping',
+				{ every: 30000 },
+				{
+					name: 'event',
+					data: expect.objectContaining({ payload: {} })
+				}
 			);
 		});
 
@@ -80,8 +80,8 @@ describe('ScheduledEventManager', () => {
 			const MockQueue = mock((name: string) => {
 				const q = {
 					name,
-					add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-					removeRepeatableByKey: mock(() => Promise.resolve()),
+					upsertJobScheduler: mock(() => Promise.resolve({})),
+					removeJobScheduler: mock(() => Promise.resolve(true)),
 					on: mock(() => {}),
 					close: mock(() => Promise.resolve()),
 					connection: { _client: { on: mock(() => {}) } }
@@ -115,14 +115,10 @@ describe('ScheduledEventManager', () => {
 	});
 
 	describe('schedule removal', () => {
-		it('should remove scheduled job by scheduleId', async () => {
-			let repeatJobKey = '';
+		it('should remove job scheduler by scheduleId', async () => {
 			const mockQueue = {
-				add: mock(() => {
-					repeatJobKey = `repeat:scheduled:monitor.check:check-123:::30000`;
-					return Promise.resolve({ id: 'job-1', repeatJobKey });
-				}),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -143,13 +139,13 @@ describe('ScheduledEventManager', () => {
 
 			await manager.unschedule('monitor.check', 'check-123');
 
-			expect(mockQueue.removeRepeatableByKey).toHaveBeenCalledWith(repeatJobKey);
+			expect(mockQueue.removeJobScheduler).toHaveBeenCalledWith('check-123');
 		});
 
 		it('should handle removal of non-existent schedule gracefully', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -165,16 +161,16 @@ describe('ScheduledEventManager', () => {
 			// Should not throw
 			await manager.unschedule('monitor.check', 'non-existent');
 
-			// Should not have called removeRepeatableByKey since no schedule exists
-			expect(mockQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+			// Should not have called removeJobScheduler since no schedule exists
+			expect(mockQueue.removeJobScheduler).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('schedule listing', () => {
 		it('should return all active schedules for an event type', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -208,8 +204,8 @@ describe('ScheduledEventManager', () => {
 
 		it('should return empty array for event type with no schedules', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -232,8 +228,8 @@ describe('ScheduledEventManager', () => {
 			const mockQueues: any[] = [];
 			const MockQueue = mock(() => {
 				const q = {
-					add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-					removeRepeatableByKey: mock(() => Promise.resolve()),
+					upsertJobScheduler: mock(() => Promise.resolve({})),
+					removeJobScheduler: mock(() => Promise.resolve(true)),
 					on: mock(() => {}),
 					close: mock(() => Promise.resolve()),
 					connection: { _client: { on: mock(() => {}) } }
@@ -263,8 +259,8 @@ describe('ScheduledEventManager', () => {
 	describe('validation', () => {
 		it('should require either cron or every', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }
@@ -288,8 +284,8 @@ describe('ScheduledEventManager', () => {
 
 		it('should not allow both cron and every', async () => {
 			const mockQueue = {
-				add: mock(() => Promise.resolve({ id: 'job-1', repeatJobKey: 'repeat-key' })),
-				removeRepeatableByKey: mock(() => Promise.resolve()),
+				upsertJobScheduler: mock(() => Promise.resolve({})),
+				removeJobScheduler: mock(() => Promise.resolve(true)),
 				on: mock(() => {}),
 				close: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } }

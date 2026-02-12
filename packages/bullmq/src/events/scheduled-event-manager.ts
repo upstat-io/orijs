@@ -10,7 +10,7 @@
  * @module events/scheduled-event-manager
  */
 
-import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
+import { Queue, type ConnectionOptions } from 'bullmq';
 import type { Logger } from '@orijs/logging';
 import { EVENT_MESSAGE_VERSION } from '@orijs/events';
 import type { IQueueManager } from './queue-manager';
@@ -62,7 +62,6 @@ export interface ScheduleInfo {
 	readonly cron?: string;
 	readonly every?: number;
 	readonly payload: unknown;
-	readonly repeatJobKey: string;
 }
 
 /**
@@ -83,8 +82,12 @@ interface IScheduleRedisConnection {
  * Interface for queue operations (for testing).
  */
 export interface IScheduleQueueLike {
-	add(name: string, data: unknown, opts?: JobsOptions): Promise<{ id: string; repeatJobKey?: string }>;
-	removeRepeatableByKey(key: string): Promise<boolean>;
+	upsertJobScheduler(
+		schedulerId: string,
+		repeatOpts: { pattern?: string; every?: number },
+		template: { name: string; data: unknown }
+	): Promise<unknown>;
+	removeJobScheduler(schedulerId: string): Promise<boolean>;
 	on(event: string, callback: (...args: unknown[]) => void): void;
 	close(): Promise<void>;
 	/**
@@ -319,10 +322,10 @@ export class ScheduledEventManager implements IScheduledEventManager {
 					scheduledAt: Date.now()
 				};
 
-		// Add repeatable job
-		const job = await queue.add('event', jobData, {
-			repeat: repeatOptions,
-			jobId: options.scheduleId
+		// Add job scheduler (BullMQ v5 API)
+		await queue.upsertJobScheduler(options.scheduleId, repeatOptions, {
+			name: 'event',
+			data: jobData
 		});
 
 		// Store schedule info
@@ -337,8 +340,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 			eventName,
 			cron: hasCron ? options.cron : undefined,
 			every: hasEvery ? options.every : undefined,
-			payload: options.payload,
-			repeatJobKey: job.repeatJobKey ?? ''
+			payload: options.payload
 		};
 
 		eventSchedules.set(options.scheduleId, scheduleInfo);
@@ -365,7 +367,7 @@ export class ScheduledEventManager implements IScheduledEventManager {
 
 		// Remove from BullMQ
 		const queue = this.getQueue(eventName);
-		await queue.removeRepeatableByKey(scheduleInfo.repeatJobKey);
+		await queue.removeJobScheduler(scheduleId);
 
 		// Remove from local tracking
 		eventSchedules.delete(scheduleId);
