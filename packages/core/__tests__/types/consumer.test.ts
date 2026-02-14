@@ -486,10 +486,10 @@ describe('IWorkflowConsumer', () => {
 				process: { processed: boolean };
 			}
 
-			const mockStepContext: StepContext<TestData> = {
+			const mockStepContext: StepContext<TestData, TestSteps> = {
 				flowId: 'wf-test',
 				data: { id: 'test-123' },
-				results: {},
+				results: { process: { processed: false } },
 				log: mockLogger,
 				meta: {},
 				stepName: 'process'
@@ -599,22 +599,22 @@ describe('IWorkflowConsumer', () => {
 			class OrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, OrderSteps> {
 				steps = {
 					validate: {
-						execute: async (ctx: StepContext<OrderData>) => {
+						execute: async (ctx: StepContext<OrderData, OrderSteps>) => {
 							return { valid: ctx.data.orderId.length > 0 };
 						}
 					},
 					charge: {
-						execute: async (_ctx: StepContext<OrderData>) => {
+						execute: async (_ctx: StepContext<OrderData, OrderSteps>) => {
 							return { chargeId: 'ch-123' };
 						},
-						rollback: async (_ctx: StepContext<OrderData>) => {
+						rollback: async (_ctx: StepContext<OrderData, OrderSteps>) => {
 							// Refund logic
 						}
 					}
 				};
 
-				onComplete = async (ctx: WorkflowContext<OrderData>): Promise<OrderResult> => {
-					const chargeResult = ctx.results['charge'] as { chargeId: string };
+				onComplete = async (ctx: WorkflowContext<OrderData, OrderSteps>): Promise<OrderResult> => {
+					const chargeResult = ctx.results['charge'];
 					return { orderId: ctx.data.orderId, chargeId: chargeResult.chargeId };
 				};
 			}

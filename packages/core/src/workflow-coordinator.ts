@@ -112,7 +112,7 @@ export class WorkflowCoordinator {
 	 * Registers a workflow definition.
 	 * This is called during app setup via .workflow(definition).
 	 */
-	public registerWorkflowDefinition<TData, TResult>(definition: WorkflowDefinition<TData, TResult>): void {
+	public registerWorkflowDefinition<TData, TResult, TSteps>(definition: WorkflowDefinition<TData, TResult, TSteps>): void {
 		const workflowName = definition.name;
 
 		if (this.workflowDefinitions.has(workflowName)) {
@@ -127,9 +127,9 @@ export class WorkflowCoordinator {
 	 * Adds a consumer for a workflow definition.
 	 * Consumer will be instantiated during bootstrap via DI.
 	 */
-	public addWorkflowConsumer<TData, TResult>(
-		definition: WorkflowDefinition<TData, TResult>,
-		consumerClass: Constructor<IWorkflowConsumer<TData, TResult>>,
+	public addWorkflowConsumer<TData, TResult, TSteps>(
+		definition: WorkflowDefinition<TData, TResult, TSteps>,
+		consumerClass: Constructor<IWorkflowConsumer<TData, TResult, NoInfer<TSteps>>>,
 		deps: Constructor[]
 	): void {
 		this.pendingConsumers.push({

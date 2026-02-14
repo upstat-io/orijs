@@ -36,7 +36,7 @@ import type { Logger, PropagationMeta } from '@orijs/logging';
  * };
  * ```
  */
-export interface WorkflowContext<TData = unknown> {
+export interface WorkflowContext<TData = unknown, TSteps = Record<string, unknown>> {
 	/** Unique flow ID for this workflow execution */
 	readonly flowId: string;
 
@@ -49,7 +49,7 @@ export interface WorkflowContext<TData = unknown> {
 	 * Q4 decision: Results accumulate as { stepName: result, ... }
 	 * Each step can access previous step results via this property.
 	 */
-	readonly results: Record<string, unknown>;
+	readonly results: TSteps;
 
 	/** Logger with propagated context (correlationId, traceId, etc.) */
 	readonly log: Logger;
@@ -83,7 +83,7 @@ export interface WorkflowContext<TData = unknown> {
  *
  * Immutable - all properties are readonly.
  */
-export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<TData> {
+export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<TData, Record<string, unknown>> {
 	public readonly correlationId: string;
 
 	public constructor(

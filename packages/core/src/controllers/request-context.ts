@@ -100,7 +100,8 @@ export class RequestContextFactory {
  */
 export class RequestContext<
 	TState extends object = Record<string, unknown>,
-	TSocket extends SocketEmitter = SocketEmitter
+	TSocket extends SocketEmitter = SocketEmitter,
+	TParams extends Record<string, string> = Record<string, string>
 > implements BaseContext {
 	private stateData: TState | null = null;
 	private parsedBody: unknown | undefined;
@@ -167,7 +168,7 @@ export class RequestContext<
 	constructor(
 		readonly app: AppContext,
 		readonly request: Request,
-		readonly params: Record<string, string>,
+		readonly params: TParams,
 		requestUrl: string,
 		queryStart: number,
 		loggerOptions: LoggerOptions

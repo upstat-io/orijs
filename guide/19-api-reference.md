@@ -235,7 +235,7 @@ Fluent API for defining routes within a controller.
 | `clearInterceptors` | `(): this` | Removes all interceptors |
 | `pipe` | `(pipe: PipeClass, schema?): this` | Adds a validation pipe |
 | `clear` | `(): this` | Removes all guards and interceptors |
-| `param` | `(name, validator): this` | Declares a path parameter validator |
+| `param` | `<TName>(name, validator): RouteBuilder<TState, TParams & Record<TName, string>>` | Declares a path parameter validator (accumulates TParams) |
 | `get` | `(path, handler, schema?): this` | Registers a GET route |
 | `post` | `(path, handler, schema?): this` | Registers a POST route |
 | `put` | `(path, handler, schema?): this` | Registers a PUT route |
@@ -261,7 +261,7 @@ Request-scoped context passed to handlers, guards, and interceptors.
 | Property | Type | Description |
 |----------|------|-------------|
 | `request` | `Request` | The raw Bun Request object |
-| `params` | `Record<string, string>` | URL path parameters |
+| `params` | `TParams` | Typed URL path parameters |
 | `query` | `Record<string, string \| string[]>` | Parsed query string (lazy) |
 | `state` | `TState` | State set by guards (lazy) |
 | `correlationId` | `string` | Request ID (from header or generated) |
@@ -328,8 +328,11 @@ interface Pipe<TInput = unknown, TOutput = unknown> {
 **OriController:**
 
 ```typescript
-interface OriController<TState extends object = Record<string, unknown>> {
-  configure(route: RouteBuilder<TState>): void;
+interface OriController<
+  TState extends object = Record<string, unknown>,
+  TParams extends Record<string, string> = Record<string, string>
+> {
+  configure(route: RouteBuilder<TState, TParams>): void;
 }
 ```
 
@@ -555,15 +558,15 @@ const ProcessOrder = Workflow.define({
 ```typescript
 interface IWorkflowConsumer<TData, TResult, TSteps = Record<never, never>> {
   readonly steps?: {
-    [K in keyof TSteps]?: StepHandler<TData, TSteps[K]>;
+    [K in keyof TSteps]?: StepHandler<TData, TSteps[K], TSteps>;
   };
-  readonly onComplete: (ctx: WorkflowContext<TData>) => Promise<TResult> | TResult;
-  readonly onError?: (ctx: WorkflowContext<TData>, error: Error) => Promise<void> | void;
+  readonly onComplete: (ctx: WorkflowContext<TData, TSteps>) => Promise<TResult> | TResult;
+  readonly onError?: (ctx: WorkflowContext<TData, TSteps>, error: Error) => Promise<void> | void;
 }
 
-interface StepHandler<TData, TOutput> {
-  readonly execute: (ctx: StepContext<TData>) => Promise<TOutput> | TOutput;
-  readonly rollback?: (ctx: StepContext<TData>) => Promise<void> | void;
+interface StepHandler<TData, TOutput, TResults = Record<string, unknown>> {
+  readonly execute: (ctx: StepContext<TData, TResults>) => Promise<TOutput> | TOutput;
+  readonly rollback?: (ctx: StepContext<TData, TResults>) => Promise<void> | void;
 }
 ```
 
@@ -573,7 +576,7 @@ interface StepHandler<TData, TOutput> {
 |----------|------|-------------|
 | `flowId` | `string` | Unique workflow execution ID |
 | `data` | `TData` | Workflow input data |
-| `results` | `Record<string, unknown>` | Accumulated step results |
+| `results` | `TSteps` | Typed accumulated step results |
 | `log` | `Logger` | Structured logger |
 | `meta` | `Record<string, unknown>` | Propagation metadata |
 | `correlationId` | `string` | Correlation ID |

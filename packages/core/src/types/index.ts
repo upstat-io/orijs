@@ -1,5 +1,15 @@
-// Context classes (re-exported from controllers)
-export type { RequestContext, RequestContext as Context } from '../controllers/request-context.ts';
+// Context classes
+import type { RequestContext as _RequestContext } from '../controllers/request-context.ts';
+import type { SocketEmitter } from './emitter';
+export type { _RequestContext as RequestContext };
+/**
+ * Request context type for handlers.
+ * Shorthand that skips the TSocket generic (defaults to SocketEmitter).
+ */
+export type Context<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> = _RequestContext<TState, SocketEmitter, TParams>;
 export type { AppContext } from '../app-context.ts';
 
 // Context types

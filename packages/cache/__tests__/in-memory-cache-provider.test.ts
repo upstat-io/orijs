@@ -322,8 +322,8 @@ describe('InMemoryCacheProvider', () => {
 			// Use local provider for timing-sensitive test isolation
 			const localProvider = new InMemoryCacheProvider();
 			const key = `decreasing-${crypto.randomUUID()}`;
-			// Use 10 second TTL for reliable timing under test parallelism load
-			await localProvider.set(key, 'value', 10);
+			// Use 60 second TTL so Math.ceil rounding can't mask the 3s wait under load
+			await localProvider.set(key, 'value', 60);
 
 			const ttl1 = await localProvider.ttl(key);
 			const startTime = Date.now();

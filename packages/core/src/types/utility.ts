@@ -136,4 +136,4 @@ export type WorkflowConsumer<T> =
  * }
  * ```
  */
-export type WorkflowCtx<T> = T extends WorkflowDefinition<infer D, unknown> ? WorkflowContext<D> : never;
+export type WorkflowCtx<T> = T extends WorkflowDefinition<infer D, unknown, infer S> ? WorkflowContext<D, S> : never;

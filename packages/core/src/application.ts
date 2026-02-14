@@ -109,7 +109,7 @@ export interface EventRegistration<TPayload, TResponse> extends OriApplication {
  * @template TData - The workflow input data type
  * @template TResult - The workflow result type
  */
-export interface WorkflowRegistration<TData, TResult> extends OriApplication {
+export interface WorkflowRegistration<TData, TResult, TSteps = Record<never, never>> extends OriApplication {
 	/**
 	 * Registers a consumer for this workflow.
 	 *
@@ -118,7 +118,7 @@ export interface WorkflowRegistration<TData, TResult> extends OriApplication {
 	 * @returns The Application for further chaining
 	 */
 	consumer(
-		consumerClass: Constructor<IWorkflowConsumer<TData, TResult>>,
+		consumerClass: Constructor<IWorkflowConsumer<TData, TResult, NoInfer<TSteps>>>,
 		deps?: Constructor[]
 	): OriApplication;
 }
@@ -587,9 +587,9 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 *   .listen(3000);
 	 * ```
 	 */
-	public workflow<TData, TResult>(
-		definition: WorkflowDefinition<TData, TResult>
-	): WorkflowRegistration<TData, TResult> {
+	public workflow<TData, TResult, TSteps>(
+		definition: WorkflowDefinition<TData, TResult, TSteps>
+	): WorkflowRegistration<TData, TResult, TSteps> {
 		// Register the workflow definition
 		this.workflowCoordinator.registerWorkflowDefinition(definition);
 
@@ -598,7 +598,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 			get: (target, prop, receiver) => {
 				if (prop === 'consumer') {
 					return (
-						consumerClass: Constructor<IWorkflowConsumer<TData, TResult>>,
+						consumerClass: Constructor<IWorkflowConsumer<TData, TResult, NoInfer<TSteps>>>,
 						deps: Constructor[] = []
 					): OriApplication<TSocket> => {
 						target.workflowCoordinator.addWorkflowConsumer(definition, consumerClass, deps);
@@ -607,7 +607,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 				}
 				return Reflect.get(target, prop, receiver);
 			}
-		}) as unknown as WorkflowRegistration<TData, TResult>;
+		}) as unknown as WorkflowRegistration<TData, TResult, TSteps>;
 	}
 
 	/**

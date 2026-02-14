@@ -214,6 +214,8 @@ class MonitorController implements OriController {
 
 When you register `r.param('uuid', UuidParam)`, the framework automatically applies that validator to every route that contains `:uuid` in its path. Routes without that parameter are unaffected.
 
+Each `r.param()` call also accumulates type information on the `RouteBuilder`. After registering `r.param('uuid', UuidParam)`, all handlers receive a `ctx.params` object where `uuid` is a known key, providing type-safe access without manual assertions.
+
 Built-in validators:
 - **`UuidParam`** -- validates RFC 4122 UUID format (`8-4-4-4-12` hex with dashes)
 - **`StringParam`** -- validates non-empty string
@@ -316,7 +318,7 @@ Every handler receives a `RequestContext` that provides access to everything abo
 | Property | Type | Description |
 |----------|------|-------------|
 | `ctx.request` | `Request` | The raw Bun `Request` object |
-| `ctx.params` | `Record<string, string>` | URL path parameters |
+| `ctx.params` | `TParams` | URL path parameters (typed via `r.param()`) |
 | `ctx.query` | `Record<string, string \| string[]>` | Query string parameters (lazy) |
 | `ctx.state` | `TState` | Type-safe state set by guards |
 | `ctx.correlationId` | `string` | Unique request ID for tracing (lazy) |
@@ -411,7 +413,7 @@ class ProfileController implements OriController<AuthState> {
 
 The `OriController<AuthState>` generic flows through to `RouteBuilder<AuthState>` and into every handler's `RequestContext<AuthState>`. TypeScript ensures you cannot access `ctx.state.user` without the guard that sets it.
 
-Note: `RequestContext` is also exported as `Context` for brevity:
+Note: `RequestContext` is also exported as `Context` for brevity. `Context` takes two generics: `TState` for guard state, and `TParams` for typed path parameters:
 
 ```typescript
 import type { Context } from '@orijs/orijs';

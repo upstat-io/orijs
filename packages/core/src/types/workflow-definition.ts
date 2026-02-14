@@ -220,8 +220,8 @@ export class StepBuilder<TSteps extends Record<string, unknown> = Record<never, 
 		TSteps &
 			Record<T1, Static<O1>> &
 			Record<T2, Static<O2>> &
-			(T3 extends never ? object : Record<T3, Static<O3>>) &
-			(T4 extends never ? object : Record<T4, Static<O4>>)
+			([T3] extends [never] ? object : Record<T3, Static<O3>>) &
+			([T4] extends [never] ? object : Record<T4, Static<O4>>)
 	> {
 		const definitions: StepDefinition[] = [
 			{ name: step1.name, outputSchema: step1.outputSchema, _output: undefined },
@@ -239,8 +239,8 @@ export class StepBuilder<TSteps extends Record<string, unknown> = Record<never, 
 			TSteps &
 				Record<T1, Static<O1>> &
 				Record<T2, Static<O2>> &
-				(T3 extends never ? object : Record<T3, Static<O3>>) &
-				(T4 extends never ? object : Record<T4, Static<O4>>)
+				([T3] extends [never] ? object : Record<T3, Static<O3>>) &
+				([T4] extends [never] ? object : Record<T4, Static<O4>>)
 		>;
 	}
 
@@ -428,7 +428,7 @@ export interface WorkflowDefinitionBuilder<TData, TResult> extends WorkflowDefin
  */
 export interface StepContext<
 	TData = unknown,
-	TResults extends Record<string, unknown> = Record<string, unknown>
+	TResults = Record<string, unknown>
 > {
 	/** Unique flow ID for this workflow execution */
 	readonly flowId: string;
@@ -475,7 +475,7 @@ export interface StepContext<
  * }
  * ```
  */
-export interface WorkflowContext<TData> {
+export interface WorkflowContext<TData, TSteps = Record<string, unknown>> {
 	/** Unique flow ID for this workflow execution */
 	readonly flowId: string;
 	/** The workflow input data */
@@ -484,7 +484,7 @@ export interface WorkflowContext<TData> {
 	 * Accumulated results from completed steps.
 	 * Each step can access previous step results via this property.
 	 */
-	readonly results: Record<string, unknown>;
+	readonly results: TSteps;
 	/** Logger with propagated context (correlationId, traceId, etc.) */
 	readonly log: Logger;
 	/** Metadata for context propagation */

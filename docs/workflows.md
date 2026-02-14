@@ -201,10 +201,10 @@ Context passed to workflow step handlers.
 ### Interface
 
 ```typescript
-interface WorkflowContext<TData = unknown> {
+interface WorkflowContext<TData = unknown, TSteps extends Record<string, unknown> = Record<string, unknown>> {
     readonly flowId: string;
     readonly data: TData;
-    readonly results: Record<string, unknown>;
+    readonly results: TSteps;
     readonly log: Logger;
     readonly meta: PropagationMeta;
     readonly correlationId: string;
@@ -214,10 +214,11 @@ interface WorkflowContext<TData = unknown> {
 
 ### Result Accumulation
 
-The `results` property accumulates results from all completed steps as `{ stepName: result, ... }`. Each step can access previous step results:
+The `results` property accumulates results from all completed steps as `{ stepName: result, ... }`. When the workflow definition declares typed steps via `StepBuilder`, the `TSteps` generic carries those types through to consumers, providing type-safe access without manual assertions:
 
 ```typescript
-const validation = ctx.results['validate'] as ValidationResult;
+const validation = ctx.results['validate'];
+// Already typed based on the step's output schema
 ```
 
 Results are accumulated mutably in `StepExecutionState.results` during execution but the context itself is frozen.
@@ -225,7 +226,7 @@ Results are accumulated mutably in `StepExecutionState.results` during execution
 ### DefaultWorkflowContext Class
 
 ```typescript
-class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<TData> {
+class DefaultWorkflowContext<TData = unknown, TSteps extends Record<string, unknown> = Record<string, unknown>> implements WorkflowContext<TData, TSteps> {
     constructor(
         public readonly flowId: string,
         public readonly data: TData,
@@ -308,11 +309,11 @@ interface StepDefinitionBase {
 
 ```typescript
 type StepHandler<TData = unknown, TResult = unknown> = (
-    ctx: WorkflowContext<TData>
+    ctx: WorkflowContext<TData, Record<string, unknown>>
 ) => Promise<TResult> | TResult;
 
 type RollbackHandler<TData = unknown> = (
-    ctx: WorkflowContext<TData>
+    ctx: WorkflowContext<TData, Record<string, unknown>>
 ) => Promise<void> | void;
 ```
 

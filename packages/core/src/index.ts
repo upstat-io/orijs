@@ -230,6 +230,6 @@ export type { SocketData, WebSocketConnection, WebSocketHandlers, SocketMessageL
 export type { EventRegistration, WorkflowRegistration } from './application';
 
 /**
- * Convenience alias - RequestContext is also exported as Context.
+ * Convenience alias - Context<TState, TParams> maps to RequestContext with default TSocket.
  */
-export type { RequestContext as Context } from './controllers/index';
+export type { Context } from './types/index';

@@ -156,7 +156,7 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
   // Step handlers -- keyed by step name
   steps = {
     validate: {
-      execute: async (ctx: StepContext<OrderData>) => {
+      execute: async (ctx: StepContext<OrderData, OrderSteps>) => {
         const { items } = ctx.data;
         ctx.log.info('Validating order', { itemCount: items.length });
 
@@ -175,7 +175,7 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
     },
 
     charge: {
-      execute: async (ctx: StepContext<OrderData>) => {
+      execute: async (ctx: StepContext<OrderData, OrderSteps>) => {
         const { customerId, totalAmount } = ctx.data;
         ctx.log.info('Charging customer', { customerId, amount: totalAmount });
 
@@ -187,9 +187,9 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
 
         return { chargeId: charge.id, receiptUrl: charge.receiptUrl };
       },
-      rollback: async (ctx: StepContext<OrderData>) => {
-        // Access the result from the charge step
-        const chargeResult = ctx.results.charge as { chargeId: string };
+      rollback: async (ctx: StepContext<OrderData, OrderSteps>) => {
+        // Access the typed result from the charge step
+        const chargeResult = ctx.results.charge;
         ctx.log.info('Refunding charge', { chargeId: chargeResult.chargeId });
 
         // Refund API must be idempotent!
@@ -198,7 +198,7 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
     },
 
     fulfill: {
-      execute: async (ctx: StepContext<OrderData>) => {
+      execute: async (ctx: StepContext<OrderData, OrderSteps>) => {
         const { orderId, items } = ctx.data;
         ctx.log.info('Fulfilling order', { orderId });
 
@@ -212,8 +212,8 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
           estimatedDelivery: shipment.estimatedDelivery,
         };
       },
-      rollback: async (ctx: StepContext<OrderData>) => {
-        const fulfillResult = ctx.results.fulfill as { trackingNumber: string };
+      rollback: async (ctx: StepContext<OrderData, OrderSteps>) => {
+        const fulfillResult = ctx.results.fulfill;
         ctx.log.info('Cancelling shipment', { tracking: fulfillResult.trackingNumber });
 
         await this.fulfillmentService.cancelShipment(fulfillResult.trackingNumber);
@@ -221,9 +221,9 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
     },
 
     notify: {
-      execute: async (ctx: StepContext<OrderData>) => {
+      execute: async (ctx: StepContext<OrderData, OrderSteps>) => {
         const { customerId } = ctx.data;
-        const fulfillResult = ctx.results.fulfill as { trackingNumber: string };
+        const fulfillResult = ctx.results.fulfill;
 
         ctx.log.info('Sending notifications', { customerId });
 
@@ -239,9 +239,9 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
   };
 
   // Called after ALL steps complete successfully
-  onComplete = async (ctx: WorkflowContext<OrderData>): Promise<OrderResult> => {
-    const chargeResult = ctx.results.charge as { chargeId: string };
-    const fulfillResult = ctx.results.fulfill as { trackingNumber: string };
+  onComplete = async (ctx: WorkflowContext<OrderData, OrderSteps>): Promise<OrderResult> => {
+    const chargeResult = ctx.results.charge;
+    const fulfillResult = ctx.results.fulfill;
 
     ctx.log.info('Order processing complete', {
       orderId: ctx.data.orderId,
@@ -257,7 +257,7 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
   };
 
   // Called when any step fails (after rollbacks execute)
-  onError = async (ctx: WorkflowContext<OrderData>, error: Error) => {
+  onError = async (ctx: WorkflowContext<OrderData, OrderSteps>, error: Error) => {
     ctx.log.error('Order processing failed', {
       orderId: ctx.data.orderId,
       error: error.message,

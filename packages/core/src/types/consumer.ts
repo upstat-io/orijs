@@ -137,13 +137,13 @@ export interface IEventConsumer<TData, TResult> {
  * };
  * ```
  */
-export interface StepHandler<TData = unknown, TOutput = unknown> {
+export interface StepHandler<TData = unknown, TOutput = unknown, TResults = Record<string, unknown>> {
 	/**
 	 * Execute the step.
 	 * @param ctx - Step context with workflow data and accumulated results
 	 * @returns The step output (or Promise of output)
 	 */
-	readonly execute: (ctx: StepContext<TData>) => Promise<TOutput> | TOutput;
+	readonly execute: (ctx: StepContext<TData, TResults>) => Promise<TOutput> | TOutput;
 
 	/**
 	 * Optional rollback handler. Called when a later step fails.
@@ -153,7 +153,7 @@ export interface StepHandler<TData = unknown, TOutput = unknown> {
 	 *
 	 * @param ctx - Step context with workflow data and accumulated results
 	 */
-	readonly rollback?: (ctx: StepContext<TData>) => Promise<void> | void;
+	readonly rollback?: (ctx: StepContext<TData, TResults>) => Promise<void> | void;
 }
 
 /**
@@ -203,7 +203,7 @@ export interface IWorkflowConsumer<TData, TResult, TSteps = Record<never, never>
 	 * **Must be arrow function properties** to ensure `this` is correctly bound.
 	 */
 	readonly steps?: {
-		[K in keyof TSteps]?: StepHandler<TData, TSteps[K]>;
+		[K in keyof TSteps]?: StepHandler<TData, TSteps[K], TSteps>;
 	};
 
 	/**
@@ -216,10 +216,10 @@ export interface IWorkflowConsumer<TData, TResult, TSteps = Record<never, never>
 	 * @param ctx - Workflow context with data, workflowId, and metadata
 	 * @returns The result (or Promise of result) matching the workflow definition
 	 */
-	readonly onComplete: (ctx: WorkflowContext<TData>) => Promise<TResult> | TResult;
+	readonly onComplete: (ctx: WorkflowContext<TData, TSteps>) => Promise<TResult> | TResult;
 
 	/**
 	 * Optional error callback. Called when workflow fails.
 	 */
-	readonly onError?: (ctx: WorkflowContext<TData>, error: Error) => Promise<void> | void;
+	readonly onError?: (ctx: WorkflowContext<TData, TSteps>, error: Error) => Promise<void> | void;
 }

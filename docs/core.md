@@ -803,13 +803,13 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTION
 
 | Type | Description |
 |------|-------------|
-| `OriController<TState>` | Interface with `configure(route: RouteBuilder<TState>): void` |
+| `OriController<TState, TParams>` | Interface with `configure(route: RouteBuilder<TState, TParams>): void` |
 | `ControllerClass` | Constructor producing `OriController` |
 | `RouteDefinition` | Internal: method, path, handler, guards, interceptors, pipes, schema, paramValidators |
 | `RouteSchemaOptions` | `{ params?, query?, body? }` -- TypeBox schemas |
-| `RouteBuilder<TState>` | Fluent API interface with `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `guard`, `guards`, `clearGuards`, `intercept`, `interceptors`, `clearInterceptors`, `pipe`, `clear`, `param`, `getRoutes` |
-| `ContextHandler<TState>` | `(ctx: RequestContext<TState>) => Response \| Promise<Response>` |
-| `ContextHandlerInput<TState>` | `ContextHandler<TState> \| Response` |
+| `RouteBuilder<TState, TParams>` | Fluent API interface with `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `guard`, `guards`, `clearGuards`, `intercept`, `interceptors`, `clearInterceptors`, `pipe`, `clear`, `param` (accumulates `TParams`), `getRoutes` |
+| `ContextHandler<TState, TParams>` | `(ctx: RequestContext<TState, SocketEmitter, TParams>) => Response \| Promise<Response>` |
+| `ContextHandlerInput<TState, TParams>` | `ContextHandler<TState, TParams> \| Response` |
 
 ### Middleware Types (`middleware.ts`)
 
@@ -843,7 +843,7 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTION
 | `StepGroup` | `{ type: 'sequential' \| 'parallel'; definitions: readonly StepDefinition[] }` |
 | `StepBuilder<TSteps>` | Fluent builder: `step()`, `sequential()`, `parallel()` |
 | `StepContext<TData, TResults>` | `{ flowId, data, results, log, meta, stepName, providerId? }` |
-| `WorkflowContext<TData>` | `{ flowId, data, results, log, meta, correlationId, providerId? }` |
+| `WorkflowContext<TData, TSteps>` | `{ flowId, data, results: TSteps, log, meta, correlationId, providerId? }` |
 | `Workflow` | Factory: `Workflow.define(config)` returns `WorkflowDefinitionBuilder` |
 | `isWorkflowDefinition(value)` | Type guard checking for `name`, `dataSchema`, `resultSchema`, `stepGroups` |
 | `hasSteps(definition)` | Returns `stepGroups.length > 0` |
@@ -854,7 +854,7 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTION
 |------|-------------|
 | `IEventConsumer<TData, TResult>` | `{ onEvent: (ctx) => TResult; onSuccess?: (ctx, result) => void; onError?: (ctx, error) => void }` |
 | `IWorkflowConsumer<TData, TResult, TSteps>` | `{ steps?: { [K in keyof TSteps]?: StepHandler }; onComplete: (ctx) => TResult; onError?: (ctx, error) => void }` |
-| `StepHandler<TData, TOutput>` | `{ execute: (ctx) => TOutput; rollback?: (ctx) => void }` |
+| `StepHandler<TData, TOutput, TResults>` | `{ execute: (ctx: StepContext<TData, TResults>) => TOutput; rollback?: (ctx) => void }` |
 
 All handler properties must be arrow function properties (not methods) to preserve `this` binding when detached by the framework.
 
@@ -902,8 +902,8 @@ All handler properties must be arrow function properties (not methods) to preser
 | `MessageData<T>` | Extracts `_data` type from `SocketMessageDefinition` |
 | `EventConsumer<T>` | Maps `EventDefinition` to `IEventConsumer<Data, Result>` |
 | `EventCtx<T>` | Maps `EventDefinition` to `EventContext<Data>` |
-| `WorkflowConsumer<T>` | Maps `WorkflowDefinition` to `IWorkflowConsumer<Data, Result, Steps>` |
-| `WorkflowCtx<T>` | Maps `WorkflowDefinition` to `WorkflowContext<Data>` |
+| `WorkflowConsumer<T>` | Maps `WorkflowDefinition` to `IWorkflowConsumer<Data, Result, Steps>` (typed step results) |
+| `WorkflowCtx<T>` | Maps `WorkflowDefinition` to `WorkflowContext<Data, Steps>` |
 
 ### Application Types (`application.ts`)
 

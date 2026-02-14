@@ -39,7 +39,10 @@ import type { ParamValidatorClass } from './param-validators';
  * }
  * ```
  */
-export class RouteBuilder<TState extends object = Record<string, unknown>> implements IRouteBuilder<TState> {
+export class RouteBuilder<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> implements IRouteBuilder<TState, TParams> {
 	private routes: RouteDefinition[] = [];
 	private controllerGuards: GuardClass[] = [];
 	private controllerInterceptors: InterceptorClass[] = [];
@@ -229,9 +232,12 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * r.get('/', this.list);                // no param validation
 	 * ```
 	 */
-	public param(name: string, validator: ParamValidatorClass): this {
+	public param<TName extends string>(
+		name: TName,
+		validator: ParamValidatorClass
+	): RouteBuilder<TState, TParams & Record<TName, string>> {
 		this.controllerParams.set(name, validator);
-		return this;
+		return this as unknown as RouteBuilder<TState, TParams & Record<TName, string>>;
 	}
 
 	/**
@@ -255,7 +261,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema for params/query/response validation
 	 * @returns this for method chaining
 	 */
-	public get(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public get(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('GET', path, handler as HandlerInput, schema);
 	}
 
@@ -267,7 +273,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema for body/params/response validation
 	 * @returns this for method chaining
 	 */
-	public post(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public post(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('POST', path, handler as HandlerInput, schema);
 	}
 
@@ -279,7 +285,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema for body/params/response validation
 	 * @returns this for method chaining
 	 */
-	public put(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public put(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('PUT', path, handler as HandlerInput, schema);
 	}
 
@@ -291,7 +297,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema for body/params/response validation
 	 * @returns this for method chaining
 	 */
-	public patch(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public patch(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('PATCH', path, handler as HandlerInput, schema);
 	}
 
@@ -303,7 +309,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema for params validation
 	 * @returns this for method chaining
 	 */
-	public delete(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public delete(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('DELETE', path, handler as HandlerInput, schema);
 	}
 
@@ -315,7 +321,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema validation
 	 * @returns this for method chaining
 	 */
-	public head(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public head(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('HEAD', path, handler as HandlerInput, schema);
 	}
 
@@ -327,7 +333,7 @@ export class RouteBuilder<TState extends object = Record<string, unknown>> imple
 	 * @param schema - Optional schema validation
 	 * @returns this for method chaining
 	 */
-	public options(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): this {
+	public options(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): this {
 		return this.addRoute('OPTIONS', path, handler as HandlerInput, schema);
 	}
 

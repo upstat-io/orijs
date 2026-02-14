@@ -1,5 +1,6 @@
 import type { RequestContext } from '../controllers/request-context.ts';
 import type { HandlerInput } from './context';
+import type { SocketEmitter } from './emitter';
 import type { HttpMethod } from './http';
 import type { GuardClass, InterceptorClass, PipeClass } from './middleware';
 import type { Schema } from '@orijs/validation';
@@ -43,17 +44,20 @@ export interface RouteSchemaOptions {
  * }
  * ```
  */
-export interface OriController<TState extends object = Record<string, unknown>> {
+export interface OriController<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> {
 	/**
 	 * Configures routes for this controller using the RouteBuilder.
 	 * @param route - The route builder instance
 	 */
-	configure(route: RouteBuilder<TState>): void;
+	configure(route: RouteBuilder<TState, TParams>): void;
 }
 
 /** Constructor type for Controller classes */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ControllerClass = new (...args: any[]) => OriController<any>;
+export type ControllerClass = new (...args: any[]) => OriController<any, any>;
 
 /** Internal route definition after building */
 export interface RouteDefinition {
@@ -71,17 +75,20 @@ export interface RouteDefinition {
  * Handler function type for a specific context.
  * @typeParam TState - The state variables type for the context
  */
-export type ContextHandler<TState extends object = Record<string, unknown>> = (
-	ctx: RequestContext<TState>
-) => Response | Promise<Response>;
+export type ContextHandler<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> = (ctx: RequestContext<TState, SocketEmitter, TParams>) => Response | Promise<Response>;
 
 /**
  * Handler input - either a function or a static Response.
  * @typeParam TState - The state variables type for the context
+ * @typeParam TParams - The path parameters type
  */
-export type ContextHandlerInput<TState extends object = Record<string, unknown>> =
-	| ContextHandler<TState>
-	| Response;
+export type ContextHandlerInput<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> = ContextHandler<TState, TParams> | Response;
 
 /**
  * Fluent API for defining routes within a controller.
@@ -110,7 +117,10 @@ export type ContextHandlerInput<TState extends object = Record<string, unknown>>
  * }
  * ```
  */
-export interface RouteBuilder<TState extends object = Record<string, unknown>> {
+export interface RouteBuilder<
+	TState extends object = Record<string, unknown>,
+	TParams extends Record<string, string> = Record<string, string>
+> {
 	/**
 	 * Declares a path parameter validator at the controller level.
 	 * Applies automatically to all routes that contain `:name` in their path.
@@ -118,85 +128,91 @@ export interface RouteBuilder<TState extends object = Record<string, unknown>> {
 	 * Built-in validators: UuidParam, StringParam, NumberParam.
 	 * Provide your own by implementing the ParamValidator interface.
 	 *
+	 * Each call accumulates the parameter name into the TParams type,
+	 * enabling type-safe `ctx.params` access in handlers.
+	 *
 	 * @param name - Parameter name (matches `:name` in route paths)
 	 * @param validator - ParamValidator class to validate the parameter
 	 */
-	param(name: string, validator: ParamValidatorClass): RouteBuilder<TState>;
+	param<TName extends string>(
+		name: TName,
+		validator: ParamValidatorClass
+	): RouteBuilder<TState, TParams & Record<TName, string>>;
 	/**
 	 * Adds a guard to the current route or controller.
 	 * @param guard - The guard class to add
 	 */
-	guard(guard: GuardClass): RouteBuilder<TState>;
+	guard(guard: GuardClass): RouteBuilder<TState, TParams>;
 
 	/**
 	 * Replaces all guards for the current route or controller.
 	 * @param guards - The guard classes to use
 	 */
-	guards(guards: GuardClass[]): RouteBuilder<TState>;
+	guards(guards: GuardClass[]): RouteBuilder<TState, TParams>;
 
 	/** Removes all inherited and controller-level guards */
-	clearGuards(): RouteBuilder<TState>;
+	clearGuards(): RouteBuilder<TState, TParams>;
 
 	/**
 	 * Adds an interceptor to the current route or controller.
 	 * @param interceptor - The interceptor class to add
 	 */
-	intercept(interceptor: InterceptorClass): RouteBuilder<TState>;
+	intercept(interceptor: InterceptorClass): RouteBuilder<TState, TParams>;
 
 	/**
 	 * Replaces all interceptors for the current route or controller.
 	 * @param interceptors - The interceptor classes to use
 	 */
-	interceptors(interceptors: InterceptorClass[]): RouteBuilder<TState>;
+	interceptors(interceptors: InterceptorClass[]): RouteBuilder<TState, TParams>;
 
 	/** Removes all inherited and controller-level interceptors */
-	clearInterceptors(): RouteBuilder<TState>;
+	clearInterceptors(): RouteBuilder<TState, TParams>;
 
 	/**
 	 * Adds a validation pipe to the current route or controller.
 	 * @param pipe - The pipe class to use
 	 * @param schema - Optional validation schema
 	 */
-	pipe(pipe: PipeClass, schema?: Schema): RouteBuilder<TState>;
+	pipe(pipe: PipeClass, schema?: Schema): RouteBuilder<TState, TParams>;
 
 	/** Removes all guards and interceptors */
-	clear(): RouteBuilder<TState>;
+	clear(): RouteBuilder<TState, TParams>;
 
 	/**
 	 * Registers a GET route.
 	 * Pass Response directly for zero-allocation static routes.
 	 */
-	get(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+	get(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): RouteBuilder<TState, TParams>;
 
 	/** Registers a POST route. */
-	post(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+	post(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): RouteBuilder<TState, TParams>;
 
 	/** Registers a PUT route. */
-	put(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+	put(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): RouteBuilder<TState, TParams>;
 
 	/** Registers a PATCH route. */
 	patch(
 		path: string,
-		handler: ContextHandlerInput<TState>,
+		handler: ContextHandlerInput<TState, TParams>,
 		schema?: RouteSchemaOptions
-	): RouteBuilder<TState>;
+	): RouteBuilder<TState, TParams>;
 
 	/** Registers a DELETE route. */
 	delete(
 		path: string,
-		handler: ContextHandlerInput<TState>,
+		handler: ContextHandlerInput<TState, TParams>,
 		schema?: RouteSchemaOptions
-	): RouteBuilder<TState>;
+	): RouteBuilder<TState, TParams>;
 
 	/** Registers a HEAD route. */
-	head(path: string, handler: ContextHandlerInput<TState>, schema?: RouteSchemaOptions): RouteBuilder<TState>;
+	head(path: string, handler: ContextHandlerInput<TState, TParams>, schema?: RouteSchemaOptions): RouteBuilder<TState, TParams>;
 
 	/** Registers an OPTIONS route. */
 	options(
 		path: string,
-		handler: ContextHandlerInput<TState>,
+		handler: ContextHandlerInput<TState, TParams>,
 		schema?: RouteSchemaOptions
-	): RouteBuilder<TState>;
+	): RouteBuilder<TState, TParams>;
 
 	/** Returns all registered routes (internal use) */
 	getRoutes(): readonly RouteDefinition[];
