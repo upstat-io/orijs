@@ -1,15 +1,5 @@
 # Code Quality Rules
 
-## NO @upstat/* Dependencies (ABSOLUTE)
-
-This is a standalone OSS framework. **ZERO** dependencies on @upstat/* allowed.
-
-Check before committing:
-```bash
-grep -r "@upstat/" packages/
-# Must return nothing
-```
-
 ## Type Assertions Banned
 
 ```typescript
@@ -120,5 +110,4 @@ import { UserService } from './user.service';
 2. `bun test` - All tests pass
 3. `bun run lint` - No lint errors
 4. No `console.log` statements
-5. No @upstat/* imports
-6. No commented-out code
+5. No commented-out code

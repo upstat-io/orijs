@@ -1,21 +1,18 @@
 # OriJS Development Rules
 
-**CRITICAL: Use only Opus 4.5 model.**
-
-**GitHub**: https://github.com/upstat-io/orijs
+**CRITICAL: Use only Opus 4.6 model.**
 
 ---
 
-## CRITICAL: Standalone Framework
+## Framework Overview
 
-**OriJS is a standalone, self-contained framework.** It is designed to be extracted to its own repository.
+**OriJS is a modular, Bun-native TypeScript framework** for building backend applications.
 
-### Standalone Rules
+### Core Principles
 
-1. **No external dependencies on parent monorepo** - OriJS must NOT depend on any `@upstat/*` packages
-2. **Self-contained packages** - All packages use `@orijs/*` namespace
-3. **Own test infrastructure** - Use `@orijs/test-utils` for tests
-4. **Own documentation** - All docs live in `docs/`
+1. **Modular packages** - All packages use `@orijs/*` namespace
+2. **Self-contained** - Own test infrastructure via `@orijs/test-utils`
+3. **Own documentation** - All docs live in `docs/`
 
 ### Package Namespace
 

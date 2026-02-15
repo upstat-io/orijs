@@ -14,7 +14,7 @@ Run these commands **in parallel** to detect automated issues:
 |------|---------|-----------|
 | **typecheck** | `bun run tsc --noEmit 2>&1` | Type errors, import issues |
 | **tests** | `bun test 2>&1` | Failing tests, regressions |
-| **upstat-deps** | `grep -r "@upstat/" packages/ --include="*.ts" --include="*.json" \|\| echo "CLEAN: No @upstat dependencies"` | Forbidden @upstat/* imports |
+| **ext-deps** | `grep -r "from '[^@.]" packages/ --include="*.ts" \|\| echo "CLEAN: No unexpected external imports"` | Unexpected external imports |
 | **console-logs** | `grep -rn "console\\.log" packages/ --include="*.ts" \|\| echo "CLEAN: No console.log"` | Debug statements left in code |
 | **commented-code** | `grep -rn "// TODO\\|// FIXME\\|// HACK\\|// XXX" packages/ --include="*.ts" \|\| echo "CLEAN: No TODO markers"` | Unresolved TODOs |
 | **as-unknown** | `grep -rn "as unknown" packages/ --include="*.ts" \|\| echo "CLEAN: No type escapes"` | Type assertion escapes |
@@ -33,11 +33,9 @@ Launch **10 parallel Explore agents** to analyze these categories. Each agent sh
 
 **1. OSS Readiness & Framework Genericity**
 Check that the framework is truly standalone and usable by anyone:
-- No `@upstat/*` imports anywhere (CRITICAL)
-- No Upstat-specific naming (variable names, comments, examples)
-- No hardcoded Upstat URLs, domains, or configuration
-- Generic examples in documentation (not Upstat-specific use cases)
 - All packages properly namespaced under `@orijs/*`
+- Generic examples in documentation
+- No hardcoded URLs, domains, or configuration
 - No internal/private APIs exposed that shouldn't be
 - License headers if required
 - README.md exists for each package
@@ -145,7 +143,6 @@ After all agents complete, aggregate findings:
 | **MEDIUM** | Code quality, style, minor improvements | Fix when touching code |
 
 ### Critical Issues (Examples)
-- Any `@upstat/*` import
 - Type assertion escapes (`as unknown as`)
 - Exposed secrets or credentials
 - Circular package dependencies
@@ -185,11 +182,9 @@ Group results by severity, then by category.
 
 Before any release, verify:
 
-- [ ] `grep -r "@upstat/" packages/` returns nothing
 - [ ] `bun run tsc --noEmit` has zero errors
 - [ ] `bun test` all tests pass
 - [ ] No `console.log` in production code
-- [ ] No hardcoded Upstat references in code or docs
 - [ ] All packages have README.md
 - [ ] All public APIs have JSDoc
 - [ ] Example app runs successfully
@@ -212,7 +207,7 @@ Check `docs/guides/`:
 - `_llms.md` index is up-to-date
 - All guides reference current API
 - Code examples compile and run
-- No Upstat-specific examples
+- No project-specific examples (keep generic)
 
 ### Example App Verification
 Check `example/`:

@@ -1,6 +1,6 @@
 # OriJS
 
-> **Alpha Software** — OriJS is being built and used in production by [Upstat](https://upstat.io) to power their own backend services. While this real-world usage drives rapid improvements, the framework is still early stage. Use at your own risk. APIs and behaviors are subject to change.
+> **Alpha Software** — OriJS is actively developed and used in production. While real-world usage drives rapid improvements, the framework is still early stage. Use at your own risk. APIs and behaviors are subject to change.
 
 A NestJS-inspired web framework for Bun — without the decorators.
 

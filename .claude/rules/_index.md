@@ -4,7 +4,7 @@
 
 | File | Description |
 |------|-------------|
-| `code-quality.md` | No @upstat deps, naming, functions, SRP |
+| `code-quality.md` | Type safety, naming, functions, SRP |
 | `controller.md` | Route builder, handlers, guards, validation |
 | `sql.md` | oriSql patterns, table definitions, Bun postgres |
 | `testing.md` | Bun test, layers, mocking, assertions |
@@ -12,8 +12,7 @@
 ## Quick Reference
 
 ### Absolute Rules
-1. **NO @upstat/* dependencies** - Zero tolerance
-2. **Bun-native** - Use Bun APIs, not Node.js
+1. **Bun-native** - Use Bun APIs, not Node.js
 3. **TypeBox validation** - Not Zod
 4. **Fix ALL errors immediately** - No exceptions
 
