@@ -130,7 +130,7 @@ describe('addUsers extension', () => {
     const server = await app.listen(0);
     const routes = app.getRoutes();
 
-    expect(routes.some(r => r.path === '/users' && r.method === 'GET')).toBe(true);
+    expect(routes.some(r => r.fullPath === '/users' && r.method === 'GET')).toBe(true);
 
     await app.stop();
   });
@@ -229,24 +229,32 @@ class MonitorController implements OriController<TenantState & AuthState> {
 Scope cache keys by tenant to prevent data leakage between accounts:
 
 ```typescript
-import { CacheEntityRegistry } from '@orijs/cache';
+import { defineScopes, defineEntities, EntityRegistry, createCacheBuilder } from '@orijs/cache';
 
-const Entities = CacheEntityRegistry.create({
-  Monitor: {
-    scope: 'project',
-    requiredParams: ['accountUuid', 'projectUuid'],
-  },
-  User: {
-    scope: 'account',
-    requiredParams: ['accountUuid'],
-  },
+const Scope = defineScopes({
+  Global: { name: 'global' },
+  Account: { name: 'account', param: 'accountUuid' },
+  Project: { name: 'project', param: 'projectUuid' },
 });
 
-// Cache key includes tenant: cache:Monitor:project:abc123:def456:findAll
-const MonitorCache = Cache.for(Entities.Monitor)
-  .ttl('5m')
-  .params('accountUuid', 'projectUuid')
+const Entities = defineEntities({
+  Account: { name: 'Account', scope: Scope.Account },
+  Project: { name: 'Project', scope: Scope.Project },
+  Monitor: { name: 'Monitor', scope: Scope.Project, param: 'monitorUuid' },
+  User: { name: 'User', scope: Scope.Account, param: 'userUuid' },
+});
+
+const registry = EntityRegistry.create()
+  .scopes(Scope)
+  .entities(Entities)
   .build();
+
+const Cache = createCacheBuilder(registry);
+
+// Params auto-derived from entity registry:
+// Monitor params = ['accountUuid', 'projectUuid', 'monitorUuid']
+// Cache key includes tenant context automatically
+const MonitorCache = Cache.for(Entities.Monitor).ttl('5m').build();
 ```
 
 ## Error Handling Strategy
@@ -411,25 +419,21 @@ Configure transports for different environments:
 ```typescript
 import { consoleTransport, fileTransport, filterTransport } from '@orijs/logging';
 
-// Development — colored console output
+// Development — colored pretty output (auto-detected when not in production)
 Ori.create()
   .logger({
     level: 'debug',
-    transports: [consoleTransport({ colorize: true })],
+    transports: [consoleTransport({ pretty: true, colors: true })],
   });
 
-// Production — JSON to stdout, errors to file
+// Production — JSON to stdout, all logs also to file with rotation
 Ori.create()
   .logger({
     level: 'info',
     transports: [
-      consoleTransport({ colorize: false }), // JSON to stdout for log aggregation
-      filterTransport({
-        level: 'error',
-        transport: fileTransport({
-          path: './logs/error.log',
-          rotate: { maxSize: '10m', maxFiles: 5 },
-        }),
+      consoleTransport({ json: true }),    // JSON to stdout for log aggregation
+      fileTransport('./logs/app.log', {    // All logs to rotated file
+        rotate: { size: '10mb', keep: 5 },
       }),
     ],
   });
@@ -521,7 +525,7 @@ Database and Redis connections should be created once and shared via `providerIn
 
 ```typescript
 import { SQL } from 'bun:sql';
-import { Redis } from '@orijs/cache-redis';
+import { createRedisCacheProvider } from '@orijs/cache-redis';
 
 const sql = new SQL({
   url: process.env.DATABASE_URL,
@@ -529,15 +533,14 @@ const sql = new SQL({
   idleTimeout: 30, // Close idle connections after 30s
 });
 
-const redis = new Redis({
-  host: process.env.REDIS_HOST,
-  port: Number(process.env.REDIS_PORT),
-  maxRetriesPerRequest: 3,
-});
-
 Ori.create()
   .use(app => addDatabase(app, sql))
-  .cache(createRedisCacheProvider({ connection: redis }))
+  .cache(createRedisCacheProvider({
+    connection: {
+      host: process.env.REDIS_HOST ?? 'localhost',
+      port: Number(process.env.REDIS_PORT ?? 6379),
+    },
+  }))
   .listen(3000);
 ```
 
@@ -691,7 +694,7 @@ A RabbitMQ implementation:
 // src/providers/rabbitmq-event-provider.ts
 import amqp from 'amqplib';
 import type { EventProvider, EventHandlerFn, EventMessage, EmitOptions } from '@orijs/events';
-import { EventSubscription } from '@orijs/events';
+import { EventSubscription } from '@orijs/events';  // Class with _resolve()/_reject() methods
 import type { PropagationMeta } from '@orijs/logging';
 
 export class RabbitMQEventProvider implements EventProvider {
@@ -717,13 +720,15 @@ export class RabbitMQEventProvider implements EventProvider {
     meta?: PropagationMeta,
     options?: EmitOptions
   ): EventSubscription<TReturn> {
+    const subscription = new EventSubscription<TReturn>(crypto.randomUUID());
+
     const message: EventMessage = {
       version: '1',
       eventId: crypto.randomUUID(),
       eventName,
       payload,
       meta: meta ?? {},
-      correlationId: crypto.randomUUID(),
+      correlationId: subscription.correlationId,
       timestamp: Date.now(),
     };
 
@@ -735,12 +740,14 @@ export class RabbitMQEventProvider implements EventProvider {
     );
 
     if (!published) {
-      return EventSubscription.rejected(new Error('RabbitMQ publish failed'));
+      subscription._reject(new Error('RabbitMQ publish failed'));
+    } else {
+      // For simplicity, resolve immediately
+      // A full implementation would track request-response correlation
+      subscription._resolve(undefined as TReturn);
     }
 
-    // For simplicity, return a resolved subscription
-    // A full implementation would track request-response correlation
-    return EventSubscription.resolved(undefined as TReturn);
+    return subscription;
   }
 
   public async subscribe<TPayload = unknown, TReturn = void>(

@@ -6,7 +6,7 @@
 
 SQL gives you flat rows. TypeScript wants nested objects. Every application that touches a database has to bridge this gap, and how you bridge it determines whether your data layer is a joy or a nightmare.
 
-ORMs solve this by hiding SQL entirely -- you write method chains and hope the generated queries are efficient. OriJS takes a different approach: **you write the SQL, the mapper handles the shape**. The `@orijs/mapper` package maps flat SQL result rows to typed TypeScript objects, handling column naming, type coercion, JOINs, JSON columns, and embedded objects -- without generating a single query.
+ORMs solve this by hiding SQL entirely -- you write method chains and hope the generated queries are efficient. OriJS takes a different approach: **you write the SQL, the mapper handles the shape**. The `@orijs/mapper` package maps flat SQL result rows to typed TypeScript objects, handling column naming, type coercion, JOINs, JSON columns, and embedded objects -- without generating a single query. The `@orijs/sql` package complements this with type-safe SQL interpolation, using the same table definitions for both queries and result mapping.
 
 ## The Problem: Flat Rows vs. Nested Objects
 
@@ -125,16 +125,7 @@ Tables.User.displayName; // 'display_name' (the SQL column name)
 Tables.User.uuid;        // 'uuid'
 ```
 
-The direct column name access (`Tables.User.displayName` returning `'display_name'`) is useful when building SQL queries -- you reference columns by their property names, and the table definition provides the actual column names:
-
-```typescript
-// In your SQL queries, reference columns via the table definition
-const sql = `
-  SELECT ${Tables.User.uuid}, ${Tables.User.email}, ${Tables.User.displayName}
-  FROM ${Tables.User.$name}
-  WHERE ${Tables.User.isActive} = true
-`;
-```
+The direct column name access (`Tables.User.displayName` returning `'display_name'`) is essential when building SQL queries with `@orijs/sql` -- you reference columns by their property names, and the table definition provides the actual column names. See the [Type-Safe SQL with `@orijs/sql`](#type-safe-sql-with-orijssql) section below for full details on how these table definitions integrate with SQL queries.
 
 ## Creating Mappers
 
@@ -157,9 +148,11 @@ The generic type parameter `<User>` tells TypeScript what shape the mapped resul
 ### Mapping a Single Row
 
 ```typescript
-const row = await db.query('SELECT * FROM "user" WHERE uuid = $1', [userId]);
+const rows = await oriSql`
+  SELECT * FROM ${[Tables.User.$name]} WHERE ${[Tables.User.uuid]} = ${userId}
+`;
 
-const result = UserMapper.map(row[0]);
+const result = UserMapper.map(rows[0]);
 // Returns MapResult<User>
 
 const user = result.value();
@@ -197,7 +190,9 @@ const user = UserMapper.map(row)
 ### Mapping Multiple Rows
 
 ```typescript
-const rows = await db.query('SELECT * FROM "user" WHERE is_active = true');
+const rows = await oriSql`
+  SELECT * FROM ${[Tables.User.$name]} WHERE ${[Tables.User.isActive]} = true
+`;
 
 const users = UserMapper.mapMany(rows);
 // User[] -- automatically filters out null/undefined results
@@ -241,16 +236,18 @@ const UserWithAccountMapper = Mapper.for<UserWithAccount>(Tables.User)
   .build();
 ```
 
-The SQL query aliases the joined columns with a prefix:
+The SQL query aliases the joined columns with a prefix. Using `oriSql`:
 
-```sql
-SELECT
-  u.uuid, u.email, u.display_name,
-  a.uuid AS account_uuid,
-  a.name AS account_name
-FROM "user" u
-JOIN account a ON u.account_uuid = a.uuid
-WHERE u.uuid = $1
+```typescript
+const rows = await oriSql`
+  SELECT
+    u.${[Tables.User.uuid]}, u.${[Tables.User.email]}, u.${[Tables.User.displayName]},
+    a.${[Tables.Account.uuid]} AS account_uuid,
+    a.${[Tables.Account.name]} AS account_name
+  FROM ${[Tables.User.$name]} u
+  JOIN ${[Tables.Account.$name]} a ON u.${[Tables.User.accountUuid]} = a.${[Tables.Account.uuid]}
+  WHERE u.${[Tables.User.uuid]} = ${userId}
+`;
 ```
 
 When the mapper sees `account_uuid` in the row, it knows to read it as the Account table's `uuid` field (because of the `account_` prefix) and map it to the `accountUuid` property.
@@ -305,14 +302,16 @@ const CommentWithUserMapper = Mapper.for<CommentWithUser>(Tables.Comment)
   .build();
 ```
 
-```sql
-SELECT
-  c.uuid, c.body, c.created_at,
-  u.uuid AS author_uuid,
-  u.display_name AS author_display_name,
-  u.email AS author_email
-FROM comment c
-LEFT JOIN "user" u ON c.author_uuid = u.uuid
+```typescript
+const rows = await oriSql`
+  SELECT
+    c.${[Tables.Comment.uuid]}, c.${[Tables.Comment.body]}, c.${[Tables.Comment.createdAt]},
+    u.${[Tables.User.uuid]} AS author_uuid,
+    u.${[Tables.User.displayName]} AS author_display_name,
+    u.${[Tables.User.email]} AS author_email
+  FROM ${[Tables.Comment.$name]} c
+  LEFT JOIN ${[Tables.User.$name]} u ON c.${[Tables.Comment.authorUuid]} = u.${[Tables.User.uuid]}
+`;
 ```
 
 When the user doesn't exist (all `author_*` columns are NULL), the mapper sets `author` to `undefined`. When the user exists, it creates a full nested object.
@@ -481,6 +480,220 @@ const AccountMapper = Mapper.for<Account>(Tables.Account)
 
 Transforms run after all other mapping is complete, so the value is already coerced to the correct type.
 
+## Type-Safe SQL with `@orijs/sql`
+
+The mapper handles the result side -- turning flat rows into typed objects. But what about the query side? Writing raw SQL strings with manual column names is error-prone: typos in column names silently produce wrong results, and table renames require grep-and-replace across every query.
+
+The `@orijs/sql` package closes this gap. It provides a tagged template literal (`oriSql`) that distinguishes between SQL identifiers (table names, column names) and parameterized values, using your mapper table definitions as the source of truth for both.
+
+### Setup
+
+```typescript
+import { SQL } from 'bun';
+import { createOriSql } from '@orijs/sql';
+
+// Create a Bun SQL connection
+const sql = new SQL({
+  hostname: 'localhost',
+  port: 5432,
+  database: 'mydb',
+  username: 'user',
+  password: 'pass',
+});
+
+// Create the oriSql tagged template function
+const oriSql = createOriSql(sql);
+```
+
+### The Interpolation Syntax
+
+`oriSql` uses a single convention to distinguish identifiers from values:
+
+| What | Syntax | Example | Result |
+|------|--------|---------|--------|
+| Identifier (column/table) | `${[name]}` | `${[Tables.User.email]}` | Safe identifier reference |
+| Value (parameter) | `${value}` | `${userId}` | Parameterized `$1`, `$2`, etc. |
+
+The key difference is the **array wrapper**. Wrapping a string in `[brackets]` marks it as a SQL identifier (a table or column name). Everything else is a parameterized value, safe from SQL injection.
+
+```typescript
+// Identifier: ${[string]} -- table and column names
+// Value: ${expression} -- user input, search terms, IDs
+const rows = await oriSql`
+  SELECT ${[Tables.User.uuid]}, ${[Tables.User.email]}
+  FROM ${[Tables.User.$name]}
+  WHERE ${[Tables.User.uuid]} = ${userId}
+`;
+```
+
+Under the hood, `oriSql` detects single-element string arrays and passes them to Bun's native `sql('identifier')` function, which delegates validation to PostgreSQL. Invalid identifiers (including SQL injection attempts) are rejected by PostgreSQL with "column does not exist" errors.
+
+### Table Definitions as the Source of Truth
+
+Your `Mapper.defineTables()` output serves double duty -- it configures mappers and provides column references for SQL queries:
+
+```typescript
+import { Mapper, field } from '@orijs/mapper';
+
+const Tables = Mapper.defineTables({
+  User: {
+    tableName: 'user',
+    uuid: field('uuid').string(),
+    email: field('email').string(),
+    displayName: field('display_name').string().optional(),
+    accountUuid: field('account_uuid').string(),
+    isActive: field('is_active').boolean().default(true),
+    createdAt: field('created_at').date(),
+  },
+  Account: {
+    tableName: 'account',
+    uuid: field('uuid').string(),
+    name: field('name').string(),
+    createdAt: field('created_at').date(),
+  },
+});
+
+// Tables.User.displayName evaluates to 'display_name'
+// Tables.User.$name evaluates to 'user'
+// These strings flow into oriSql as identifier references
+
+const user = await oriSql`
+  SELECT ${[Tables.User.uuid]}, ${[Tables.User.email]}, ${[Tables.User.displayName]}
+  FROM ${[Tables.User.$name]}
+  WHERE ${[Tables.User.isActive]} = true
+    AND ${[Tables.User.uuid]} = ${userId}
+`;
+```
+
+When you rename a column in your table definition, every query that references it through the table object updates automatically. No grep required.
+
+### JOIN Queries
+
+JOINs reference multiple table definitions. The identifier syntax works the same way -- each column reference includes the table alias prefix in the SQL, and the identifier marker wraps the column name:
+
+```typescript
+const rows = await oriSql`
+  SELECT
+    u.${[Tables.User.uuid]},
+    u.${[Tables.User.email]},
+    a.${[Tables.Account.name]} AS account_name
+  FROM ${[Tables.User.$name]} u
+  JOIN ${[Tables.Account.$name]} a
+    ON a.${[Tables.Account.uuid]} = u.${[Tables.User.accountUuid]}
+  WHERE a.${[Tables.Account.uuid]} = ${accountUuid}
+`;
+```
+
+Notice that `${[Tables.User.$name]}` references the table name for the `FROM` clause, while `${[Tables.User.uuid]}` references a column name in the `SELECT` list. Both are identifiers (wrapped in arrays), but they serve different roles in the SQL.
+
+### INSERT, UPDATE, DELETE
+
+The same syntax applies to write operations:
+
+```typescript
+// INSERT
+await oriSql`
+  INSERT INTO ${[Tables.User.$name]} (
+    ${[Tables.User.email]},
+    ${[Tables.User.displayName]},
+    ${[Tables.User.accountUuid]}
+  )
+  VALUES (${email}, ${displayName}, ${accountUuid})
+  RETURNING ${[Tables.User.uuid]}
+`;
+
+// UPDATE
+await oriSql`
+  UPDATE ${[Tables.User.$name]}
+  SET ${[Tables.User.displayName]} = ${newDisplayName}
+  WHERE ${[Tables.User.uuid]} = ${userId}
+  RETURNING ${[Tables.User.uuid]}
+`;
+
+// DELETE
+await oriSql`
+  DELETE FROM ${[Tables.User.$name]}
+  WHERE ${[Tables.User.uuid]} = ${userId}
+`;
+```
+
+### Array Handling
+
+Bun's PostgreSQL driver requires special syntax for array operations. Use `ANY()` with a type cast:
+
+```typescript
+// UUID array (e.g., batch lookup)
+const users = await oriSql`
+  SELECT ${[Tables.User.uuid]}, ${[Tables.User.email]}
+  FROM ${[Tables.User.$name]}
+  WHERE ${[Tables.User.uuid]} = ANY(${uuids}::uuid[])
+`;
+
+// Integer array
+const items = await oriSql`
+  SELECT * FROM ${[Tables.Order.$name]}
+  WHERE ${[Tables.Order.id]} = ANY(ARRAY[${ids.join(',')}]::int[])
+`;
+```
+
+### JSONB Handling
+
+Pass JavaScript objects directly as values -- Bun handles serialization to JSONB:
+
+```typescript
+const metadata = { theme: 'dark', notifications: { email: true } };
+
+await oriSql`
+  UPDATE ${[Tables.User.$name]}
+  SET ${[Tables.User.metadata]} = ${metadata}
+  WHERE ${[Tables.User.uuid]} = ${userId}
+`;
+```
+
+### Security Model
+
+The identifier/value distinction is the security boundary:
+
+- **Values** (`${expression}`) are always parameterized. User input, search terms, and dynamic data go here. SQL injection is impossible.
+- **Identifiers** (`${[name]}`) are passed to Bun's `sql('identifier')` function, which delegates to PostgreSQL for validation. They should come from trusted sources -- your table definitions, not user input.
+
+```typescript
+// SAFE: Identifier from table definition (trusted source)
+oriSql`SELECT ${[Tables.User.email]} FROM ${[Tables.User.$name]}`;
+
+// SAFE: Value from user input (parameterized)
+oriSql`SELECT * FROM ${[Tables.User.$name]} WHERE ${[Tables.User.email]} = ${userInput}`;
+
+// NEVER DO THIS: User input as identifier
+// oriSql`SELECT ${[userInput]} FROM ${[Tables.User.$name]}`;
+```
+
+### Putting It Together: Query + Mapper
+
+The full pattern uses `oriSql` for the query and a mapper for the result:
+
+```typescript
+class UserDbService {
+  async getUserWithAccount(userId: string): Promise<UserWithAccount | null> {
+    const rows = await oriSql`
+      SELECT
+        u.${[Tables.User.uuid]},
+        u.${[Tables.User.email]},
+        u.${[Tables.User.displayName]},
+        a.${[Tables.Account.uuid]} AS account_uuid,
+        a.${[Tables.Account.name]} AS account_name
+      FROM ${[Tables.User.$name]} u
+      JOIN ${[Tables.Account.$name]} a
+        ON a.${[Tables.Account.uuid]} = u.${[Tables.User.accountUuid]}
+      WHERE u.${[Tables.User.uuid]} = ${userId}
+    `;
+    return UserWithAccountMapper.map(rows[0]).default(null);
+  }
+}
+```
+
+The table definition is the single source of truth: `oriSql` reads column names from it for the query, and the mapper reads field definitions from it for the result. Rename a column once, and both the query and the mapping update.
+
 ## Why Not an ORM?
 
 OriJS deliberately does not include an ORM. This is a design decision, not a missing feature.
@@ -507,10 +720,14 @@ If your application is mostly CRUD with simple queries, an ORM saves boilerplate
 
 ## Real-World Example: Monitor Entity with Joins
 
-Here's a complete example from a monitoring application, showing how multiple mappers compose for different query needs:
+Here's a complete example from a monitoring application, showing how table definitions, `oriSql` queries, and mappers compose for different query needs:
 
 ```typescript
 import { Mapper, field } from '@orijs/mapper';
+import { createOriSql } from '@orijs/sql';
+
+// Create oriSql from your Bun SQL connection
+// const oriSql = createOriSql(sql);
 
 // Table definitions
 const Tables = Mapper.defineTables({
@@ -602,69 +819,89 @@ const MonitorListMapper = Mapper.for<MonitorListItem>(Tables.Monitor)
   .col<number>('uptimePercent', 'uptime_pct').default(0)
   .build();
 
-// Usage in a database service
+// Usage in a database service (using oriSql for type-safe queries)
 class MonitorDbService {
   async getMonitor(uuid: string): Promise<Monitor | null> {
-    const rows = await this.sql`
-      SELECT * FROM monitor WHERE uuid = ${uuid}
+    const rows = await oriSql`
+      SELECT * FROM ${[Tables.Monitor.$name]} WHERE ${[Tables.Monitor.uuid]} = ${uuid}
     `;
     return MonitorMapper.map(rows[0]).default(null);
   }
 
   async getMonitorWithStatus(uuid: string): Promise<MonitorWithStatus | null> {
-    const rows = await this.sql`
+    const rows = await oriSql`
       SELECT
-        m.uuid, m.name, m.url, m.is_active,
-        ms.status AS latest_status,
-        ms.response_time AS latest_response_time,
-        ms.checked_at AS latest_checked_at
-      FROM monitor m
+        m.${[Tables.Monitor.uuid]}, m.${[Tables.Monitor.name]},
+        m.${[Tables.Monitor.url]}, m.${[Tables.Monitor.isActive]},
+        ms.${[Tables.MonitorStatus.status]} AS latest_status,
+        ms.${[Tables.MonitorStatus.responseTime]} AS latest_response_time,
+        ms.${[Tables.MonitorStatus.checkedAt]} AS latest_checked_at
+      FROM ${[Tables.Monitor.$name]} m
       LEFT JOIN LATERAL (
-        SELECT status, response_time, checked_at
-        FROM monitor_status
-        WHERE monitor_uuid = m.uuid
-        ORDER BY checked_at DESC
+        SELECT ${[Tables.MonitorStatus.status]},
+               ${[Tables.MonitorStatus.responseTime]},
+               ${[Tables.MonitorStatus.checkedAt]}
+        FROM ${[Tables.MonitorStatus.$name]}
+        WHERE ${[Tables.MonitorStatus.monitorUuid]} = m.${[Tables.Monitor.uuid]}
+        ORDER BY ${[Tables.MonitorStatus.checkedAt]} DESC
         LIMIT 1
       ) ms ON true
-      WHERE m.uuid = ${uuid}
+      WHERE m.${[Tables.Monitor.uuid]} = ${uuid}
     `;
     return MonitorWithStatusMapper2.map(rows[0]).default(null);
   }
 
   async listMonitors(projectUuid: string): Promise<MonitorListItem[]> {
-    const rows = await this.sql`
+    const rows = await oriSql`
       SELECT
-        m.uuid, m.name, m.url, m.is_active,
-        p.name AS project_name,
-        p.slug AS project_slug,
-        ms.status AS latest_status,
+        m.${[Tables.Monitor.uuid]}, m.${[Tables.Monitor.name]},
+        m.${[Tables.Monitor.url]}, m.${[Tables.Monitor.isActive]},
+        p.${[Tables.Project.name]} AS project_name,
+        p.${[Tables.Project.slug]} AS project_slug,
+        ms.${[Tables.MonitorStatus.status]} AS latest_status,
         COALESCE(u.uptime_pct, 0) AS uptime_pct
-      FROM monitor m
-      JOIN project p ON m.project_uuid = p.uuid
+      FROM ${[Tables.Monitor.$name]} m
+      JOIN ${[Tables.Project.$name]} p
+        ON p.${[Tables.Project.uuid]} = m.${[Tables.Monitor.projectUuid]}
       LEFT JOIN LATERAL (
-        SELECT status FROM monitor_status
-        WHERE monitor_uuid = m.uuid
-        ORDER BY checked_at DESC LIMIT 1
+        SELECT ${[Tables.MonitorStatus.status]}
+        FROM ${[Tables.MonitorStatus.$name]}
+        WHERE ${[Tables.MonitorStatus.monitorUuid]} = m.${[Tables.Monitor.uuid]}
+        ORDER BY ${[Tables.MonitorStatus.checkedAt]} DESC LIMIT 1
       ) ms ON true
       LEFT JOIN LATERAL (
-        SELECT (COUNT(*) FILTER (WHERE status = 'up')::float / NULLIF(COUNT(*), 0) * 100) AS uptime_pct
-        FROM monitor_status
-        WHERE monitor_uuid = m.uuid AND checked_at > NOW() - INTERVAL '24 hours'
+        SELECT (COUNT(*) FILTER (WHERE ${[Tables.MonitorStatus.status]} = 'up')::float
+          / NULLIF(COUNT(*), 0) * 100) AS uptime_pct
+        FROM ${[Tables.MonitorStatus.$name]}
+        WHERE ${[Tables.MonitorStatus.monitorUuid]} = m.${[Tables.Monitor.uuid]}
+          AND ${[Tables.MonitorStatus.checkedAt]} > NOW() - INTERVAL '24 hours'
       ) u ON true
-      WHERE m.project_uuid = ${projectUuid}
-      ORDER BY m.name
+      WHERE m.${[Tables.Monitor.projectUuid]} = ${projectUuid}
+      ORDER BY m.${[Tables.Monitor.name]}
     `;
     return MonitorListMapper.mapMany(rows);
   }
 }
 ```
 
-This example shows the mapper's strength: each query has its own mapper tailored to its result shape. The SQL is explicit and optimized. The TypeScript types are correct. And adding a new query with a different shape is just a new mapper definition -- no schema changes, no model updates, no migration coupling.
+This example shows how the pieces fit together: table definitions are the single source of truth, `oriSql` references them for type-safe queries, and each query has its own mapper tailored to its result shape. The SQL is explicit and optimized. The TypeScript types are correct. Rename a column in the table definition, and both the queries and mappers update. Adding a new query with a different shape is just a new mapper definition -- no schema changes, no model updates, no migration coupling.
 
 ## Summary
 
-The `@orijs/mapper` package solves the impedance mismatch between SQL and TypeScript without hiding SQL behind an abstraction:
+The `@orijs/mapper` and `@orijs/sql` packages together solve the impedance mismatch between SQL and TypeScript without hiding SQL behind an abstraction:
 
+**Table Definitions** (shared by both packages):
+- **`Mapper.defineTables()`** / **`Mapper.defineTable()`** defines your schema once -- column names, types, and modifiers
+- Table output provides `$name` (table name) and property access (column names) for SQL queries
+- Table output provides `$fields` (full field definitions) for mapper configuration
+
+**SQL Queries** (`@orijs/sql`):
+- **`createOriSql(sql)`** wraps Bun's SQL connection with identifier-aware interpolation
+- **`${[identifier]}`** syntax marks table/column names -- passed to Bun's native identifier handling
+- **`${value}`** syntax marks parameterized values -- safe for user input
+- Arrays use `ANY(${arr}::type[])`, JSONB values are passed directly
+
+**Result Mapping** (`@orijs/mapper`):
 - **`field()`** defines column-to-property mappings with type coercion
 - **`Mapper.for<T>()`** creates type-safe mappers from table definitions
 - **`pick().prefix()`** handles JOINs by reading prefixed columns from other tables
@@ -673,7 +910,7 @@ The `@orijs/mapper` package solves the impedance mismatch between SQL and TypeSc
 - **`col()`** maps raw columns (aggregates, computed values) with defaults
 - **`MapResult`** provides fluent null handling with `.value()`, `.default()`, and `.mergeWhen()`
 
-You write SQL. The mapper shapes the result. Both do what they're best at.
+You define your tables once. `oriSql` uses them for type-safe queries. The mapper uses them for type-safe results. Both reference the same source of truth.
 
 ---
 

@@ -27,10 +27,12 @@ OriJS takes a different approach: **every infrastructure component implements a 
 ```typescript
 // The cache system defines a CacheProvider interface
 interface CacheProvider {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ttl?: number): Promise<void>;
-  del(key: string): Promise<void>;
-  // ...
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, ttlSeconds: number): Promise<void>;
+  del(key: string): Promise<number>;
+  delMany(keys: string[]): Promise<number>;
+  exists(key: string): Promise<boolean>;
+  ttl(key: string): Promise<number>;
 }
 
 // OriJS ships with Redis and InMemory implementations
@@ -78,13 +80,13 @@ class UserController implements OriController {
   constructor(private userService: UserService) {}
 
   configure(r: RouteBuilder) {
-    r.get('/:id')
-      .guard(AuthGuard)
-      .handle(this.getUser);
+    r.guard(AuthGuard);
+    r.get('/:id', this.getUser);
   }
 
   private getUser = async (ctx: RequestContext) => {
-    return this.userService.findById(ctx.params.id);
+    const user = await this.userService.findById(ctx.params.id);
+    return Response.json(user);
   };
 }
 ```
@@ -159,7 +161,7 @@ function useUsers(app: OriApplication) {
   app
     .provider(UserRepository, [DbService])
     .provider(UserService, [UserRepository])
-    .controller(UserController, [UserService]);
+    .controller('/users', UserController, [UserService]);
 }
 
 // Usage
@@ -198,13 +200,15 @@ const CreateUserBody = Type.Object({
   role: Type.Union([Type.Literal('admin'), Type.Literal('member')]),
 });
 
-r.post('/')
-  .validate({ body: CreateUserBody })
-  .handle(async (ctx) => {
-    // ctx.body is fully typed as { name: string; email: string; role: 'admin' | 'member' }
-    const user = await this.userService.create(ctx.body);
-    return ctx.response.created(user);
-  });
+// In configure():
+r.post('/', this.create, { body: CreateUserBody });
+
+// Handler receives validated body:
+private create = async (ctx: RequestContext) => {
+  const input = await ctx.json<Static<typeof CreateUserBody>>();
+  const user = await this.userService.create(input);
+  return Response.json(user, { status: 201 });
+};
 ```
 
 **Why TypeBox as the default over Zod?**

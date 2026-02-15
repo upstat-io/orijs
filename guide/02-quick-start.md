@@ -13,7 +13,7 @@ Create a new project and install OriJS:
 ```bash
 mkdir my-api && cd my-api
 bun init -y
-bun add @orijs/core @orijs/orijs
+bun add @orijs/orijs
 ```
 
 That's it. No CLI scaffolding tool, no project generator, no boilerplate repository. OriJS is a library, not a framework that owns your project structure.
@@ -296,7 +296,7 @@ Update the controller to validate request bodies:
 
 ```typescript
 // src/users/user.controller.ts
-import { Type } from '@sinclair/typebox';
+import { Type } from '@orijs/validation';
 import type { OriController, RequestContext, RouteBuilder } from '@orijs/orijs';
 import type { UserService } from './user.service';
 
@@ -326,10 +326,11 @@ export class UserController implements OriController {
   };
 
   private create = async (ctx: RequestContext) => {
-    // ctx.body is now typed as { name: string; email: string }
-    // and guaranteed to be valid — the framework rejects invalid bodies
-    // before your handler runs
-    const user = await this.userService.createUser(ctx.body.name, ctx.body.email);
+    // The framework validates the body against CreateUserBody before your
+    // handler runs — invalid requests get a 400 response automatically.
+    // ctx.json() returns the already-parsed and validated body.
+    const { name, email } = await ctx.json<{ name: string; email: string }>();
+    const user = await this.userService.createUser(name, email);
     return Response.json(user, { status: 201 });
   };
 
@@ -340,7 +341,7 @@ export class UserController implements OriController {
 }
 ```
 
-Now if someone sends an invalid body, they get a 400 response with validation errors — and your handler never executes. The validated body is available on `ctx.body` with full TypeScript types inferred from the schema.
+Now if someone sends an invalid body, they get a 400 response with validation errors — and your handler never executes. The validated body is accessed via `await ctx.json<T>()`, which returns the already-parsed result.
 
 **TypeBox is a provider.** If you prefer Zod, you can write a validation provider that wraps Zod and plug it in. The framework doesn't know or care what validation library runs behind the interface. See [Chapter 4: The Provider Architecture](./04-the-provider-architecture.md) for how this works.
 

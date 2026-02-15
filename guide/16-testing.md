@@ -767,8 +767,10 @@ describe('Cached API (E2E with Redis)', () => {
 
   beforeAll(async () => {
     // Redis container is started by the preload file
-    const redis = redisHelper.createRedisClient();
-    const cacheProvider = createRedisCacheProvider({ connection: redis });
+    const connectionConfig = redisHelper.getConnectionConfig();
+    const cacheProvider = createRedisCacheProvider({
+      connection: { host: connectionConfig.host, port: connectionConfig.port }
+    });
 
     app = Ori.create()
       .disableSignalHandling()

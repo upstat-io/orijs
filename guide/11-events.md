@@ -256,7 +256,7 @@ class UserController {
   }
 
   private createUser = async (ctx: RequestContext) => {
-    const data = ctx.body<CreateUserInput>();
+    const data = await ctx.json<CreateUserInput>();
     const user = await this.userService.createUser(data);
 
     // Emit event -- returns immediately
@@ -266,7 +266,7 @@ class UserController {
       displayName: user.displayName,
     });
 
-    return ctx.json(user, 201);
+    return Response.json(user, { status: 201 });
   };
 }
 ```
@@ -327,7 +327,7 @@ const eventProvider = new BullMQEventProvider({
 
 // Pass to application
 const app = Ori.create()
-  .events(eventProvider)
+  .eventProvider(eventProvider)
   // ...
   .listen(8001);
 ```
@@ -337,10 +337,10 @@ const app = Ori.create()
 BullMQ creates a **separate queue for each event type**. This is a deliberate architectural decision:
 
 ```
-Queue: events.user.created      -> Worker (concurrency: 10)
-Queue: events.order.placed      -> Worker (concurrency: 5)
-Queue: events.email.send        -> Worker (concurrency: 20)
-Queue: events.report.generate   -> Worker (concurrency: 1)
+Queue: event.user.created      -> Worker (concurrency: 10)
+Queue: event.order.placed      -> Worker (concurrency: 5)
+Queue: event.email.send        -> Worker (concurrency: 20)
+Queue: event.report.generate   -> Worker (concurrency: 1)
 ```
 
 Why separate queues?
@@ -358,8 +358,8 @@ Why separate queues?
 BullMQ supports delayed delivery and recurring schedules:
 
 ```typescript
-// Delayed event -- process after 30 seconds
-ctx.events.emit(UserCreated, payload, { delay: 30000 });
+// Delayed event -- process after 30 seconds (via provider directly)
+eventProvider.emit('user.created', payload, meta, { delay: 30000 });
 
 // Scheduled recurring event (via provider directly)
 await eventProvider.scheduleEvent('cleanup.run', {
@@ -432,8 +432,8 @@ class UserCreatedConsumer implements IEventConsumer<UserData, void> {
 The in-memory `EventIdempotency` is suitable for single-process deployments. For distributed systems, use Redis-backed idempotency or leverage BullMQ's built-in `jobId`-based deduplication:
 
 ```typescript
-// Emit with idempotency key -- BullMQ ignores duplicate jobIds
-ctx.events.emit(UserCreated, payload, {
+// Emit with idempotency key -- BullMQ ignores duplicate jobIds (via provider directly)
+eventProvider.emit('user.created', payload, meta, {
   idempotencyKey: `user-created-${userId}`,
 });
 ```
@@ -644,7 +644,7 @@ class SimpleEventProvider implements EventProvider {
 
 ```typescript
 const app = Ori.create()
-  .events(new SimpleEventProvider())     // Swap in your custom provider
+  .eventProvider(new SimpleEventProvider())     // Swap in your custom provider
   .event(UserCreated).consumer(UserCreatedConsumer, [EmailService])
   .listen(8001);
 ```

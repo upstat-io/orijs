@@ -269,19 +269,21 @@ class ProcessOrderWorkflow implements IWorkflowConsumer<OrderData, OrderResult, 
 }
 ```
 
-### WorkflowContext
+### StepContext and WorkflowContext
 
-Step handlers receive a `WorkflowContext` (or `StepContext` for typed step access):
+Step handlers receive a `StepContext<TData, TSteps>`:
 
 | Property | Type | Description |
 |---|---|---|
 | `flowId` | `string` | Unique workflow execution ID |
 | `data` | `TData` | The workflow input data |
-| `results` | `Record<string, unknown>` | Accumulated results from completed steps |
+| `results` | `TSteps` | Accumulated results from completed steps (typed per step definitions) |
 | `log` | `Logger` | Logger with workflow context (flowId, step name, correlationId) |
-| `meta` | `PropagationMeta` | Metadata for distributed tracing |
-| `correlationId` | `string` | Links to the originating request |
+| `meta` | `Record<string, unknown>` | Metadata for distributed tracing |
+| `stepName` | `string` | Current step name being executed |
 | `providerId` | `string?` | Which provider instance is executing (for distributed tracing) |
+
+The `onComplete` and `onError` callbacks receive `WorkflowContext<TData, TSteps>`, which has the same properties as `StepContext` except it replaces `stepName` with `correlationId` (a string linking to the originating request).
 
 The `results` property accumulates as steps complete. When `charge` executes, `results` contains `{ validate: { valid: true, inventory: [...] } }`. When `fulfill` executes, `results` contains both `validate` and `charge` results.
 
@@ -528,6 +530,7 @@ Here's a complete example of a workflow that sets up a new monitor in a monitori
 
 ```typescript
 import { Workflow } from '@orijs/core';
+import type { IWorkflowConsumer, WorkflowContext, StepContext, Data, Result } from '@orijs/core';
 import { Type } from '@orijs/validation';
 
 // Define the workflow with steps
@@ -568,12 +571,13 @@ const SetupMonitor = Workflow.define({
   })))
 );
 
+// Type aliases for readability
+type MonitorData = Data<typeof SetupMonitor>;
+type MonitorResult = Result<typeof SetupMonitor>;
+type MonitorSteps = typeof SetupMonitor['_steps'];
+
 // Implement the consumer
-class SetupMonitorWorkflow implements IWorkflowConsumer<
-  Data<typeof SetupMonitor>,
-  Result<typeof SetupMonitor>,
-  typeof SetupMonitor['_steps']
-> {
+class SetupMonitorWorkflow implements IWorkflowConsumer<MonitorData, MonitorResult, MonitorSteps> {
   constructor(
     private httpClient: HttpClient,
     private monitorRepository: MonitorRepository,
@@ -583,7 +587,7 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
 
   steps = {
     validateUrl: {
-      execute: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
+      execute: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
         ctx.log.info('Validating URL', { url: ctx.data.url });
 
         const response = await this.httpClient.get(ctx.data.url, { timeout: 10000 });
@@ -601,7 +605,7 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
     },
 
     createRecord: {
-      execute: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
+      execute: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
         ctx.log.info('Creating monitor record');
 
         const monitor = await this.monitorRepository.create({
@@ -614,16 +618,16 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
 
         return { monitorUuid: monitor.uuid };
       },
-      rollback: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
-        const { monitorUuid } = ctx.results.createRecord as { monitorUuid: string };
+      rollback: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
+        const { monitorUuid } = ctx.results.createRecord;
         ctx.log.info('Rolling back: deleting monitor record', { monitorUuid });
         await this.monitorRepository.delete(monitorUuid);
       },
     },
 
     scheduleChecks: {
-      execute: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
-        const { monitorUuid } = ctx.results.createRecord as { monitorUuid: string };
+      execute: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
+        const { monitorUuid } = ctx.results.createRecord;
         ctx.log.info('Scheduling checks', { regions: ctx.data.regions });
 
         const scheduled = await this.schedulerService.scheduleMonitor({
@@ -637,16 +641,16 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
           nextCheckAt: scheduled.nextCheckAt,
         };
       },
-      rollback: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
-        const { monitorUuid } = ctx.results.createRecord as { monitorUuid: string };
+      rollback: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
+        const { monitorUuid } = ctx.results.createRecord;
         ctx.log.info('Rolling back: removing check schedules', { monitorUuid });
         await this.schedulerService.unscheduleMonitor(monitorUuid);
       },
     },
 
     firstCheck: {
-      execute: async (ctx: StepContext<Data<typeof SetupMonitor>>) => {
-        const { monitorUuid } = ctx.results.createRecord as { monitorUuid: string };
+      execute: async (ctx: StepContext<MonitorData, MonitorSteps>) => {
+        const { monitorUuid } = ctx.results.createRecord;
         ctx.log.info('Running first check', { monitorUuid });
 
         const result = await this.checkService.runCheck(monitorUuid);
@@ -660,9 +664,9 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
     },
   };
 
-  onComplete = async (ctx: WorkflowContext<Data<typeof SetupMonitor>>) => {
-    const { monitorUuid } = ctx.results.createRecord as { monitorUuid: string };
-    const { status, responseTime } = ctx.results.firstCheck as { status: string; responseTime: number };
+  onComplete = async (ctx: WorkflowContext<MonitorData, MonitorSteps>) => {
+    const { monitorUuid } = ctx.results.createRecord;
+    const { status, responseTime } = ctx.results.firstCheck;
 
     ctx.log.info('Monitor setup complete', {
       monitorUuid,
@@ -676,7 +680,7 @@ class SetupMonitorWorkflow implements IWorkflowConsumer<
     };
   };
 
-  onError = async (ctx: WorkflowContext<Data<typeof SetupMonitor>>, error: Error) => {
+  onError = async (ctx: WorkflowContext<MonitorData, MonitorSteps>, error: Error) => {
     ctx.log.error('Monitor setup failed', {
       url: ctx.data.url,
       error: error.message,
@@ -906,7 +910,7 @@ OriJS workflows provide coordinated multi-step processing with Saga-pattern comp
 
 - **Workflow.define()** creates type-safe workflow definitions with TypeBox schemas and step structure
 - **IWorkflowConsumer** separates step handlers from step structure, enabling distributed execution
-- **WorkflowContext** carries input data, accumulated step results, and distributed tracing metadata
+- **StepContext** and **WorkflowContext** carry input data, typed step results, and distributed tracing metadata
 - **FlowHandle** provides async status tracking and result retrieval
 - **Sequential and parallel** step groups with automatic dependency enforcement
 - **Rollback handlers** execute in reverse order when steps fail (Saga pattern)

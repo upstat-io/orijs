@@ -463,43 +463,37 @@ Guards are singletons -- one instance per guard class, shared across all request
 
 ---
 
-## Custom Responses from Guards
+## Guard Responses
 
-Returning `false` from `canActivate()` results in a generic `403 Forbidden` response. Sometimes you need more control -- a custom error message, a different status code, or additional headers.
+Returning `false` from `canActivate()` results in a generic `403 Forbidden` response. The framework does not support custom response codes from guards directly -- a guard's contract is strictly boolean: allow or deny.
 
-Guards can throw errors or return custom responses to override the default behavior:
+If a guard throws an error, the framework's outer error handler catches it and returns a `500 Internal Server Error` (in production, without error details). This means guards should not throw to control the response.
+
+If you need to distinguish between different failure cases (e.g. missing token vs expired token), handle that at the controller or service layer. Guards are designed to be simple yes/no decision functions:
 
 ```typescript
 class AuthGuard implements Guard {
+  constructor(
+    private readonly authService: AuthService
+  ) {}
+
   async canActivate(ctx: RequestContext): Promise<boolean> {
-    const token = ctx.request.headers.get('authorization');
+    const header = ctx.request.headers.get('authorization');
+    if (!header?.startsWith('Bearer ')) return false;
 
-    if (!token) {
-      // Throw to return a specific error response
-      throw new Response(
-        JSON.stringify({ error: 'Authentication required', code: 'AUTH_REQUIRED' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
+    const token = header.slice(7);
     try {
-      const user = await this.authService.verifyToken(token.replace('Bearer ', ''));
+      const user = await this.authService.verifyToken(token);
       ctx.set('user', user);
       return true;
-    } catch (err) {
-      if (err instanceof TokenExpiredError) {
-        throw new Response(
-          JSON.stringify({ error: 'Token expired', code: 'TOKEN_EXPIRED' }),
-          { status: 401, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-      return false;  // Default 403 for other failures
+    } catch {
+      return false;  // Expired, invalid, or any other failure -> 403
     }
   }
 }
 ```
 
-When a guard throws a `Response`, the framework returns that response directly. When it throws any other error, the framework catches it and returns a 500 Internal Server Error (in production, without the error details).
+If you need finer-grained error responses (401 vs 403, custom error codes), move that logic into the handler itself or use an interceptor that inspects the request before the handler runs.
 
 ---
 
@@ -508,10 +502,10 @@ When a guard throws a `Response`, the framework returns that response directly. 
 Guards are straightforward to test because they are plain classes with a single method. You need a mock `RequestContext` and your guard's dependencies.
 
 ```typescript
-import { describe, it, expect } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 
 describe('AuthGuard', () => {
-  it('should reject requests without a token', async () => {
+  test('should reject requests without a token', async () => {
     const authService = { verifyToken: async () => null };
     const userRepo = { findByAuthId: async () => null };
     const guard = new AuthGuard(authService, userRepo);
@@ -524,7 +518,7 @@ describe('AuthGuard', () => {
     expect(result).toBe(false);
   });
 
-  it('should accept valid tokens and set user state', async () => {
+  test('should accept valid tokens and set user state', async () => {
     const mockUser = { id: '123', email: 'alice@example.com', role: 'admin' };
     const authService = {
       verifyToken: async () => ({ uid: 'auth-123' })
@@ -543,7 +537,7 @@ describe('AuthGuard', () => {
     expect(ctx.get('user')).toEqual(mockUser);
   });
 
-  it('should reject expired tokens', async () => {
+  test('should reject expired tokens', async () => {
     const authService = {
       verifyToken: async () => { throw new TokenExpiredError(); }
     };
@@ -612,7 +606,7 @@ Guards make a binary decision (allow/deny). Interceptors wrap the handler execut
 2. **Three levels**: global, controller, route. They compose through inheritance: global runs first, then controller, then route
 3. **Type-safe state**: guards set state with `ctx.set()`, handlers access it with `ctx.state` -- fully typed through generics
 4. **Guards are singletons** -- one instance per class, resolved through the DI container. Do not store per-request state on properties
-5. **Custom responses**: throw a `Response` from a guard to return a specific status code and body
+5. **Simple contract**: guards return `true` or `false` -- the framework always returns `403 Forbidden` on denial. For finer error control, use handlers or interceptors
 6. **Guard factories** (`createRoleGuard`, `createPermissionGuard`) are useful for parameterized authorization
 7. **Dev mode bypass** guards let you skip real authentication during local development
 8. **Guards are easy to test** -- create a mock context, call `canActivate()`, assert the result

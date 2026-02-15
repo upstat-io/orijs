@@ -519,9 +519,9 @@ class VaultConfigProvider implements ConfigProvider {
   }
 }
 
-// The builder detects the static create() method and uses it
+// Use a factory object to integrate async initialization
 const config = await createConfigProvider()
-  .add('vault', VaultConfigProvider)
+  .add('vault', { create: () => VaultConfigProvider.create() })
   .expectKeys({ vault: ['DB_PASSWORD', 'API_KEY'] })
   .validate();
 ```

@@ -61,7 +61,7 @@ The `WebSocketProvider` interface is composed of three segregated interfaces fol
 
 ### SocketEmitter -- What Services Use
 
-This is the minimal interface your application services interact with. When you access `ctx.sockets` from a controller or inject the socket emitter into a service, this is the interface you get:
+This is the minimal interface your application services interact with. When you access `ctx.socket` from a controller or inject the socket emitter into a service, this is the interface you get:
 
 ```typescript
 interface SocketEmitter {
@@ -123,7 +123,7 @@ const app = new Application();
 // Create and register the WebSocket provider
 const wsProvider = createInProcWsProvider();
 
-app.websocket(wsProvider, {
+app.websocket(wsProvider).onWebSocket({
   open(ws) {
     console.log(`Client connected: ${ws.data.socketId}`);
     ws.subscribe('global'); // Subscribe to the global topic
@@ -139,7 +139,7 @@ app.websocket(wsProvider, {
   }
 });
 
-app.listen(8001);
+await app.listen(8001);
 ```
 
 Every WebSocket connection gets a unique `socketId` (a UUID v4) assigned automatically. This ID is cryptographically random to prevent socket enumeration attacks -- an attacker cannot guess other clients' socket IDs to send them messages.
@@ -177,26 +177,25 @@ You set custom data during the upgrade:
 
 ```typescript
 app.websocket(wsProvider, {
-  upgrade(req) {
+  upgrade: async (req) => {
     // Extract auth token from query string
     const url = new URL(req.url);
     const token = url.searchParams.get('token');
 
     if (!token) {
-      return new Response('Unauthorized', { status: 401 });
+      return null; // Returning null rejects the connection
     }
 
     const user = await verifyToken(token);
 
-    return {
-      data: { userId: user.id, accountUuid: user.accountUuid },
-      topics: [`account:${user.accountUuid}`]
-    };
-  },
-
+    // Return data to attach to the connection
+    return { userId: user.id, accountUuid: user.accountUuid };
+  }
+}).onWebSocket({
   open(ws) {
-    // ws.data.data is typed as { userId: string; accountUuid: string }
+    // ws.data.data is typed based on what upgrade returned
     console.log(`User ${ws.data.data.userId} connected`);
+    ws.subscribe(`account:${ws.data.data.accountUuid}`);
   }
 });
 ```
@@ -264,7 +263,7 @@ class IncidentController {
       })
     );
 
-    return ctx.json(incident, 201);
+    return Response.json(incident, { status: 201 });
   }
 }
 ```
@@ -354,7 +353,7 @@ This envelope format is consistent between the server-side `SocketEmitter.emit()
 For larger applications, you often want domain-specific methods instead of raw `publish()` calls. Custom socket emitters wrap the provider with methods that match your domain:
 
 ```typescript
-import type { SocketEmitter, WebSocketProvider } from '@orijs/websocket';
+import type { SocketEmitter, WebSocketProvider, SocketMessageLike } from '@orijs/websocket';
 
 class AppSocketEmitter implements SocketEmitter {
   constructor(private readonly provider: WebSocketProvider) {}
@@ -383,7 +382,8 @@ class AppSocketEmitter implements SocketEmitter {
 Register the custom emitter when configuring the application:
 
 ```typescript
-app.websocket<AppSocketEmitter>(wsProvider, handlers, AppSocketEmitter);
+app.websocket<AppSocketEmitter>(wsProvider, { emitter: AppSocketEmitter })
+  .onWebSocket(handlers);
 ```
 
 Now `ctx.app.socket` is typed as `AppSocketEmitter` throughout your application, giving you domain-specific methods with full type safety.
@@ -511,11 +511,17 @@ class FirebaseSocketAuthGuard implements SocketGuard {
     // Set state that persists for the entire connection
     ctx.set('user', user);
 
-    // Auto-subscribe to the user's account room
-    ctx.subscribe(`account:${user.accountUuid}`);
-
     return true; // Connection allowed
   }
+}
+```
+
+Topic subscriptions based on authenticated state are typically done in the `open` handler or a message handler, where `ws.subscribe()` is available:
+
+```typescript
+// In the open handler, access connection state for topic subscriptions
+open(ws) {
+  ws.subscribe(`account:${ws.data.data.accountUuid}`);
 }
 ```
 
@@ -665,7 +671,7 @@ const wsProvider = createRedisWsProvider({
 });
 
 // Use exactly the same way as InProcWsProvider
-app.websocket(wsProvider, handlers);
+app.websocket(wsProvider).onWebSocket(handlers);
 ```
 
 ### Two Redis Connections
@@ -828,17 +834,17 @@ client.connect();
 
 ### Automatic Reconnection
 
-The client uses full jitter exponential backoff for reconnection, which is the optimal strategy for distributed systems. The delay is randomized within an exponential range:
+The client uses full jitter exponential backoff for reconnection, which is the optimal strategy for distributed systems. The delay is randomized within an exponential range with a guaranteed minimum:
 
 ```
-Attempt 1: random(0, 500ms)
-Attempt 2: random(0, 1000ms)
-Attempt 3: random(0, 2000ms)
+Attempt 1: 500ms + random(0, 500ms)  = random(500ms, 1000ms)
+Attempt 2: 500ms + random(0, 1000ms) = random(500ms, 1500ms)
+Attempt 3: 500ms + random(0, 2000ms) = random(500ms, 2500ms)
 ...
-Attempt N: random(0, min(maxDelay, 500ms * 2^N))
+Attempt N: 500ms + random(0, min(maxDelay, 500ms * 2^N)), capped at maxDelay
 ```
 
-Full jitter prevents the "thundering herd" problem where all disconnected clients try to reconnect at the exact same time after a server restart.
+The base delay (`reconnectDelay`, default 500ms) ensures a minimum wait before every reconnection attempt. Full jitter above that base prevents the "thundering herd" problem where all disconnected clients try to reconnect at the exact same time after a server restart.
 
 ### Browser-Aware Reconnection
 
@@ -975,7 +981,7 @@ class IncidentController {
       }
     );
 
-    return ctx.json(incident, 201);
+    return Response.json(incident, { status: 201 });
   }
 }
 ```

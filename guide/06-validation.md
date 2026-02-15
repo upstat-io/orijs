@@ -227,8 +227,7 @@ When validation fails, the response looks like this:
       "message": "Expected string length >= 1",
       "value": ""
     }
-  ],
-  "correlationId": "abc-123-def"
+  ]
 }
 ```
 

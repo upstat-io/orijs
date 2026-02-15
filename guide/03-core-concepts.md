@@ -48,13 +48,13 @@ When you call `listen()`, the framework bootstraps the application:
 
 2. **Eager provider instantiation** — Services registered with `{ eager: true }` are instantiated immediately. This is useful for services that need to initialize connections (like database pools) before the server accepts requests.
 
-3. **Controller instantiation** — All controllers are instantiated, and their `configure()` methods are called. This builds the route table.
+3. **Controller instantiation** — All controllers are instantiated, and their `configure()` methods are called. This builds the route table. Event and workflow consumers are also registered at this point.
 
-4. **Route compilation** — Routes are compiled into Bun's optimized `Bun.serve({ routes })` format. Bun uses a radix tree internally, so route matching is O(log n) regardless of how many routes you have.
+4. **Startup hooks** — All `onStartup` hooks execute in FIFO order. These run before the server accepts connections.
 
-5. **Event/Workflow provider startup** — If you've configured events or workflows, their providers are started (connecting to Redis/BullMQ, registering consumers).
+5. **Event/Workflow provider startup** — If you've configured events or workflows, their providers are started (connecting to Redis/BullMQ, starting consumers).
 
-6. **Startup hooks** — All `onStartup` hooks execute in FIFO order. These run before the server accepts connections.
+6. **Route compilation** — Routes are compiled into Bun's optimized `Bun.serve({ routes })` format. Bun uses a radix tree internally, so route matching is O(log n) regardless of how many routes you have.
 
 7. **Server start** — Bun's HTTP server starts listening on the specified port.
 
@@ -77,11 +77,11 @@ Request → CORS → Global Guards → Controller Guards → Route Guards
 
 When the process receives SIGTERM or SIGINT (or you call `app.stop()`):
 
-1. **Server stops accepting new connections**
-2. **Shutdown hooks execute** in LIFO (last-in, first-out) order — this ensures that dependencies are cleaned up before the services that depend on them
-3. **Event/Workflow providers stop** — gracefully draining queues and closing connections
-4. **WebSocket connections close**
-5. **Process exits**
+1. **Shutdown hooks execute** in LIFO (last-in, first-out) order — this ensures that dependencies are cleaned up before the services that depend on them
+2. **Event/Workflow providers stop** — gracefully draining queues and closing connections
+3. **WebSocket connections close** — close frames are sent to all connected clients
+4. **Server stops** — the HTTP server stops accepting new connections
+5. **Process exits** (if triggered by SIGTERM/SIGINT)
 
 The shutdown timeout (default: 10 seconds) ensures the process doesn't hang indefinitely. Configure it with `app.setShutdownTimeout(30_000)` for applications that need more time to drain.
 
@@ -232,9 +232,9 @@ app.providerInstance(SQL, sql);
 **Named tokens** (for interfaces or multiple implementations):
 
 ```typescript
-import { Token } from '@orijs/core';
+import { createToken } from '@orijs/core';
 
-const CacheToken = new Token<CacheProvider>('cache');
+const CacheToken = createToken<CacheProvider>('cache');
 app.providerInstance(CacheToken, new RedisCacheProvider(redisUrl));
 app.providerWithTokens(UserService, [UserRepository, CacheToken]);
 ```
@@ -299,7 +299,7 @@ class UserController implements OriController {
 
   private list = async (ctx: RequestContext) => {
     ctx.app.log.info('Listing users');           // Application logger
-    const dbUrl = ctx.app.config.get('DB_URL');  // Configuration
+    const dbUrl = await ctx.app.config.get('DB_URL');  // Configuration
     ctx.app.event?.emit(UserListedEvent, {});    // Events
     // ...
   };
@@ -603,15 +603,13 @@ interface RequestContext<TState = {}> {
   readonly params: Record<string, string>; // Path parameters
   readonly query: Record<string, string | string[]>; // Query string (lazy)
 
-  // Validated body (available after validation)
-  readonly body: TBody;
-
   // Request metadata
   readonly correlationId: string;         // Request ID (lazy)
   readonly log: Logger;                   // Request logger (lazy)
   readonly signal: AbortSignal;           // Cancellation signal
 
   // State management
+  readonly state: TState;                              // State object (lazy)
   get<K extends keyof TState>(key: K): TState[K];
   set<K extends keyof TState>(key: K, value: TState[K]): void;
 
@@ -637,13 +635,13 @@ Notice the `(lazy)` annotations. OriJS avoids work until it's needed:
 - **Query parsing** — The URL's query string isn't parsed until you access `ctx.query`. Most API endpoints use path parameters, not query strings, so parsing is skipped entirely for those requests.
 - **Correlation ID** — Generated only when accessed. If your handler doesn't log or emit events, the UUID is never created.
 - **Logger** — The request logger (which includes the correlation ID as context) is created on first access.
-- **State object** — Allocated on first `set()` call.
+- **State object** — Allocated on first `set()` or `state` access.
 
 This lazy approach means a simple "health check" endpoint (`GET /health` → `new Response('OK')`) allocates almost nothing beyond the context object itself.
 
 ### Correlation ID
 
-Every request gets a correlation ID for tracing. OriJS checks for an incoming `X-Correlation-Id` header first — if present, it reuses that ID. Otherwise, it generates a new UUID v4.
+Every request gets a correlation ID for tracing. OriJS checks for an incoming `X-Request-Id` header first — if present, it reuses that ID. Otherwise, it generates a new UUID v4.
 
 This means if your API is called by another service that includes a correlation ID, the same ID flows through your logs, events, and downstream calls. This is essential for distributed tracing.
 

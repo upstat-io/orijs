@@ -54,7 +54,7 @@ Your application code depends on the interface. The provider is plugged in at th
 │  ┌─────────────────────────────────┐    │
 │  │      Provider Interfaces         │    │
 │  │  CacheProvider, EventProvider,   │    │
-│  │  ValidationProvider, etc.        │    │
+│  │  WebSocketProvider, etc.         │    │
 │  └──────────────┬──────────────────┘    │
 └─────────────────┼───────────────────────┘
                   │
@@ -92,8 +92,11 @@ interface CacheProvider {
 
 ### EventProvider
 
+OriJS splits the event interface using the Interface Segregation Principle:
+
 ```typescript
-interface EventProvider {
+// Consumer-facing interface — what SERVICES see
+interface EventEmitter {
   emit<TReturn>(
     eventName: string,
     payload: unknown,
@@ -105,10 +108,17 @@ interface EventProvider {
     eventName: string,
     handler: EventHandlerFn<TPayload, TReturn>,
   ): void | Promise<void>;
+}
 
+// Framework-facing interface — what ORIJS APPLICATION manages
+interface EventLifecycle {
   start(): Promise<void>;
   stop(): Promise<void>;
 }
+
+// Full provider interface — what IMPLEMENTATIONS provide
+interface EventProvider extends EventEmitter, EventLifecycle {}
+
 ```
 
 **Built-in providers:**
@@ -118,18 +128,27 @@ interface EventProvider {
 
 ### WorkflowProvider
 
+Like events, workflows use the Interface Segregation Principle:
+
 ```typescript
-interface WorkflowProvider {
+// Consumer-facing interface — what SERVICES see
+interface WorkflowExecutor {
   execute<TData, TResult>(
     workflow: WorkflowDefinitionLike<TData, TResult>,
     data: TData,
   ): Promise<FlowHandle<TResult>>;
 
   getStatus(flowId: string): Promise<FlowStatus>;
+}
 
+// Framework-facing interface — what ORIJS APPLICATION manages
+interface WorkflowLifecycle {
   start(): Promise<void>;
   stop(): Promise<void>;
 }
+
+// Full provider interface — what IMPLEMENTATIONS provide
+interface WorkflowProvider extends WorkflowExecutor, WorkflowLifecycle {}
 ```
 
 **Built-in providers:**
@@ -139,20 +158,32 @@ interface WorkflowProvider {
 
 ### WebSocketProvider (Scaling)
 
+Like other providers, WebSocket uses ISP — `SocketEmitter` for services, `SocketLifecycle` for the framework:
+
 ```typescript
-interface WebSocketProvider {
+// Consumer-facing interface — what SERVICES see via ctx.socket
+interface SocketEmitter {
   publish(topic: string, message: string | ArrayBuffer): Promise<void>;
+  send(socketId: string, message: string | ArrayBuffer): void;
+  broadcast(message: string | ArrayBuffer): void;
+}
+
+// Full provider interface — what IMPLEMENTATIONS provide
+interface WebSocketProvider extends SocketEmitter, SocketLifecycle {
   subscribe(socketId: string, topic: string): void;
   unsubscribe(socketId: string, topic: string): void;
-  broadcast(message: string | ArrayBuffer): void;
-  // ... connection management methods
+  disconnect(socketId: string): void;
+  isConnected(socketId: string): boolean;
+  getConnectionCount(): number;
+  getTopicSubscriberCount(topic: string): number;
+  setServer(server: BunServer): void;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
 ```
 
 **Built-in providers:**
-- `RedisWebSocketProvider` (from `@orijs/websocket-redis`) — Redis pub/sub for multi-server WebSocket scaling
+- `RedisWsProvider` (from `@orijs/websocket-redis`) — Redis pub/sub for multi-server WebSocket scaling
 
 **You could write:** `NATSWebSocketProvider`, `KafkaWebSocketProvider`, `RabbitMQWebSocketProvider`
 
@@ -168,7 +199,7 @@ interface ConfigProvider {
 
 **Built-in providers:**
 - `EnvConfigProvider` (from `@orijs/config`) — Reads from environment variables
-- `NamespacedConfig` — Groups config by prefix
+- `NamespacedConfigBuilder` — Groups config by prefix
 - `ValidatedConfig` — Type-safe config with TypeBox schema validation
 
 **You could write:** `VaultConfigProvider`, `AWSSSMConfigProvider`, `ConsulConfigProvider`
@@ -185,12 +216,15 @@ bun add @orijs/cache @orijs/cache-redis
 
 ```typescript
 // src/providers/infrastructure.ts
-import type { Application } from '@orijs/orijs';
+import type { OriApplication } from '@orijs/core';
 import { createRedisCacheProvider } from '@orijs/cache-redis';
 
-export function addInfrastructure(app: Application): Application {
+export function addInfrastructure(app: OriApplication): OriApplication {
   const cacheProvider = createRedisCacheProvider({
-    url: Bun.env.REDIS_URL ?? 'redis://localhost:6379',
+    connection: {
+      host: Bun.env.REDIS_HOST ?? 'localhost',
+      port: Number(Bun.env.REDIS_PORT ?? 6379),
+    },
   });
 
   return app.cache(cacheProvider);
@@ -213,7 +247,8 @@ Now any service can use caching through the framework's cache system:
 
 ```typescript
 // src/users/user.service.ts
-import type { CacheService } from '@orijs/cache';
+import { CacheService } from '@orijs/cache';
+import { UserCache } from '../cache-configs';  // CacheConfig built with the builder
 
 export class UserService {
   constructor(
@@ -221,10 +256,13 @@ export class UserService {
     private cache: CacheService,
   ) {}
 
-  public async getUser(id: string): Promise<User> {
-    return this.cache.get(`user:${id}`, async () => {
-      return this.repo.findById(id);
-    }, { ttl: 300 });
+  public async getUser(id: string): Promise<User | undefined> {
+    // getOrSet: check cache → on miss, call factory → store result
+    return this.cache.getOrSet(UserCache, { id }, async (ctx) => {
+      const user = await this.repo.findById(id);
+      if (!user) return ctx.skip();  // Don't cache null
+      return user;
+    });
   }
 }
 ```
@@ -313,9 +351,10 @@ Now swap it in:
 
 ```typescript
 // src/providers/infrastructure.ts
+import type { OriApplication } from '@orijs/core';
 import { MemcachedCacheProvider } from '../infrastructure/memcached-cache.provider';
 
-export function addInfrastructure(app: Application): Application {
+export function addInfrastructure(app: OriApplication): OriApplication {
   const cacheProvider = new MemcachedCacheProvider(
     Bun.env.MEMCACHED_SERVERS ?? 'localhost:11211'
   );
@@ -383,20 +422,21 @@ Providers can be composed — a higher-level provider can wrap a lower-level one
 class CacheService {
   constructor(private provider: CacheProvider) {}
 
-  public async get<T>(
-    key: string,
-    loader: () => Promise<T>,
-    options: CacheOptions,
-  ): Promise<T> {
-    // Check cache
-    const cached = await this.provider.get<T>(key);
-    if (cached) return cached;
+  public async getOrSet<T, TParams extends object>(
+    config: CacheConfig<TParams>,
+    params: TParams,
+    factory: (ctx: FactoryContext<T>) => Promise<T>,
+  ): Promise<T | undefined> {
+    const cacheKey = generateCacheKey(config, params);
 
     // Singleflight: if multiple requests ask for the same key simultaneously,
-    // only one actually calls the loader. Others wait for its result.
-    return this.singleflight(key, async () => {
-      const value = await loader();
-      await this.provider.set(key, value, options.ttl);
+    // only one actually calls the factory. Others wait for its result.
+    return this.singleflight.do(cacheKey, async () => {
+      const entry = await this.provider.get<CacheEntry<T>>(cacheKey);
+      if (entry && entry.expiresAt > Date.now()) return entry.value;
+
+      const value = await factory(ctx);
+      await this.provider.set(cacheKey, { value, ... }, config.ttl);
       return value;
     });
   }
@@ -432,8 +472,8 @@ import type {
   EventHandlerFn,
   EmitOptions,
   PropagationMeta,
-  EventSubscription
 } from '@orijs/events';
+import { createSubscription, type EventSubscription } from '@orijs/events';
 import amqp from 'amqplib';
 
 export class RabbitMQEventProvider implements EventProvider {
@@ -449,7 +489,17 @@ export class RabbitMQEventProvider implements EventProvider {
     meta?: PropagationMeta,
     options?: EmitOptions,
   ): EventSubscription<TReturn> {
-    const message = JSON.stringify({ payload, meta });
+    const subscription = createSubscription<TReturn>();
+    const eventMessage = {
+      version: '1',
+      eventId: crypto.randomUUID(),
+      eventName,
+      payload,
+      meta: meta ?? {},
+      correlationId: subscription.correlationId,
+      timestamp: Date.now(),
+    };
+    const message = JSON.stringify(eventMessage);
 
     if (options?.delay) {
       // RabbitMQ delayed message exchange
@@ -460,11 +510,7 @@ export class RabbitMQEventProvider implements EventProvider {
       this.channel!.publish('events', eventName, Buffer.from(message));
     }
 
-    return {
-      id: crypto.randomUUID(),
-      // For fire-and-forget events, result resolves immediately
-      result: Promise.resolve(undefined as TReturn),
-    };
+    return subscription;
   }
 
   public async subscribe<TPayload, TReturn>(
@@ -479,8 +525,9 @@ export class RabbitMQEventProvider implements EventProvider {
       await this.channel.consume(eventName, async (msg) => {
         if (!msg) return;
         try {
-          const { payload, meta } = JSON.parse(msg.content.toString());
-          await handler(payload, meta);
+          const parsed = JSON.parse(msg.content.toString());
+          // EventHandlerFn receives a full EventMessage object
+          await handler(parsed);
           this.channel!.ack(msg);
         } catch (error) {
           this.channel!.nack(msg, false, false); // Dead letter on failure
@@ -512,15 +559,15 @@ export class RabbitMQEventProvider implements EventProvider {
 
 ```typescript
 // src/providers/infrastructure.ts
-import type { Application } from '@orijs/orijs';
+import type { OriApplication } from '@orijs/core';
 import { RabbitMQEventProvider } from '../infrastructure/rabbitmq-event.provider';
 
-export function addInfrastructure(app: Application): Application {
+export function addInfrastructure(app: OriApplication): OriApplication {
   const eventProvider = new RabbitMQEventProvider(
     Bun.env.RABBITMQ_URL ?? 'amqp://localhost'
   );
 
-  return app.event(UserCreatedEvent, eventProvider);
+  return app.eventProvider(eventProvider);
 }
 ```
 
@@ -539,7 +586,6 @@ OriJS ships with these provider packages:
 
 | Package | Provider Interface | Technology | Purpose |
 |---------|-------------------|------------|---------|
-| `@orijs/validation` | ValidationProvider | TypeBox | Request validation, schema definitions |
 | `@orijs/config` | ConfigProvider | Bun.env | Environment configuration |
 | `@orijs/cache` | CacheProvider | In-Memory | Development/testing cache |
 | `@orijs/cache-redis` | CacheProvider | Redis | Production cache |
@@ -548,7 +594,8 @@ OriJS ships with these provider packages:
 | `@orijs/workflows` | WorkflowProvider | (interface only) | Workflow system contract |
 | `@orijs/websocket` | WebSocketProvider | (interface only) | WebSocket scaling contract |
 | `@orijs/websocket-redis` | WebSocketProvider | Redis pub/sub | WebSocket horizontal scaling |
-| `@orijs/logging` | LoggerProvider | Pino-style | Structured logging |
+| `@orijs/validation` | — | TypeBox | Request validation, schema definitions |
+| `@orijs/logging` | — | Built-in | Structured logging with transports |
 
 ### How to Choose Providers
 
@@ -560,7 +607,7 @@ OriJS ships with these provider packages:
 **For production:**
 - Use `RedisCacheProvider` for distributed caching
 - Use `BullMQEventProvider` for persistent, retryable events
-- Use `RedisWebSocketProvider` for multi-server WebSocket scaling
+- Use `RedisWsProvider` for multi-server WebSocket scaling
 - Use `ValidatedConfig` for type-safe configuration
 
 **For custom infrastructure:**
@@ -607,7 +654,7 @@ class UserService {
 }
 
 // The entry point chooses the implementation
-app.cache(new RedisCacheProvider(redisUrl));
+app.cache(createRedisCacheProvider({ connection: { host: 'localhost', port: 6379 } }));
 // Or: app.cache(new InMemoryCacheProvider());
 // Or: app.cache(new MemcachedCacheProvider(servers));
 ```
@@ -618,7 +665,7 @@ app.cache(new RedisCacheProvider(redisUrl));
 
 ```typescript
 // src/app.ts
-function configureCache(app: Application): Application {
+function configureCache(app: OriApplication): OriApplication {
   if (Bun.env.NODE_ENV === 'test') {
     return app.cache(new InMemoryCacheProvider());
   }
@@ -628,7 +675,12 @@ function configureCache(app: Application): Application {
   }
 
   // Default: Redis
-  return app.cache(createRedisCacheProvider({ url: Bun.env.REDIS_URL! }));
+  return app.cache(createRedisCacheProvider({
+    connection: {
+      host: Bun.env.REDIS_HOST!,
+      port: Number(Bun.env.REDIS_PORT ?? 6379),
+    },
+  }));
 }
 
 Ori.create()
@@ -643,15 +695,11 @@ Your team is migrating from RabbitMQ to Kafka. With providers, you can do this g
 
 ```typescript
 // Phase 1: RabbitMQ for everything
-app.event(UserEvents, new RabbitMQEventProvider(rabbitUrl));
+app.eventProvider(new RabbitMQEventProvider(rabbitUrl));
 
-// Phase 2: Kafka for high-throughput events, RabbitMQ for the rest
-app.event(AnalyticsEvents, new KafkaEventProvider(kafkaUrl));
-app.event(UserEvents, new RabbitMQEventProvider(rabbitUrl));
-
-// Phase 3: Kafka for everything
-app.event(UserEvents, new KafkaEventProvider(kafkaUrl));
-app.event(AnalyticsEvents, new KafkaEventProvider(kafkaUrl));
+// Phase 2: Migrate to Kafka by swapping the single provider
+// All event definitions (UserEvents, AnalyticsEvents) are provider-agnostic
+app.eventProvider(new KafkaEventProvider(kafkaUrl));
 ```
 
 Your services never change. The migration happens entirely at the application entry point.
@@ -660,16 +708,13 @@ Your services never change. The migration happens entirely at the application en
 
 ```typescript
 // test/helpers/create-test-app.ts
-export function createTestApp(): Application {
+export function createTestApp(): OriApplication {
   return Ori.create()
     .cache(new InMemoryCacheProvider())
     // Events: in-memory, synchronous for predictable tests
     .use(app => addEventsInMemory(app))
-    // Config: hardcoded test values
-    .config(new MapConfigProvider({
-      DB_URL: 'postgres://test:test@localhost/test',
-      JWT_SECRET: 'test-secret',
-    }))
+    // Config: hardcoded test values via a simple ConfigProvider
+    .config(new EnvConfigProvider())  // Reads from .env.test
     .use(addUsers)
     .disableSignalHandling();
 }
@@ -721,17 +766,38 @@ Use the naming convention `@your-org/orijs-{interface}-{technology}`. This makes
 
 ### 6. Include Integration Tests
 
-Ship your provider with tests that verify it correctly implements the interface. OriJS's `@orijs/test-utils` package provides test suites that any provider implementation can run:
+Ship your provider with tests that verify it correctly implements the interface. Write tests that exercise every method of the provider contract:
 
 ```typescript
-import { runCacheProviderTests } from '@orijs/test-utils';
+import { describe, test, expect, beforeEach } from 'bun:test';
 import { DynamoDBCacheProvider } from './dynamodb-cache.provider';
 
 describe('DynamoDBCacheProvider', () => {
-  runCacheProviderTests(() => new DynamoDBCacheProvider({
-    tableName: 'test-cache',
-    region: 'us-east-1',
-  }));
+  let provider: DynamoDBCacheProvider;
+
+  beforeEach(() => {
+    provider = new DynamoDBCacheProvider({
+      tableName: 'test-cache',
+      region: 'us-east-1',
+    });
+  });
+
+  test('should get and set values', async () => {
+    await provider.set('key', { name: 'test' }, 300);
+    const result = await provider.get<{ name: string }>('key');
+    expect(result).toEqual({ name: 'test' });
+  });
+
+  test('should return null for missing keys', async () => {
+    const result = await provider.get('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  test('should delete keys', async () => {
+    await provider.set('key', 'value', 300);
+    const deleted = await provider.del('key');
+    expect(deleted).toBe(1);
+  });
 });
 ```
 
