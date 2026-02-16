@@ -2,6 +2,7 @@ export {
 	Type,
 	t,
 	Value,
+	FormatRegistry,
 	validate,
 	validateSync,
 	isValidator,

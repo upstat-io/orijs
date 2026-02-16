@@ -1,9 +1,9 @@
-import { Type, Kind, type Static, type TSchema } from '@sinclair/typebox';
+import { Type, Kind, FormatRegistry, type Static, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { Json } from './json';
 
 // Re-export TypeBox for convenience
-export { Type, Type as t, Value };
+export { Type, Type as t, Value, FormatRegistry };
 export type { Static, TSchema };
 
 /**
