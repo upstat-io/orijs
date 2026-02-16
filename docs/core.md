@@ -815,7 +815,7 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTION
 
 | Type | Definition |
 |------|-----------|
-| `Guard` | `{ canActivate(ctx: RequestContext): boolean \| Promise<boolean> }` |
+| `Guard` | `{ canActivate(ctx: RequestContext): boolean \| Response \| Promise<boolean \| Response> }` |
 | `GuardClass` | Constructor producing `Guard` |
 | `Interceptor` | `{ intercept(ctx: RequestContext, next: () => Promise<Response>): Promise<Response> }` |
 | `InterceptorClass` | Constructor producing `Interceptor` |

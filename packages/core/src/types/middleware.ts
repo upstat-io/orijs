@@ -8,9 +8,10 @@ export interface Guard {
 	/**
 	 * Determines if the request should proceed.
 	 * @param ctx - The request context
-	 * @returns `true` to allow, `false` to deny (returns 403 Forbidden)
+	 * @returns `true` to allow, `false` to deny (returns 403 Forbidden),
+	 *          or a `Response` to short-circuit with a custom HTTP response (e.g. 401 Unauthorized)
 	 */
-	canActivate(ctx: RequestContext): boolean | Promise<boolean>;
+	canActivate(ctx: RequestContext): boolean | Response | Promise<boolean | Response>;
 }
 
 /** Constructor type for Guard classes */

@@ -686,11 +686,11 @@ If no ConfigProvider is set, a `NullConfigProvider` is used that throws `"No Con
 
 **Source**: `packages/core/src/types/middleware.ts`
 
-Guards are the authentication/authorization layer for HTTP requests. They run before the handler and can block requests with a 403 Forbidden response.
+Guards are the authentication/authorization layer for HTTP requests. They run before the handler and can block requests with a 403 Forbidden response, or return a custom `Response` for specific status codes.
 
 ```typescript
 interface Guard {
-  canActivate(ctx: RequestContext): boolean | Promise<boolean>;
+  canActivate(ctx: RequestContext): boolean | Response | Promise<boolean | Response>;
 }
 
 type GuardClass = new (...args: any[]) => Guard;
@@ -698,14 +698,15 @@ type GuardClass = new (...args: any[]) => Guard;
 
 | Method | Parameters | Returns | Description |
 |---|---|---|---|
-| `canActivate` | `ctx: RequestContext` | `boolean \| Promise<boolean>` | Return `true` to allow, `false` to deny (403 Forbidden) |
+| `canActivate` | `ctx: RequestContext` | `boolean \| Response \| Promise<boolean \| Response>` | Return `true` to allow, `false` to deny (403 Forbidden), or `Response` for custom HTTP response |
 
 **Behavioral contract for implementors**:
 - Returning `false` causes the framework to send a 403 Forbidden response. The handler is never called.
+- Returning a `Response` causes the framework to send that response directly. Use this for custom status codes (e.g. 401 Unauthorized, 429 Too Many Requests).
 - Throwing an error from `canActivate` is treated as a 500 Internal Server Error (the error is caught by the pipeline).
 - Guards can set state on the context via `ctx.set()` for downstream handlers (e.g., setting `user` after authentication).
 - Guards can be sync or async. The framework awaits the result regardless.
-- Multiple guards on a route execute sequentially. If any guard returns `false`, the pipeline stops immediately.
+- Multiple guards on a route execute sequentially. If any guard returns `false` or a `Response`, the pipeline stops immediately.
 
 **Resolution**: Guards are resolved from the DI container at route compilation time (not per-request). The resolved guard instance is reused across all requests to that route. This means guards must be stateless or use `ctx` for per-request state.
 

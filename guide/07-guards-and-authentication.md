@@ -465,11 +465,13 @@ Guards are singletons -- one instance per guard class, shared across all request
 
 ## Guard Responses
 
-Returning `false` from `canActivate()` results in a generic `403 Forbidden` response. The framework does not support custom response codes from guards directly -- a guard's contract is strictly boolean: allow or deny.
+Guards support three return values from `canActivate()`:
 
-If a guard throws an error, the framework's outer error handler catches it and returns a `500 Internal Server Error` (in production, without error details). This means guards should not throw to control the response.
+- **`true`** -- the request proceeds to the next guard or the handler
+- **`false`** -- the framework returns a generic `403 Forbidden` response
+- **`Response`** -- the framework returns the custom response directly (useful for 401 Unauthorized, 429 Too Many Requests, etc.)
 
-If you need to distinguish between different failure cases (e.g. missing token vs expired token), handle that at the controller or service layer. Guards are designed to be simple yes/no decision functions:
+For simple guards, returning `true` or `false` is sufficient:
 
 ```typescript
 class AuthGuard implements Guard {
@@ -493,7 +495,36 @@ class AuthGuard implements Guard {
 }
 ```
 
-If you need finer-grained error responses (401 vs 403, custom error codes), move that logic into the handler itself or use an interceptor that inspects the request before the handler runs.
+When you need specific status codes or custom error bodies, return a `Response`:
+
+```typescript
+class ApiKeyGuard implements Guard {
+  constructor(private readonly subscriptionService: SubscriptionService) {}
+
+  async canActivate(ctx: RequestContext): Promise<boolean | Response> {
+    const apiKey = ctx.request.headers.get('x-api-key');
+    if (!apiKey) {
+      return Response.json(
+        { statusCode: 401, message: 'Missing API key', error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const result = await this.subscriptionService.validate(apiKey);
+    if (!result.allowed) {
+      return Response.json(
+        { statusCode: 401, message: result.reason, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    ctx.set('client', result);
+    return true;
+  }
+}
+```
+
+If a guard throws an error, the framework's outer error handler catches it and returns a `500 Internal Server Error` (in production, without error details). Guards should not throw to control the response -- use a `Response` return instead.
 
 ---
 
@@ -602,11 +633,11 @@ Guards make a binary decision (allow/deny). Interceptors wrap the handler execut
 
 ## Key Takeaways
 
-1. **Guards are decision functions** -- they return `true` (allow) or `false` (deny, 403 Forbidden)
+1. **Guards are decision functions** -- they return `true` (allow), `false` (deny, 403 Forbidden), or a `Response` (custom HTTP response, e.g. 401 Unauthorized)
 2. **Three levels**: global, controller, route. They compose through inheritance: global runs first, then controller, then route
 3. **Type-safe state**: guards set state with `ctx.set()`, handlers access it with `ctx.state` -- fully typed through generics
 4. **Guards are singletons** -- one instance per class, resolved through the DI container. Do not store per-request state on properties
-5. **Simple contract**: guards return `true` or `false` -- the framework always returns `403 Forbidden` on denial. For finer error control, use handlers or interceptors
+5. **Flexible responses**: return `false` for generic 403, or return a `Response` for custom status codes and error bodies (401, 429, etc.)
 6. **Guard factories** (`createRoleGuard`, `createPermissionGuard`) are useful for parameterized authorization
 7. **Dev mode bypass** guards let you skip real authentication during local development
 8. **Guards are easy to test** -- create a mock context, call `canActivate()`, assert the result

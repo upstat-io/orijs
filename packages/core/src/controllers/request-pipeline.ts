@@ -236,8 +236,11 @@ export class RequestPipeline {
 
 	private async runGuards(guards: Guard[], ctx: RequestContext): Promise<Response | null> {
 		for (const guard of guards) {
-			const canActivate = await guard.canActivate(ctx);
-			if (!canActivate) {
+			const result = await guard.canActivate(ctx);
+			if (result instanceof Response) {
+				return result;
+			}
+			if (!result) {
 				return this.responseFactory.forbidden();
 			}
 		}
