@@ -158,6 +158,12 @@ export class CacheService {
 	private readonly singleflight = new Singleflight({ errorTtlMs: 0 });
 	private readonly defaultGraceSeconds: number;
 
+	// Auto-built config tracking for cascade invalidation.
+	// Populated by setEntry() as configs are used, then queried by invalidate()
+	// to generate scope-level meta keys that match what was stored at SET time.
+	private readonly configsByEntity = new Map<string, Set<CacheConfig>>();
+	private readonly dependentsByEntity = new Map<string, Set<string>>();
+
 	constructor(
 		private readonly provider: CacheProvider,
 		options: CacheServiceOptions = {}
@@ -374,13 +380,12 @@ export class CacheService {
 			const invalidationTags = getEntityInvalidationTags(entityType, params as Record<string, unknown>);
 			const tagMetaKeys = invalidationTags.map(generateTagMetaKey);
 
-			// Invalidate both entity meta key AND tag meta keys
-			if (tagMetaKeys.length > 0) {
-				const allMetaKeys = [metaKey, ...tagMetaKeys];
-				return await this.provider.delByMetaMany(allMetaKeys);
-			}
+			const allMetaKeys = [metaKey, ...tagMetaKeys];
 
-			return await this.provider.delByMeta(metaKey);
+			// Add scope-level and dependent meta keys from tracked configs
+			this.addTrackedMetaKeys(entityType, params, allMetaKeys);
+
+			return await this.provider.delByMetaMany(allMetaKeys);
 		}
 
 		// Direct deletion only (or InMemory provider)
@@ -431,6 +436,76 @@ export class CacheService {
 	}
 
 	/**
+	 * Track a cache config for cascade invalidation.
+	 *
+	 * Builds an internal reverse dependency graph so invalidate() can
+	 * generate the correct meta keys for dependents with fewer params.
+	 */
+	private trackConfig<TParams extends object>(config: CacheConfig<TParams>): void {
+		const entity = config.entity;
+		if (!this.configsByEntity.has(entity)) {
+			this.configsByEntity.set(entity, new Set());
+		}
+		const configs = this.configsByEntity.get(entity)!;
+		if (configs.has(config as CacheConfig)) return;
+		configs.add(config as CacheConfig);
+
+		for (const dep of Object.keys(config.dependsOn)) {
+			if (!this.dependentsByEntity.has(dep)) {
+				this.dependentsByEntity.set(dep, new Set());
+			}
+			this.dependentsByEntity.get(dep)!.add(entity);
+		}
+	}
+
+	/**
+	 * Generate additional meta keys from tracked configs.
+	 *
+	 * At SET time, meta keys use config.metaParams (scope params) which may be
+	 * a subset of the params passed to invalidate(). This method generates the
+	 * scope-level meta keys that match what was stored, plus dependency meta keys
+	 * for dependents that registered with fewer params.
+	 */
+	private addTrackedMetaKeys<TParams extends object>(
+		entityType: string,
+		params: TParams,
+		metaKeys: string[]
+	): void {
+		// Scope-level meta keys from the entity's own configs
+		for (const config of this.configsByEntity.get(entityType) ?? []) {
+			try {
+				const configMetaKey = generateConfigMetaKey(config, params);
+				if (!metaKeys.includes(configMetaKey)) {
+					metaKeys.push(configMetaKey);
+				}
+			} catch {
+				// Config may require metaParams we don't have; skip
+			}
+		}
+
+		// Dependency meta keys from dependent configs
+		for (const dependentType of this.dependentsByEntity.get(entityType) ?? []) {
+			for (const config of this.configsByEntity.get(dependentType) ?? []) {
+				const depParamKeys = config.dependsOn[entityType];
+				if (!depParamKeys || depParamKeys.length === 0) continue;
+
+				const depParams: Record<string, unknown> = {};
+				for (const key of depParamKeys) {
+					const value = (params as Record<string, unknown>)[key as string];
+					if (value !== undefined) {
+						depParams[key as string] = value;
+					}
+				}
+
+				const depMetaKey = generateMetaKey(entityType, depParams);
+				if (!metaKeys.includes(depMetaKey)) {
+					metaKeys.push(depMetaKey);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Set a cache entry with metadata and meta key associations
 	 *
 	 * When using RedisCacheProvider, also stores meta key associations
@@ -442,6 +517,9 @@ export class CacheService {
 		cacheKey: string,
 		value: T
 	): Promise<void> {
+		// Track config for cascade invalidation
+		this.trackConfig(config);
+
 		// Check if we should cache null/undefined
 		if ((value === null || value === undefined) && !config.cacheNull) {
 			return;

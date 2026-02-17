@@ -391,6 +391,103 @@ describe('CacheService (functional)', () => {
 		});
 	});
 
+	describe('dependency-based cascade with fewer params', () => {
+		function createCascadeRegistry() {
+			return EntityRegistry.create()
+				.scope('global')
+				.scope('account', 'accountUuid')
+				.entity('Account', 'account')
+				.entity('User', 'account', 'userId')
+				.entity('UserList', 'account')
+				.build();
+		}
+
+		it('should cascade to dependent with fewer params', async () => {
+			const registry = createCascadeRegistry();
+			const Cache = createCacheBuilder(registry);
+			const UserCache = Cache.for<{ accountUuid: string; userId: string }>('User').ttl('1h').build();
+			const UserListCache = Cache.for<{ accountUuid: string }>('UserList')
+				.ttl('1h')
+				.dependsOn('User')
+				.build();
+
+			const accountUuid = crypto.randomUUID();
+			const userId = crypto.randomUUID();
+
+			await cacheService.set(UserCache, { accountUuid, userId }, { name: 'Test User' });
+			await cacheService.set(UserListCache, { accountUuid }, [{ name: 'User 1' }]);
+
+			expect(await cacheService.get(UserCache, { accountUuid, userId })).toBeDefined();
+			expect(await cacheService.get(UserListCache, { accountUuid })).toBeDefined();
+
+			// Invalidate with full params — should cascade to UserList (fewer params)
+			await cacheService.invalidate('User', { accountUuid, userId });
+
+			expect(await cacheService.get(UserCache, { accountUuid, userId })).toBeUndefined();
+			expect(await cacheService.get(UserListCache, { accountUuid })).toBeUndefined();
+		});
+
+		it('should not cascade to different scope', async () => {
+			const registry = createCascadeRegistry();
+			const Cache = createCacheBuilder(registry);
+			const UserListCache = Cache.for<{ accountUuid: string }>('UserList')
+				.ttl('1h')
+				.dependsOn('User')
+				.build();
+
+			const account1 = crypto.randomUUID();
+			const account2 = crypto.randomUUID();
+
+			await cacheService.set(UserListCache, { accountUuid: account1 }, [{ name: 'List 1' }]);
+			await cacheService.set(UserListCache, { accountUuid: account2 }, [{ name: 'List 2' }]);
+
+			await cacheService.invalidate('User', { accountUuid: account1, userId: crypto.randomUUID() });
+
+			expect(await cacheService.get(UserListCache, { accountUuid: account1 })).toBeUndefined();
+			expect(await cacheService.get(UserListCache, { accountUuid: account2 })).toBeDefined();
+		});
+
+		it('should cascade to multiple dependents', async () => {
+			const registry = EntityRegistry.create()
+				.scope('global')
+				.scope('account', 'accountUuid')
+				.scope('project', 'projectUuid')
+				.entity('Account', 'account')
+				.entity('Project', 'project')
+				.entity('Item', 'project', 'itemId')
+				.entity('ItemList', 'project')
+				.entity('ItemCount', 'project')
+				.build();
+
+			const Cache = createCacheBuilder(registry);
+			const ItemCache = Cache.for<{ accountUuid: string; projectUuid: string; itemId: string }>('Item')
+				.ttl('1h')
+				.build();
+			const ItemListCache = Cache.for<{ accountUuid: string; projectUuid: string }>('ItemList')
+				.ttl('1h')
+				.dependsOn('Item')
+				.build();
+			const ItemCountCache = Cache.for<{ accountUuid: string; projectUuid: string }>('ItemCount')
+				.ttl('1h')
+				.dependsOn('Item')
+				.build();
+
+			const accountUuid = crypto.randomUUID();
+			const projectUuid = crypto.randomUUID();
+			const itemId = crypto.randomUUID();
+
+			await cacheService.set(ItemCache, { accountUuid, projectUuid, itemId }, { name: 'Item 1' });
+			await cacheService.set(ItemListCache, { accountUuid, projectUuid }, [{ name: 'Item 1' }]);
+			await cacheService.set(ItemCountCache, { accountUuid, projectUuid }, { count: 42 });
+
+			await cacheService.invalidate('Item', { accountUuid, projectUuid, itemId });
+
+			expect(await cacheService.get(ItemCache, { accountUuid, projectUuid, itemId })).toBeUndefined();
+			expect(await cacheService.get(ItemListCache, { accountUuid, projectUuid })).toBeUndefined();
+			expect(await cacheService.get(ItemCountCache, { accountUuid, projectUuid })).toBeUndefined();
+		});
+	});
+
 	describe('invalidateMany', () => {
 		it('should invalidate multiple entities at once', async () => {
 			const registry = createTestRegistry();
