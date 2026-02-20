@@ -12,6 +12,7 @@ import type {
 import { Logger } from '@orijs/logging';
 import type { Schema } from '@orijs/validation';
 import type { ParamValidatorClass } from './param-validators';
+import type { RouteKey } from '../route-key.ts';
 
 /**
  * Fluent API for defining routes within a controller.
@@ -52,6 +53,8 @@ export class RouteBuilder<
 	private currentRoute: RouteDefinition | null = null;
 	private routeGuardsOverride: GuardClass[] | null = null;
 	private routeInterceptorsOverride: InterceptorClass[] | null = null;
+	private controllerData: Map<symbol, unknown> | null = null;
+	private routeDataOverride: Map<symbol, unknown> | null = null;
 
 	/**
 	 * Creates a new RouteBuilder.
@@ -272,6 +275,36 @@ export class RouteBuilder<
 	}
 
 	/**
+	 * Attaches typed metadata to the current route or controller.
+	 *
+	 * When called before any route method, applies to all routes in the controller.
+	 * When called after a route method, applies only to that route (overriding controller-level).
+	 *
+	 * Guards and handlers read the value via ctx.get(key).
+	 *
+	 * @param key - A RouteKey created with createRouteKey()
+	 * @param value - The typed value to attach
+	 * @returns this for method chaining
+	 */
+	public set<T>(key: RouteKey<T>, value: T): this {
+		if (this.currentRoute) {
+			if (!this.routeDataOverride) {
+				this.routeDataOverride = this.controllerData
+					? new Map(this.controllerData)
+					: new Map();
+			}
+			this.routeDataOverride.set(key, value);
+			this.currentRoute.data = this.routeDataOverride;
+		} else {
+			if (!this.controllerData) {
+				this.controllerData = new Map();
+			}
+			this.controllerData.set(key, value);
+		}
+		return this;
+	}
+
+	/**
 	 * Clears all guards and interceptors.
 	 *
 	 * Convenience method equivalent to calling clearGuards() and clearInterceptors().
@@ -396,10 +429,12 @@ export class RouteBuilder<
 			interceptors: this.getEffectiveInterceptors(),
 			pipes: [...this.controllerPipes],
 			schema,
-			paramValidators
+			paramValidators,
+			data: this.controllerData ? new Map(this.controllerData) : undefined
 		};
 		this.routeGuardsOverride = null;
 		this.routeInterceptorsOverride = null;
+		this.routeDataOverride = null;
 		this.routes.push(this.currentRoute);
 		return this;
 	}

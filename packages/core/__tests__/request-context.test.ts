@@ -6,6 +6,7 @@ import { parseQuery } from '../src/utils/query.ts';
 import { Logger } from '@orijs/logging';
 import type { ConfigProvider } from '@orijs/config';
 import type { SocketEmitter } from '../src/types/emitter.ts';
+import { createRouteKey } from '../src/route-key.ts';
 
 /** Mock config provider for testing */
 const mockConfigProvider: ConfigProvider = {
@@ -806,6 +807,63 @@ describe('RequestContext', () => {
 
 			expect(publishedTopic).toBe('user:456');
 			expect(publishedMessage).toBe(JSON.stringify({ type: 'notification' }));
+		});
+	});
+
+	describe('route data (get with RouteKey)', () => {
+		test('should return value for set route key', () => {
+			const key = createRouteKey<number>('Limit');
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			const data = new Map<symbol, unknown>([[key, 42]]);
+			ctx.setRouteData(data);
+
+			expect(ctx.get(key)).toBe(42);
+		});
+
+		test('should return undefined for unset route key', () => {
+			const key = createRouteKey<string>('Missing');
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			expect(ctx.get(key)).toBeUndefined();
+		});
+
+		test('should return undefined when no route data injected', () => {
+			const key = createRouteKey<string>('NoData');
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			expect(ctx.get(key)).toBeUndefined();
+		});
+
+		test('should not interfere with string-key state', () => {
+			const routeKey = createRouteKey<number>('Config');
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			ctx.set('user', { id: '123' });
+			ctx.setRouteData(new Map<symbol, unknown>([[routeKey, 99]]));
+
+			expect(ctx.get('user')).toEqual({ id: '123' });
+			expect(ctx.get(routeKey)).toBe(99);
+		});
+
+		test('should handle multiple route keys', () => {
+			const limitKey = createRouteKey<number>('Limit');
+			const tagKey = createRouteKey<string>('Tag');
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			const data = new Map<symbol, unknown>([
+				[limitKey, 100],
+				[tagKey, 'auth']
+			]);
+			ctx.setRouteData(data);
+
+			expect(ctx.get(limitKey)).toBe(100);
+			expect(ctx.get(tagKey)).toBe('auth');
 		});
 	});
 });

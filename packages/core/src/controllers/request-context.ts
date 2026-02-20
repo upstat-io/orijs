@@ -4,6 +4,7 @@ import { Logger, setMeta as setContextMeta, type LoggerOptions } from '@orijs/lo
 import { Json } from '@orijs/validation';
 import { parseQueryString } from '../utils/query.ts';
 import type { EventEmitter, WorkflowExecutor, SocketEmitter } from '../types/emitter.ts';
+import type { RouteKey } from '../route-key.ts';
 import {
 	RequestBoundEventEmitter,
 	RequestBoundWorkflowExecutor,
@@ -120,6 +121,7 @@ export class RequestContext<
 	private cachedEvents: EventEmitter | null = null;
 	private cachedWorkflows: WorkflowExecutor | null = null;
 	private cachedSocket: SocketEmitter | null = null;
+	private routeData: Map<symbol, unknown> | null = null;
 
 	/**
 	 * Access state variables set by guards.
@@ -154,15 +156,46 @@ export class RequestContext<
 	}
 
 	/**
-	 * Get a state variable by key.
+	 * Injects route metadata from the pipeline. Called once before guards run.
+	 * @internal
+	 */
+	public setRouteData(data: Map<symbol, unknown>): void {
+		this.routeData = data;
+	}
+
+	/**
+	 * Get typed route metadata by RouteKey.
+	 * Returns undefined if the key was not set on this route.
 	 *
 	 * @example
 	 * ```ts
-	 * const user = ctx.get('user');
+	 * const config = ctx.get(RateLimitKey); // RateLimitConfig | undefined
 	 * ```
 	 */
-	public get<K extends keyof TState>(key: K): TState[K] {
-		return this.state[key];
+	public get<T>(key: RouteKey<T>): T | undefined;
+	/**
+	 * Get a state variable by key.
+	 *
+	 * When TState is parameterized (e.g., in controller handlers), the return
+	 * type is inferred from TState. When using a generic Context (e.g., in
+	 * guards), pass an explicit type parameter to avoid `unknown`.
+	 *
+	 * @example
+	 * ```ts
+	 * // In a handler with typed state — inferred from TState
+	 * const user = ctx.get('user'); // => User
+	 *
+	 * // In a guard with generic Context — explicit type parameter
+	 * const user = ctx.get<User>('user'); // => User
+	 * ```
+	 */
+	public get<K extends keyof TState>(key: K): TState[K];
+	public get<T>(key: string): T;
+	public get(key: string | symbol): unknown {
+		if (typeof key === 'symbol') {
+			return this.routeData?.get(key);
+		}
+		return this.state[key as keyof TState];
 	}
 
 	constructor(

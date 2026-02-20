@@ -119,9 +119,24 @@ export class SocketContext<
 
 	/**
 	 * Get a state variable by key.
+	 *
+	 * When TState is parameterized, the return type is inferred from TState.
+	 * When using a generic SocketContext (e.g., in guards), pass an explicit
+	 * type parameter to avoid `unknown`.
+	 *
+	 * @example
+	 * ```ts
+	 * // In a handler with typed state — inferred from TState
+	 * const user = ctx.get('user'); // => User
+	 *
+	 * // In a guard with generic SocketContext — explicit type parameter
+	 * const user = ctx.get<User>('user'); // => User
+	 * ```
 	 */
-	public get<K extends keyof TState>(key: K): TState[K] {
-		return this.state[key];
+	public get<K extends keyof TState>(key: K): TState[K];
+	public get<T>(key: string): T;
+	public get(key: string): unknown {
+		return this.state[key as keyof TState];
 	}
 
 	constructor(

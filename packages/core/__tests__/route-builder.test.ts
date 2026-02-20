@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 import { RouteBuilder } from '../src/controllers/route-builder.ts';
 import type { Guard, Interceptor, RequestContext, Pipe, ParamValidator } from '../src/types/index.ts';
 import { UuidParam, StringParam, NumberParam } from '../src/controllers/param-validators';
+import { createRouteKey } from '../src/route-key.ts';
 
 class MockGuard implements Guard {
 	canActivate(): boolean {
@@ -306,6 +307,96 @@ describe('RouteBuilder', () => {
 			expect(validator.validate('0')).toBe(true);
 			expect(validator.validate('abc')).toBe(false);
 			expect(validator.validate('')).toBe(false);
+		});
+	});
+
+	describe('route data (set)', () => {
+		test('should attach controller-level data to all routes', () => {
+			const key = createRouteKey<number>('Limit');
+			builder.set(key, 100);
+
+			builder.get('/first', dummyHandler);
+			builder.get('/second', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data).toBeDefined();
+			expect(routes[0]!.data!.get(key)).toBe(100);
+			expect(routes[1]!.data).toBeDefined();
+			expect(routes[1]!.data!.get(key)).toBe(100);
+		});
+
+		test('should attach route-level data only to that route', () => {
+			const key = createRouteKey<string>('Tag');
+
+			builder.get('/first', dummyHandler);
+			builder.set(key, 'strict');
+			builder.get('/second', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data!.get(key)).toBe('strict');
+			expect(routes[1]!.data).toBeUndefined();
+		});
+
+		test('should merge controller and route-level data', () => {
+			const controllerKey = createRouteKey<number>('Global');
+			const routeKey = createRouteKey<string>('Local');
+
+			builder.set(controllerKey, 42);
+			builder.get('/route', dummyHandler);
+			builder.set(routeKey, 'override');
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data!.get(controllerKey)).toBe(42);
+			expect(routes[0]!.data!.get(routeKey)).toBe('override');
+		});
+
+		test('should allow route-level data to override controller-level data', () => {
+			const key = createRouteKey<number>('Limit');
+
+			builder.set(key, 100);
+			builder.get('/route', dummyHandler);
+			builder.set(key, 10);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data!.get(key)).toBe(10);
+		});
+
+		test('should not have data when none is set', () => {
+			builder.get('/route', dummyHandler);
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data).toBeUndefined();
+		});
+
+		test('should isolate route data between routes', () => {
+			const key = createRouteKey<string>('Config');
+
+			builder.get('/first', dummyHandler);
+			builder.set(key, 'first-config');
+			builder.get('/second', dummyHandler);
+			builder.set(key, 'second-config');
+
+			const routes = builder.getRoutes();
+			expect(routes[0]!.data!.get(key)).toBe('first-config');
+			expect(routes[1]!.data!.get(key)).toBe('second-config');
+		});
+
+		test('should reset route data override between routes', () => {
+			const controllerKey = createRouteKey<number>('Base');
+			const routeKey = createRouteKey<string>('Extra');
+
+			builder.set(controllerKey, 50);
+			builder.get('/first', dummyHandler);
+			builder.set(routeKey, 'extra-for-first');
+			builder.get('/second', dummyHandler);
+
+			const routes = builder.getRoutes();
+			// First route has both controller and route data
+			expect(routes[0]!.data!.get(controllerKey)).toBe(50);
+			expect(routes[0]!.data!.get(routeKey)).toBe('extra-for-first');
+			// Second route only has controller data
+			expect(routes[1]!.data!.get(controllerKey)).toBe(50);
+			expect(routes[1]!.data!.has(routeKey)).toBe(false);
 		});
 	});
 });

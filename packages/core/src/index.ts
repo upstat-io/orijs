@@ -62,6 +62,27 @@ export { createToken, isToken } from './token';
 export type { Token } from './token';
 
 /**
+ * Route key utilities for creating typed route metadata keys.
+ * Use these to attach metadata to routes that guards and handlers can read.
+ *
+ * @example
+ * ```typescript
+ * import { createRouteKey } from '@orijs/core';
+ *
+ * const RateLimitKey = createRouteKey<RateLimitConfig>('RateLimit');
+ *
+ * // In controller configure():
+ * r.post('/login', this.login);
+ * r.set(RateLimitKey, { ip: { windowMs: 60_000, maxRequests: 10 } });
+ *
+ * // In guard:
+ * const config = ctx.get(RateLimitKey); // RateLimitConfig | undefined
+ * ```
+ */
+export { createRouteKey, isRouteKey } from './route-key';
+export type { RouteKey } from './route-key';
+
+/**
  * Internal coordinators - exposed for testing and framework extension.
  * These manage the internal coordination of routing, events, workflows, etc.
  *

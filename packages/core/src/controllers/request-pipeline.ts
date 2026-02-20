@@ -110,6 +110,7 @@ export class RequestPipeline {
 		const hasGuards = route.guards.length > 0;
 		const hasInterceptors = route.interceptors.length > 0;
 		const hasSchema = !!route.schema;
+		const hasRouteData = !!route.data;
 		const handler = route.handler as (ctx: RequestContext) => Response | Promise<Response>;
 
 		// Create factory once, reuse for all requests on this route
@@ -134,7 +135,7 @@ export class RequestPipeline {
 		// Fast path: no guards, no interceptors, no schema, no param validators - minimal overhead
 		// Still use runWithContext for correlation ID propagation (needed for distributed tracing)
 		// Optimization: Use sync wrapper with try-catch + .catch() instead of async/await (~23% faster)
-		if (!hasGuards && !hasInterceptors && !hasSchema && !paramValidators) {
+		if (!hasGuards && !hasInterceptors && !hasSchema && !paramValidators && !hasRouteData) {
 			return (req: BunRequest): Promise<Response> => {
 				const params = req.params || {};
 				const ctx = contextFactory.create(req, params);
@@ -174,6 +175,11 @@ export class RequestPipeline {
 
 			return runWithContext({ log: this.appLogger, correlationId, trace }, async () => {
 				try {
+					// Inject route data before guards so ctx.get(RouteKey) works in guards
+					if (hasRouteData) {
+						ctx.setRouteData(route.data!);
+					}
+
 					// Run guards (pre-resolved at route registration)
 					if (hasGuards) {
 						const guardResult = await this.runGuards(guards, ctx);

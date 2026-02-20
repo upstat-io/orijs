@@ -5,6 +5,7 @@ import type { HttpMethod } from './http';
 import type { GuardClass, InterceptorClass, PipeClass } from './middleware';
 import type { Schema } from '@orijs/validation';
 import type { ParamValidatorClass } from '../controllers/param-validators';
+import type { RouteKey } from '../route-key.ts';
 
 /**
  * Schema options for route validation.
@@ -69,6 +70,7 @@ export interface RouteDefinition {
 	pipes: Array<{ pipe: PipeClass; schema?: Schema }>;
 	schema?: RouteSchemaOptions;
 	paramValidators?: Map<string, ParamValidatorClass>;
+	data?: Map<symbol, unknown>;
 }
 
 /**
@@ -138,6 +140,20 @@ export interface RouteBuilder<
 		name: TName,
 		validator: ParamValidatorClass
 	): RouteBuilder<TState, TParams & Record<TName, string>>;
+
+	/**
+	 * Attaches typed metadata to the current route or controller.
+	 *
+	 * When called before any route method, applies to all routes in the controller.
+	 * When called after a route method, applies only to that route (overriding controller-level).
+	 *
+	 * Guards and handlers read the value via ctx.get(key).
+	 *
+	 * @param key - A RouteKey created with createRouteKey()
+	 * @param value - The typed value to attach
+	 */
+	set<T>(key: RouteKey<T>, value: T): RouteBuilder<TState, TParams>;
+
 	/**
 	 * Adds a guard to the current route or controller.
 	 * @param guard - The guard class to add
