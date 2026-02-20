@@ -154,6 +154,15 @@ export interface RouteBuilder<
 	clearGuards(): RouteBuilder<TState, TParams>;
 
 	/**
+	 * Replaces global (inherited) guards with a new set at the controller level.
+	 * Requires a reason that is logged at info level for audit trail.
+	 *
+	 * @param guards - Guard classes to use instead of global guards (empty array = unprotected)
+	 * @param options - Options with required reason string
+	 */
+	replaceGlobalGuardsWith(guards: GuardClass[], options: { reason: string }): RouteBuilder<TState, TParams>;
+
+	/**
 	 * Adds an interceptor to the current route or controller.
 	 * @param interceptor - The interceptor class to add
 	 */

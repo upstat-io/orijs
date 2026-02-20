@@ -9,6 +9,7 @@ import type {
 	InterceptorClass,
 	PipeClass
 } from '../types/index.ts';
+import { Logger } from '@orijs/logging';
 import type { Schema } from '@orijs/validation';
 import type { ParamValidatorClass } from './param-validators';
 
@@ -130,6 +131,36 @@ export class RouteBuilder<
 			this.controllerGuards = [];
 			this.inheritedGuards = [];
 		}
+		return this;
+	}
+
+	/**
+	 * Replaces global (inherited) guards with a new set at the controller level.
+	 * Requires a reason that is logged at info level for audit trail.
+	 * Only valid at controller level (before any route method).
+	 *
+	 * @param guards - Guard classes to use instead of global guards (empty array = unprotected)
+	 * @param options - Options with required reason string
+	 * @returns this for method chaining
+	 *
+	 * @example
+	 * ```ts
+	 * // Public endpoint — no guards
+	 * r.replaceGlobalGuardsWith([], { reason: 'Health check — must be public' });
+	 *
+	 * // Different guard
+	 * r.replaceGlobalGuardsWith([InternalAuthGuard], { reason: 'Service-to-service only' });
+	 * ```
+	 */
+	public replaceGlobalGuardsWith(guards: GuardClass[], options: { reason: string }): this {
+		const logger = new Logger('RouteBuilder');
+		logger.info('Global guards replaced', {
+			reason: options.reason,
+			removed: this.inheritedGuards.map((g) => g.name),
+			replacedWith: guards.map((g) => g.name)
+		});
+		this.inheritedGuards = [];
+		this.controllerGuards = guards;
 		return this;
 	}
 

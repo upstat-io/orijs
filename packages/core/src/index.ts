@@ -95,6 +95,7 @@ export {
 	StringParam,
 	NumberParam
 } from './controllers/index';
+export type { CompiledRoute } from './controllers/index';
 
 /**
  * WebSocket routing exports.
