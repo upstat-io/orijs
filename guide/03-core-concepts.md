@@ -621,6 +621,9 @@ interface RequestContext<TState = {}> {
   getValidatedParam(key: string): string;  // Alphanumeric + - _
   getValidatedUUID(key: string): string;   // UUID v4 format
 
+  // Response headers (set by guards, applied after handler)
+  setResponseHeader(name: string, value: string): void;
+
   // Request-scoped services
   readonly events: EventEmitter;           // Request-bound events (lazy)
   readonly workflows: WorkflowExecutor;    // Request-bound workflows (lazy)

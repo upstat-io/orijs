@@ -851,6 +851,64 @@ describe('RequestPipeline', () => {
 		});
 	});
 
+	describe('response headers', () => {
+		test('should apply guard-set response headers to the response', async () => {
+			class HeaderGuard implements Guard {
+				canActivate(ctx: RequestContext): boolean {
+					ctx.setResponseHeader('X-RateLimit-Remaining', '99');
+					ctx.setResponseHeader('X-Custom', 'guard-value');
+					return true;
+				}
+			}
+
+			const route = createRoute({
+				guards: [HeaderGuard],
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const response = await handler(createMockRequest());
+
+			expect(await response.text()).toBe('OK');
+			expect(response.headers.get('X-RateLimit-Remaining')).toBe('99');
+			expect(response.headers.get('X-Custom')).toBe('guard-value');
+		});
+
+		test('should not modify response when no response headers set', async () => {
+			const route = createRoute({
+				guards: [AllowGuard],
+				handler: async () => new Response('OK', { headers: { 'X-Existing': 'value' } })
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {});
+			const response = await handler(createMockRequest());
+
+			expect(await response.text()).toBe('OK');
+			expect(response.headers.get('X-Existing')).toBe('value');
+		});
+
+		test('should apply response headers alongside CORS headers', async () => {
+			class HeaderGuard implements Guard {
+				canActivate(ctx: RequestContext): boolean {
+					ctx.setResponseHeader('X-Rate-Limit', '100');
+					return true;
+				}
+			}
+
+			const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+			const route = createRoute({
+				guards: [HeaderGuard],
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {}, corsHeaders);
+			const response = await handler(createMockRequest());
+
+			expect(response.headers.get('X-Rate-Limit')).toBe('100');
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		});
+	});
+
 	describe('debug logging', () => {
 		test('should log route hit at debug level on fast path', async () => {
 			const route = createRoute({

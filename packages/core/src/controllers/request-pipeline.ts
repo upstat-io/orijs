@@ -212,7 +212,7 @@ export class RequestPipeline {
 						? await this.executeWithInterceptors(interceptors, handler, ctx)
 						: await handler(ctx);
 
-					return finalizeResponse(response);
+					return finalizeResponse(this.applyResponseHeaders(response, ctx));
 				} catch (error) {
 					this.appLogger.error('Unhandled error in request handler', {
 						correlationId,
@@ -232,6 +232,24 @@ export class RequestPipeline {
 		const newHeaders = new Headers(response.headers);
 		for (const [key, value] of Object.entries(corsHeaders)) {
 			newHeaders.set(key, value);
+		}
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: newHeaders
+		});
+	}
+
+	/**
+	 * Applies response headers set by guards/handlers via ctx.setResponseHeader().
+	 * Returns the original response unchanged if no headers were set (zero-copy fast path).
+	 */
+	private applyResponseHeaders(response: Response, ctx: RequestContext): Response {
+		const headers = ctx.getResponseHeaders();
+		if (!headers) return response;
+		const newHeaders = new Headers(response.headers);
+		for (const [name, value] of headers) {
+			newHeaders.set(name, value);
 		}
 		return new Response(response.body, {
 			status: response.status,

@@ -282,6 +282,8 @@ Request-scoped context passed to handlers, guards, and interceptors.
 | `text` | `(): Promise<string>` | Parse body as text |
 | `getValidatedParam` | `(key): string` | Get validated path parameter |
 | `getValidatedUUID` | `(key): string` | Get validated UUID parameter |
+| `setResponseHeader` | `(name, value): void` | Inject a header into the HTTP response |
+| `getResponseHeaders` | `(): [string, string][] \| null` | Get all response headers (internal) |
 
 ### ResponseFactory
 

@@ -122,6 +122,7 @@ export class RequestContext<
 	private cachedWorkflows: WorkflowExecutor | null = null;
 	private cachedSocket: SocketEmitter | null = null;
 	private routeData: Map<symbol, unknown> | null = null;
+	private responseHeaders: [string, string][] | null = null;
 
 	/**
 	 * Access state variables set by guards.
@@ -526,5 +527,31 @@ export class RequestContext<
 		}
 
 		return value;
+	}
+
+	/**
+	 * Set a header to be applied to the HTTP response.
+	 * Typically called by guards to inject headers (e.g., rate limit headers).
+	 * Headers are applied after handler execution by the request pipeline.
+	 *
+	 * @example
+	 * ```ts
+	 * ctx.setResponseHeader('X-RateLimit-Remaining', '42');
+	 * ```
+	 */
+	public setResponseHeader(name: string, value: string): void {
+		if (this.responseHeaders === null) {
+			this.responseHeaders = [];
+		}
+		this.responseHeaders.push([name, value]);
+	}
+
+	/**
+	 * Get all response headers set by guards/handlers.
+	 * Returns null if no headers were set (fast path for pipeline).
+	 * @internal
+	 */
+	public getResponseHeaders(): [string, string][] | null {
+		return this.responseHeaders;
 	}
 }

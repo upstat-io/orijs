@@ -526,6 +526,41 @@ class ApiKeyGuard implements Guard {
 
 If a guard throws an error, the framework's outer error handler catches it and returns a `500 Internal Server Error` (in production, without error details). Guards should not throw to control the response -- use a `Response` return instead.
 
+### Injecting Response Headers
+
+Guards can inject headers into the HTTP response without short-circuiting the request. Use `ctx.setResponseHeader()` to add headers that will be applied to the handler's response after it completes:
+
+```typescript
+class RateLimiterGuard implements Guard {
+  constructor(private readonly rateLimiter: RateLimiterService) {}
+
+  async canActivate(ctx: RequestContext): Promise<boolean | Response> {
+    const result = await this.rateLimiter.check(ctx);
+
+    if (result.exceeded) {
+      // Short-circuit with 429 response
+      return OriResponse.json(
+        { status: 'error', message: 'Rate limit exceeded' },
+        { status: 429, headers: { 'Retry-After': String(result.retryAfter) } }
+      );
+    }
+
+    // Inject rate limit headers into the eventual handler response
+    ctx.setResponseHeader('X-RateLimit-Remaining', String(result.remaining));
+    ctx.setResponseHeader('X-RateLimit-Reset', String(result.resetTime));
+    return true;
+  }
+}
+```
+
+The headers are applied after the handler returns, before CORS headers. This means the handler doesn't need to know about rate limit headers -- the guard handles them independently.
+
+Key points:
+- `setResponseHeader(name, value)` is additive -- call it multiple times for multiple headers
+- Headers are only allocated when `setResponseHeader` is called (lazy, zero cost when unused)
+- Multiple guards can each add their own headers without interference
+- Response headers are separate from state (`ctx.set()`) -- they affect the HTTP response, not handler logic
+
 ---
 
 ## Testing Guards

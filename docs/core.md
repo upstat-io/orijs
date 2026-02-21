@@ -480,6 +480,7 @@ The following are lazily initialized on first access to minimize per-request all
 | `events` | first access | Creates `RequestBoundEventEmitter` |
 | `workflows` | first access | Creates `RequestBoundWorkflowExecutor` |
 | `socket` | first access | Creates `RequestBoundSocketEmitter` |
+| `responseHeaders` | first `setResponseHeader()` | Allocates `[string, string][]` array for guard-injected headers |
 
 Pre-allocated constants: `EMPTY_QUERY` is a frozen empty object reused when no query string exists.
 
@@ -509,6 +510,10 @@ Body can only be parsed once per request (either as JSON or text, not both).
 ### Type-Safe State
 
 `set<K extends keyof TState>(key, value)` and `get<K extends keyof TState>(key)` provide compile-time type checking. Guards set state; handlers read it.
+
+### Response Headers
+
+`setResponseHeader(name, value)` allows guards to inject headers into the HTTP response. Headers are stored in a lazy `[string, string][]` array (null when unused). The `RequestPipeline` applies these headers after handler execution, before CORS headers. `getResponseHeaders()` returns null when no headers are set (fast path — zero allocation).
 
 ---
 

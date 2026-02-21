@@ -810,6 +810,53 @@ describe('RequestContext', () => {
 		});
 	});
 
+	describe('response headers', () => {
+		test('should return null when no response headers set', () => {
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			expect(ctx.getResponseHeaders()).toBeNull();
+		});
+
+		test('should store and retrieve a single response header', () => {
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			ctx.setResponseHeader('X-RateLimit-Remaining', '42');
+
+			const headers = ctx.getResponseHeaders();
+			expect(headers).toEqual([['X-RateLimit-Remaining', '42']]);
+		});
+
+		test('should store multiple response headers', () => {
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			ctx.setResponseHeader('X-RateLimit-Remaining', '42');
+			ctx.setResponseHeader('X-RateLimit-Reset', '1700000000');
+			ctx.setResponseHeader('X-Custom', 'value');
+
+			const headers = ctx.getResponseHeaders();
+			expect(headers).toHaveLength(3);
+			expect(headers).toEqual([
+				['X-RateLimit-Remaining', '42'],
+				['X-RateLimit-Reset', '1700000000'],
+				['X-Custom', 'value']
+			]);
+		});
+
+		test('should not interfere with state data', () => {
+			const request = new Request('http://localhost/');
+			const ctx = createTestContext(request);
+
+			ctx.set('user', { id: '123' });
+			ctx.setResponseHeader('X-Custom', 'value');
+
+			expect(ctx.get('user')).toEqual({ id: '123' });
+			expect(ctx.getResponseHeaders()).toEqual([['X-Custom', 'value']]);
+		});
+	});
+
 	describe('route data (get with RouteKey)', () => {
 		test('should return value for set route key', () => {
 			const key = createRouteKey<number>('Limit');
