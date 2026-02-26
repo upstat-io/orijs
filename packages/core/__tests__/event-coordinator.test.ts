@@ -360,6 +360,136 @@ describe('EventCoordinator', () => {
 		});
 	});
 
+	describe('TTL Configuration Bridge', () => {
+		it('should call configureEvent for TTL events', () => {
+			const configuredEvents: Array<{ name: string; config: { ttl?: number } }> = [];
+
+			const mockProvider: EventProvider & { configureEvent: (name: string, config: { ttl?: number }) => void } = {
+				start: async () => {},
+				stop: async () => {},
+				emit: () => ({}) as EventSub<any>,
+				subscribe: () => {},
+				configureEvent: (name, config) => {
+					configuredEvents.push({ name, config });
+				}
+			};
+
+			const TtlEvent = Event.define({
+				name: 'ttl.event',
+				data: Type.Object({ v: Type.Number() }),
+				result: Type.Void(),
+				ttl: 120_000
+			});
+
+			const coordinator = new EventCoordinator(container, logger, () => mockProvider as EventProvider);
+			coordinator.setProvider(mockProvider as EventProvider);
+			coordinator.registerEventDefinition(TtlEvent);
+			coordinator.registerConsumers();
+
+			expect(configuredEvents).toHaveLength(1);
+			expect(configuredEvents[0]).toEqual({ name: 'ttl.event', config: { ttl: 120_000 } });
+		});
+
+		it('should skip configureEvent for non-TTL events', () => {
+			const configuredEvents: Array<{ name: string; config: { ttl?: number } }> = [];
+
+			const mockProvider: EventProvider & { configureEvent: (name: string, config: { ttl?: number }) => void } = {
+				start: async () => {},
+				stop: async () => {},
+				emit: () => ({}) as EventSub<any>,
+				subscribe: () => {},
+				configureEvent: (name, config) => {
+					configuredEvents.push({ name, config });
+				}
+			};
+
+			const NoTtlEvent = Event.define({
+				name: 'no.ttl',
+				data: Type.Object({ id: Type.String() }),
+				result: Type.Void()
+			});
+
+			const coordinator = new EventCoordinator(container, logger, () => mockProvider as EventProvider);
+			coordinator.setProvider(mockProvider as EventProvider);
+			coordinator.registerEventDefinition(NoTtlEvent);
+			coordinator.registerConsumers();
+
+			expect(configuredEvents).toHaveLength(0);
+		});
+
+		it('should work when provider lacks configureEvent', () => {
+			const mockProvider = createMockProvider();
+
+			const TtlEvent = Event.define({
+				name: 'ttl.event',
+				data: Type.Object({ v: Type.Number() }),
+				result: Type.Void(),
+				ttl: 60_000
+			});
+
+			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
+			coordinator.setProvider(mockProvider);
+			coordinator.registerEventDefinition(TtlEvent);
+
+			// Should not throw even though provider has no configureEvent
+			expect(() => coordinator.registerConsumers()).not.toThrow();
+		});
+	});
+
+	describe('Consumer-less Event Warning', () => {
+		it('should log warning for consumer-less events at startup', async () => {
+			const warnSpy = mock((..._args: unknown[]) => {});
+			const spyLogger = new Logger('test');
+			spyLogger.warn = warnSpy as any;
+
+			const mockProvider = createMockProvider();
+
+			const EmitterOnlyEvent = Event.define({
+				name: 'emitter.only',
+				data: Type.Object({ id: Type.String() }),
+				result: Type.Void()
+			});
+
+			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
+			coordinator.setProvider(mockProvider);
+			coordinator.registerEventDefinition(EmitterOnlyEvent);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			expect(warnSpy).toHaveBeenCalled();
+			const warnMessage = String(warnSpy.mock.calls[0]?.[0] ?? '');
+			expect(warnMessage).toContain('emitter.only');
+			expect(warnMessage).toContain('without consumers');
+
+			await coordinator.stop();
+		});
+
+		it('should not warn when all events have consumers', async () => {
+			const warnSpy = mock((..._args: unknown[]) => {});
+			const spyLogger = new Logger('test');
+			spyLogger.warn = warnSpy as any;
+
+			const mockProvider = createMockProvider();
+
+			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
+			coordinator.setProvider(mockProvider);
+			coordinator.registerEventDefinition(TestEvent);
+			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			// warn should not have been called for consumer-less events
+			const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
+				String(call[0] ?? '').includes('without consumers')
+			);
+			expect(warnCalls).toHaveLength(0);
+
+			await coordinator.stop();
+		});
+	});
+
 	describe('Mock Provider for Testing', () => {
 		it('should allow tracking emit calls with mock provider', async () => {
 			const emittedEvents: Array<{ event: string; payload: unknown }> = [];

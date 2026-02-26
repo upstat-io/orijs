@@ -118,6 +118,15 @@ export class EventCoordinator {
 			}
 		}
 
+		// Configure per-event settings (e.g., TTL) on the provider
+		if (this.eventProvider.configureEvent) {
+			for (const [eventName, definition] of this.eventDefinitions) {
+				if (definition.ttl !== undefined) {
+					this.eventProvider.configureEvent(eventName, { ttl: definition.ttl });
+				}
+			}
+		}
+
 		// Process pending consumers
 		for (const { definition, consumerClass, deps } of this.pendingConsumers) {
 			const eventName = definition.name;
@@ -266,6 +275,22 @@ export class EventCoordinator {
 	public async start(): Promise<void> {
 		if (this.eventProvider) {
 			await this.eventProvider.start();
+
+			// Warn about events with definitions but no consumers
+			const consumerlessEvents: string[] = [];
+			for (const eventName of this.eventDefinitions.keys()) {
+				if (!this.registeredConsumerEvents.has(eventName)) {
+					consumerlessEvents.push(eventName);
+				}
+			}
+			if (consumerlessEvents.length > 0) {
+				this.logger.warn(
+					`Events registered without consumers: [${consumerlessEvents.join(', ')}]. ` +
+					'Jobs for these events will accumulate in queues with no processor. ' +
+					'Set a TTL on the event definition to auto-clean stale jobs.'
+				);
+			}
+
 			const consumerCount = this.registeredConsumerEvents.size;
 			const defCount = this.eventDefinitions.size;
 			if (consumerCount > 0) {

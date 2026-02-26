@@ -82,6 +82,8 @@ export interface EventConfig<TData extends TSchema, TResult extends TSchema> {
 	readonly data: TData;
 	/** TypeBox schema for the event result. Use Type.Void() for fire-and-forget events */
 	readonly result: TResult;
+	/** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
+	readonly ttl?: number;
 }
 
 /**
@@ -107,6 +109,8 @@ export interface EventDefinition<TData, TResult> {
 	readonly dataSchema: TSchema;
 	/** TypeBox schema for runtime validation of results */
 	readonly resultSchema: TSchema;
+	/** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
+	readonly ttl?: number;
 	/**
 	 * Type carrier for data type extraction.
 	 *
@@ -226,6 +230,7 @@ export const Event = {
 			name: config.name,
 			dataSchema: config.data,
 			resultSchema: config.result,
+			...(config.ttl !== undefined && { ttl: config.ttl }),
 			_data: undefined as unknown as Static<TData>,
 			_result: undefined as unknown as Static<TResult>
 		});

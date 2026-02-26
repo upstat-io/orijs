@@ -451,6 +451,60 @@ defaultJobOptions: {
 
 You can then inspect failed jobs through BullMQ's dashboard or programmatically query the queue for failed jobs, examine their error messages, fix the issue, and retry them.
 
+## Event TTL (Time-to-Live)
+
+BullMQ has no native expiration for jobs in the "waiting" state. When events are emitted without a consumer -- during phased rollouts, after removing a consumer, or for scheduled health checks -- jobs accumulate in Redis indefinitely. For time-sensitive events, stale jobs are useless and waste resources.
+
+### Declaring TTL
+
+Add a `ttl` field (in milliseconds) to your event definition:
+
+```typescript
+const OnCallCheck = Event.define({
+  name: 'oncall.check',
+  data: Type.Object({ version: Type.Number() }),
+  result: Type.Void(),
+  ttl: 120_000,  // Jobs stale after 2 minutes
+});
+```
+
+Events without `ttl` retain current behavior -- no expiration, no cleanup.
+
+### What TTL Controls
+
+| Job State | Mechanism | Details |
+|-----------|-----------|---------|
+| **Waiting** (no consumer) | Periodic sweep via `queue.clean()` | Main problem being solved |
+| **Failed** (after retries) | Per-event `removeOnFail: { age: ttl/1000 }` | Belt-and-suspenders with sweep |
+| **Completed** | Unchanged | Governed by existing `removeOnComplete` config |
+| **Active** | Not affected | Active jobs should finish, not be killed |
+
+### BullMQ Provider Configuration
+
+The BullMQ provider accepts two optional settings for the sweep:
+
+```typescript
+addBullMQEvents(app, {
+  connection: { host: 'redis', port: 6379 },
+  sweepIntervalMs: 60_000,   // How often to sweep (default: 60s)
+  sweepBatchLimit: 1000,      // Max jobs cleaned per sweep per event (default: 1000)
+});
+```
+
+The sweep runs on a `setInterval` with `.unref()` so it doesn't keep your process alive during shutdown.
+
+### Startup Warnings
+
+OriJS logs a warning at startup for any events registered without consumers:
+
+```
+WARN: Events registered without consumers: [oncall.check, oncall.escalation].
+      Jobs for these events will accumulate in queues with no processor.
+      Set a TTL on the event definition to auto-clean stale jobs.
+```
+
+This catches the common case of phased rollouts where events are defined but consumers haven't been deployed yet.
+
 ## Testing Events
 
 ### Unit Testing Consumers

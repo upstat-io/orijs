@@ -230,6 +230,51 @@ describe('QueueManager', () => {
 		});
 	});
 
+	describe('cleanJobs', () => {
+		it('should call queue.clean() when available', async () => {
+			const mockQueue = {
+				add: mock(() => Promise.resolve({ id: 'job-1' })),
+				on: mock(() => {}),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } },
+				clean: mock(() => Promise.resolve(['job-1', 'job-2']))
+			};
+			const MockQueue = mock(() => mockQueue);
+
+			const { QueueManager } = await import('../../src/events/queue-manager.ts');
+			const manager = new QueueManager({
+				connection: { host: 'localhost', port: 6379 },
+				QueueClass: MockQueue as any
+			});
+
+			const result = await manager.cleanJobs('monitor.check', 60_000, 100, 'wait');
+
+			expect(mockQueue.clean).toHaveBeenCalledWith(60_000, 100, 'wait');
+			expect(result).toEqual(['job-1', 'job-2']);
+		});
+
+		it('should return empty array when queue has no clean method', async () => {
+			const mockQueue = {
+				add: mock(() => Promise.resolve({ id: 'job-1' })),
+				on: mock(() => {}),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } }
+				// No clean method
+			};
+			const MockQueue = mock(() => mockQueue);
+
+			const { QueueManager } = await import('../../src/events/queue-manager.ts');
+			const manager = new QueueManager({
+				connection: { host: 'localhost', port: 6379 },
+				QueueClass: MockQueue as any
+			});
+
+			const result = await manager.cleanJobs('monitor.check', 60_000, 100, 'wait');
+
+			expect(result).toEqual([]);
+		});
+	});
+
 	describe('job submission', () => {
 		it('should add job to queue with correct data and default retry options', async () => {
 			const mockQueue = {

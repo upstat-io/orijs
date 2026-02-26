@@ -61,6 +61,8 @@ export interface IQueueLike {
 	close(): Promise<void>;
 	/** Main ioredis connection - exposed for adding error handlers that persist through close() */
 	connection: IRedisConnection;
+	/** Clean jobs by grace period and status. Optional — not all queue implementations support this. */
+	clean?(grace: number, limit: number, type: string): Promise<string[]>;
 }
 
 /**
@@ -191,6 +193,8 @@ export interface IQueueManager {
 	registerWorker<TResult = unknown>(eventName: string, handler: JobHandler<TResult>): Promise<void>;
 	/** Stop all queues and workers */
 	stop(): Promise<void>;
+	/** Clean jobs from a queue by grace period and status type. Returns cleaned job IDs. */
+	cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]>;
 }
 
 /**
@@ -402,6 +406,23 @@ export class QueueManager implements IQueueManager {
 		this.logger?.info(`Event Worker Created -> [${queueName}]`, {
 			concurrency: this.defaultWorkerOptions.concurrency ?? 1
 		});
+	}
+
+	/**
+	 * Cleans jobs from a queue by grace period and status type.
+	 *
+	 * @param eventName - The event name
+	 * @param graceMs - Grace period in milliseconds (jobs older than this are cleaned)
+	 * @param limit - Maximum number of jobs to clean per call
+	 * @param type - Job status type to clean ('wait', 'failed', etc.)
+	 * @returns Array of cleaned job IDs, or empty array if clean is not supported
+	 */
+	public async cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]> {
+		const queue = this.getQueue(eventName);
+		if (queue.clean) {
+			return queue.clean(graceMs, limit, type);
+		}
+		return [];
 	}
 
 	/**

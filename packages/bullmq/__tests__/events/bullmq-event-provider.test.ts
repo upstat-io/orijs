@@ -421,6 +421,223 @@ describe('BullMQEventProvider', () => {
 		});
 	});
 
+	describe('TTL (configureEvent)', () => {
+		it('should store TTL via configureEvent', async () => {
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
+				registerWorker: mock(() => {}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				cleanJobs: mock(() => Promise.resolve([])),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				mapJobId: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockScheduledManager = {
+				stop: mock(() => Promise.resolve())
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			provider.configureEvent('health.check', { ttl: 120_000 });
+
+			// Verify TTL is used: emit should include removeOnFail
+			provider.emit('health.check', { version: 1 }, {});
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			expect(mockQueueManager.addJob).toHaveBeenCalledWith(
+				'health.check',
+				expect.anything(),
+				expect.objectContaining({
+					removeOnFail: { age: 120 }
+				})
+			);
+		});
+
+		it('should merge removeOnFail for TTL events in emit', async () => {
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
+				registerWorker: mock(() => {}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				cleanJobs: mock(() => Promise.resolve([])),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				mapJobId: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockScheduledManager = {
+				stop: mock(() => Promise.resolve())
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			provider.configureEvent('short.lived', { ttl: 30_000 });
+
+			// Emit with delay + TTL — both should be in job options
+			provider.emit('short.lived', { data: 'test' }, {}, { delay: 5000 });
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			expect(mockQueueManager.addJob).toHaveBeenCalledWith(
+				'short.lived',
+				expect.anything(),
+				{
+					delay: 5000,
+					removeOnFail: { age: 30 }
+				}
+			);
+		});
+
+		it('should not add removeOnFail when no TTL configured', async () => {
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
+				registerWorker: mock(() => {}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				cleanJobs: mock(() => Promise.resolve([])),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				mapJobId: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockScheduledManager = {
+				stop: mock(() => Promise.resolve())
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			// No configureEvent call — no TTL
+
+			provider.emit('normal.event', { data: 'test' }, {});
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			expect(mockQueueManager.addJob).toHaveBeenCalledWith(
+				'normal.event',
+				expect.anything(),
+				{} // No removeOnFail
+			);
+		});
+
+		it('should start sweep interval when TTL events exist', async () => {
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
+				registerWorker: mock(() => {}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				cleanJobs: mock(() => Promise.resolve([])),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				mapJobId: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockScheduledManager = {
+				stop: mock(() => Promise.resolve())
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				sweepIntervalMs: 50, // Short interval for testing
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			provider.configureEvent('ttl.event', { ttl: 60_000 });
+
+			await provider.start();
+
+			// Wait for at least one sweep cycle
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// cleanJobs should have been called for 'wait' and 'failed'
+			expect(mockQueueManager.cleanJobs).toHaveBeenCalled();
+			const calls = mockQueueManager.cleanJobs.mock.calls;
+			const waitCalls = calls.filter((c: unknown[]) => c[3] === 'wait');
+			const failedCalls = calls.filter((c: unknown[]) => c[3] === 'failed');
+			expect(waitCalls.length).toBeGreaterThan(0);
+			expect(failedCalls.length).toBeGreaterThan(0);
+
+			await provider.stop();
+		});
+
+		it('should clear sweep interval on stop', async () => {
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
+				registerWorker: mock(() => {}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				cleanJobs: mock(() => Promise.resolve([])),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				mapJobId: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+
+			const mockScheduledManager = {
+				stop: mock(() => Promise.resolve())
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				sweepIntervalMs: 50,
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			provider.configureEvent('ttl.event', { ttl: 60_000 });
+
+			await provider.start();
+			await provider.stop();
+
+			// Record call count after stop
+			const callCountAfterStop = mockQueueManager.cleanJobs.mock.calls.length;
+
+			// Wait to verify no more sweep calls happen
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			expect(mockQueueManager.cleanJobs.mock.calls.length).toBe(callCountAfterStop);
+		});
+	});
+
 	describe('subscribe', () => {
 		it('should register handler via QueueManager', async () => {
 			const mockQueueManager = {

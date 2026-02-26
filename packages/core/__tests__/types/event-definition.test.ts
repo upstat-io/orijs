@@ -288,6 +288,45 @@ describe('Event.define()', () => {
 		});
 	});
 
+	describe('TTL (time-to-live)', () => {
+		test('should carry TTL through when defined', () => {
+			const TimeSensitive = Event.define({
+				name: 'check.health',
+				data: Type.Object({ version: Type.Number() }),
+				result: Type.Void(),
+				ttl: 120_000
+			});
+
+			expect(TimeSensitive.ttl).toBe(120_000);
+			expect(TimeSensitive.name).toBe('check.health');
+		});
+
+		test('should not include TTL when not defined', () => {
+			const NormalEvent = Event.define({
+				name: 'user.created',
+				data: Type.Object({ userId: Type.String() }),
+				result: Type.Void()
+			});
+
+			expect(NormalEvent.ttl).toBeUndefined();
+			expect('ttl' in NormalEvent).toBe(false);
+		});
+
+		test('should freeze TTL along with other properties', () => {
+			const TimeSensitive = Event.define({
+				name: 'check.health',
+				data: Type.Object({ version: Type.Number() }),
+				result: Type.Void(),
+				ttl: 60_000
+			});
+
+			expect(Object.isFrozen(TimeSensitive)).toBe(true);
+			expect(() => {
+				(TimeSensitive as { ttl: number }).ttl = 999;
+			}).toThrow();
+		});
+	});
+
 	describe('edge cases - complex TypeBox schemas', () => {
 		test('should handle deeply nested schemas (4+ levels)', () => {
 			const DeepEvent = Event.define({

@@ -17,7 +17,8 @@ import type {
 	EventHandlerFn,
 	EmitOptions,
 	EventMessage,
-	EventSubscription
+	EventSubscription,
+	PerEventConfig
 } from '@orijs/events';
 import type { PropagationMeta } from '@orijs/logging';
 import { createSubscription, EVENT_MESSAGE_VERSION } from '@orijs/events';
@@ -111,6 +112,10 @@ export interface BullMQEventProviderOptions {
 	 * ```
 	 */
 	readonly defaultWorkerOptions?: Partial<WorkerOptions>;
+	/** Interval in milliseconds between TTL sweep runs (default: 60000) */
+	readonly sweepIntervalMs?: number;
+	/** Maximum number of jobs to clean per sweep per event (default: 1000) */
+	readonly sweepBatchLimit?: number;
 	/** Optional QueueManager override (for testing) */
 	readonly queueManager?: IQueueManager;
 	/** Optional CompletionTracker override (for testing) */
@@ -160,6 +165,10 @@ export class BullMQEventProvider implements EventProvider {
 	private readonly queueManager: IQueueManager;
 	private readonly completionTracker: ICompletionTracker;
 	private readonly scheduledEventManager: IScheduledEventManager;
+	private readonly eventTtls = new Map<string, number>();
+	private readonly sweepIntervalMs: number;
+	private readonly sweepBatchLimit: number;
+	private sweepTimer: ReturnType<typeof setInterval> | null = null;
 	private started = false;
 
 	/**
@@ -170,6 +179,8 @@ export class BullMQEventProvider implements EventProvider {
 	public constructor(options: BullMQEventProviderOptions) {
 		this.connection = options.connection;
 		this.defaultTimeout = options.defaultTimeout ?? DEFAULT_TIMEOUT_MS;
+		this.sweepIntervalMs = options.sweepIntervalMs ?? 60_000;
+		this.sweepBatchLimit = options.sweepBatchLimit ?? 1000;
 
 		// Use injected dependencies or create defaults
 		this.queueManager =
@@ -187,6 +198,16 @@ export class BullMQEventProvider implements EventProvider {
 				connection: this.connection,
 				queueManager: this.queueManager
 			});
+	}
+
+	/**
+	 * Configures per-event settings (e.g., TTL).
+	 * Called by the coordinator after provider is resolved.
+	 */
+	public configureEvent(eventName: string, config: PerEventConfig): void {
+		if (config.ttl !== undefined) {
+			this.eventTtls.set(eventName, config.ttl);
+		}
 	}
 
 	/**
@@ -226,9 +247,12 @@ export class BullMQEventProvider implements EventProvider {
 		// Build job options
 		// - delay: for delayed event delivery
 		// - jobId: for idempotency (BullMQ ignores duplicate jobIds)
+		// - removeOnFail: auto-expire failed jobs for TTL events
+		const ttl = this.eventTtls.get(eventName);
 		const jobOptions = {
 			...(options?.delay && { delay: options.delay }),
-			...(options?.idempotencyKey && { jobId: options.idempotencyKey })
+			...(options?.idempotencyKey && { jobId: options.idempotencyKey }),
+			...(ttl !== undefined && { removeOnFail: { age: Math.ceil(ttl / 1000) } })
 		};
 
 		// Determine timeout: explicit option > default > 0 means no timeout
@@ -323,9 +347,18 @@ export class BullMQEventProvider implements EventProvider {
 
 	/**
 	 * Starts the provider.
+	 * If TTL events are configured, starts a periodic sweep to clean stale jobs.
 	 */
 	public async start(): Promise<void> {
 		this.started = true;
+
+		// Start sweep interval if any events have TTL configured
+		if (this.eventTtls.size > 0) {
+			this.sweepTimer = setInterval(() => {
+				this.sweepStaleJobs();
+			}, this.sweepIntervalMs);
+			this.sweepTimer.unref();
+		}
 	}
 
 	/**
@@ -348,12 +381,29 @@ export class BullMQEventProvider implements EventProvider {
 		}
 		this.started = false;
 
+		// 0. Clear sweep interval before shutting down queues
+		if (this.sweepTimer) {
+			clearInterval(this.sweepTimer);
+			this.sweepTimer = null;
+		}
+
 		// 1. Stop workers first (wait for jobs to complete), then queues
 		await this.queueManager.stop();
 		// 2. Stop listening for completions (workers already done)
 		await this.completionTracker.stop();
 		// 3. Stop scheduled event queues
 		await this.scheduledEventManager.stop();
+	}
+
+	/**
+	 * Sweeps stale waiting and failed jobs for all events with TTL configured.
+	 * Best-effort: errors are caught silently to avoid crashing the sweep loop.
+	 */
+	private sweepStaleJobs(): void {
+		for (const [eventName, ttl] of this.eventTtls) {
+			this.queueManager.cleanJobs(eventName, ttl, this.sweepBatchLimit, 'wait').catch(() => {});
+			this.queueManager.cleanJobs(eventName, ttl, this.sweepBatchLimit, 'failed').catch(() => {});
+		}
 	}
 
 	/**

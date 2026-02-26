@@ -48,7 +48,8 @@ export type {
 	EventProvider,
 	EventHandlerFn,
 	EventMessage,
-	EmitOptions
+	EmitOptions,
+	PerEventConfig
 } from './event-provider.types';
 
 // Subscription

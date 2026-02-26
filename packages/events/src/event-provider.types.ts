@@ -149,6 +149,14 @@ export interface EventLifecycle {
 }
 
 /**
+ * Per-event configuration passed from coordinator to provider.
+ */
+export interface PerEventConfig {
+	/** Time-to-live in milliseconds. Stale waiting/failed jobs are cleaned after this duration. */
+	readonly ttl?: number;
+}
+
+/**
  * Full provider interface - what IMPLEMENTATIONS provide.
  *
  * Extends both EventEmitter and EventLifecycle.
@@ -157,4 +165,10 @@ export interface EventLifecycle {
  * @template TEventNames - Union of valid event names (for type safety)
  */
 export interface EventProvider<TEventNames extends string = string>
-	extends EventEmitter<TEventNames>, EventLifecycle {}
+	extends EventEmitter<TEventNames>, EventLifecycle {
+	/**
+	 * Configures per-event settings (e.g., TTL).
+	 * Optional — providers that don't support per-event config can omit this.
+	 */
+	configureEvent?(eventName: string, config: PerEventConfig): void;
+}
