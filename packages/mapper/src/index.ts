@@ -47,6 +47,7 @@ export type {
 	NumberFieldBuilder,
 	BooleanFieldBuilder,
 	DateFieldBuilder,
+	ArrayFieldBuilder,
 	AnyFieldBuilder,
 	NullableFieldBuilder
 } from './mapper';

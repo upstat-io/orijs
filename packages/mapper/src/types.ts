@@ -8,7 +8,7 @@
 
 // --- Field Type Constants ---
 
-export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'any';
+export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'any';
 
 // --- Field Definition ---
 
@@ -40,7 +40,9 @@ export interface FieldColumnBuilder {
 	boolean(): BooleanFieldBuilder;
 	/** Create a date field */
 	date(): DateFieldBuilder;
-	/** Create a generic any field (for JSONB, arrays, etc.) */
+	/** Create an array field (for PostgreSQL array columns like integer[], text[]) */
+	array<T = unknown>(): ArrayFieldBuilder<T[]>;
+	/** Create a generic any field (for JSONB or other complex types) */
 	any<T = unknown>(): AnyFieldBuilder<T>;
 }
 
@@ -99,6 +101,16 @@ export interface DateFieldBuilder extends FieldBuilder<Date> {
 	default(value: Date): DateFieldBuilder;
 	/** Mark field as nullable (can be null, allows .default(null)) */
 	nullable(): NullableFieldBuilder<Date>;
+}
+
+/**
+ * Array field builder.
+ * Used for PostgreSQL array columns (integer[], text[], etc.).
+ * Converts TypedArrays (Int32Array, Float64Array) from database drivers to regular Arrays.
+ */
+export interface ArrayFieldBuilder<T> extends FieldBuilder<T> {
+	optional(): ArrayFieldBuilder<T | undefined>;
+	default(value: T): ArrayFieldBuilder<T>;
 }
 
 /**

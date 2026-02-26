@@ -128,6 +128,25 @@ export function coerceBoolean(value: unknown): boolean {
  * @returns The coerced string
  * @throws MapperError if value is null or undefined
  */
+/**
+ * Coerce a value to a regular Array.
+ * Converts TypedArrays (Int32Array, Float64Array, etc.) returned by database drivers
+ * for PostgreSQL array columns (integer[], float8[], etc.) into standard JavaScript arrays.
+ * Regular arrays pass through unchanged.
+ *
+ * @param value - Value to coerce (TypedArray, Array, or other)
+ * @returns A regular Array, or the original value if already an Array or not array-like
+ */
+export function coerceArray(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value;
+	}
+	if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+		return Array.from(value as unknown as ArrayLike<unknown>);
+	}
+	return value;
+}
+
 export function coerceString(value: unknown, table: string, column: string): string {
 	if (value === null || value === undefined) {
 		throw new MapperError(table, column, 'cannot coerce null/undefined', 'string', value);

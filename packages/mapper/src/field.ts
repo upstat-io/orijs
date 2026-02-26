@@ -30,6 +30,7 @@ import type {
 	NumberFieldBuilder,
 	BooleanFieldBuilder,
 	DateFieldBuilder,
+	ArrayFieldBuilder,
 	AnyFieldBuilder,
 	FieldColumnBuilder
 } from './types';
@@ -93,6 +94,10 @@ class FieldColumnBuilderInternal implements FieldColumnBuilder {
 
 	public date(): DateFieldBuilder {
 		return new FieldBuilderInternal<Date>('date', this.column) as DateFieldBuilder;
+	}
+
+	public array<T = unknown>(): ArrayFieldBuilder<T[]> {
+		return new FieldBuilderInternal<T[]>('array', this.column) as ArrayFieldBuilder<T[]>;
 	}
 
 	public any<T = unknown>(): AnyFieldBuilder<T> {

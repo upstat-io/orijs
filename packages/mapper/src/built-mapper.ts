@@ -12,7 +12,7 @@ import type {
 	ResolvedFieldDef,
 	MapperConfig
 } from './mapper-types';
-import { coerceString, coerceNumber, coerceBoolean, coerceDate } from './coercion';
+import { coerceString, coerceNumber, coerceBoolean, coerceDate, coerceArray } from './coercion';
 import { MapperError } from './mapper-error';
 
 /**
@@ -263,6 +263,8 @@ export class BuiltMapper<T> implements IBuiltMapper<T> {
 				return coerceBoolean(value);
 			case 'date':
 				return coerceDate(value, tableName, fieldDef.column);
+			case 'array':
+				return coerceArray(value);
 			default:
 				return value;
 		}
