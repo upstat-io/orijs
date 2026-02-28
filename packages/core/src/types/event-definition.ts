@@ -84,6 +84,27 @@ export interface EventConfig<TData extends TSchema, TResult extends TSchema> {
 	readonly result: TResult;
 	/** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
 	readonly ttl?: number;
+	/**
+	 * Key derivation function for idempotent/cancellable events.
+	 *
+	 * When provided, the derived key is used as the BullMQ jobId on emit,
+	 * enabling both deduplication (same key = same job) and cancellation
+	 * (cancel by derived key).
+	 *
+	 * @param data - The event payload
+	 * @returns A string key derived from the payload
+	 *
+	 * @example
+	 * ```typescript
+	 * const AlertUnacknowledged = Event.define({
+	 *   name: 'alert.unacknowledged',
+	 *   data: Type.Object({ alertUuid: Type.String() }),
+	 *   result: Type.Void(),
+	 *   key: (data) => data.alertUuid
+	 * });
+	 * ```
+	 */
+	readonly key?: (data: Static<TData>) => string;
 }
 
 /**
@@ -137,6 +158,16 @@ export interface EventDefinition<TData, TResult> {
 	 * ```
 	 */
 	readonly _result: TResult;
+	/**
+	 * Key derivation function for idempotent/cancellable events.
+	 *
+	 * When defined, emit automatically uses `key(payload)` as the BullMQ jobId.
+	 * Use the same derived key with `cancel()` to remove a pending delayed event.
+	 *
+	 * @param data - The event payload
+	 * @returns A string key derived from the payload
+	 */
+	readonly key?: (data: TData) => string;
 }
 
 /**
@@ -183,8 +214,19 @@ export interface EventContext<TPayload> {
 	readonly emit: <TReturn = void>(
 		eventName: string,
 		payload: unknown,
-		options?: { delay?: number }
+		options?: { delay?: number; idempotencyKey?: string }
 	) => { wait: () => Promise<TReturn> };
+	/**
+	 * Cancel a pending delayed event by its derived key.
+	 *
+	 * The key must match the value produced by the event definition's `key` function
+	 * (or the explicit `idempotencyKey` used at emit time).
+	 *
+	 * @param eventName - The event name to cancel
+	 * @param key - The derived key identifying the pending event
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	readonly cancel: (eventName: string, key: string) => Promise<boolean>;
 }
 
 /**
@@ -231,6 +273,7 @@ export const Event = {
 			dataSchema: config.data,
 			resultSchema: config.result,
 			...(config.ttl !== undefined && { ttl: config.ttl }),
+			...(config.key && { key: config.key }),
 			_data: undefined as unknown as Static<TData>,
 			_result: undefined as unknown as Static<TResult>
 		});

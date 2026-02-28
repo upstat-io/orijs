@@ -125,6 +125,18 @@ export interface EventEmitter<TEventNames extends string = string> {
 		eventName: TEventNames,
 		handler: EventHandlerFn<TPayload, TReturn>
 	): void | Promise<void>;
+
+	/**
+	 * Cancels a pending delayed event by its key.
+	 *
+	 * The key is typically derived from the event definition's `key` function
+	 * or the explicit `idempotencyKey` used at emit time.
+	 *
+	 * @param eventName - The event name
+	 * @param key - The key identifying the pending event (BullMQ jobId)
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	cancel(eventName: string, key: string): Promise<boolean>;
 }
 
 /**

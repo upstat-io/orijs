@@ -102,6 +102,7 @@ export type {
 // Emitter interfaces (ctx.events, ctx.workflows, ctx.socket)
 export type {
 	EventEmitter,
+	EventEmitOptions,
 	WorkflowExecutor,
 	WorkflowExecuteOptions,
 	WorkflowHandle,

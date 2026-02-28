@@ -234,6 +234,7 @@ export type {
  */
 export type {
 	EventEmitter,
+	EventEmitOptions,
 	WorkflowExecutor,
 	WorkflowExecuteOptions,
 	WorkflowHandle,

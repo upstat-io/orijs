@@ -272,6 +272,30 @@ describe('TestEventProvider', () => {
 			expect(receivedEvents).toContain('first');
 		});
 	});
+
+	describe('cancel', () => {
+		it('should cancel a delayed event by key', async () => {
+			let delivered = false;
+
+			provider.subscribe('delayed.event', async () => {
+				delivered = true;
+			});
+
+			provider.emit('delayed.event', {}, {}, { delay: 100, idempotencyKey: 'cancel-me' });
+
+			const cancelled = await provider.cancel('delayed.event', 'cancel-me');
+			expect(cancelled).toBe(true);
+
+			// Wait past the delay
+			await new Promise((resolve) => setTimeout(resolve, 150));
+			expect(delivered).toBe(false);
+		});
+
+		it('should return false when cancelling non-existent key', async () => {
+			const cancelled = await provider.cancel('delayed.event', 'does-not-exist');
+			expect(cancelled).toBe(false);
+		});
+	});
 });
 
 describe('TestEventProvider vs InProcessEventProvider timing', () => {

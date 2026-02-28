@@ -11,6 +11,7 @@ import type { EventDefinition } from '../types/event-definition.ts';
 import type { WorkflowDefinition } from '../types/workflow-definition.ts';
 import type {
 	EventEmitter,
+	EventEmitOptions,
 	WorkflowExecutor,
 	WorkflowHandle,
 	WorkflowExecuteOptions,
@@ -54,7 +55,8 @@ export class RequestBoundEventEmitter implements EventEmitter {
 	 */
 	public async emit<TPayload, TResponse>(
 		event: EventDefinition<TPayload, TResponse>,
-		payload: TPayload
+		payload: TPayload,
+		options?: EventEmitOptions
 	): Promise<TResponse> {
 		const provider = this.eventCoordinator.getProvider();
 		if (!provider) {
@@ -87,11 +89,31 @@ export class RequestBoundEventEmitter implements EventEmitter {
 			causationId: this.context.correlationId
 		};
 
-		// Emit via underlying provider
-		// The EventSubscription is thenable, so await works directly
-		const subscription = provider.emit<TResponse>(event.name, payload, meta);
+		// Resolve idempotency key: explicit option > definition key function > none
+		let idempotencyKey = options?.idempotencyKey;
+		if (!idempotencyKey && event.key) {
+			idempotencyKey = event.key(payload);
+		}
+
+		// Emit via underlying provider with options
+		const subscription = provider.emit<TResponse>(event.name, payload, meta, {
+			...(options?.delay && { delay: options.delay }),
+			...(idempotencyKey && { idempotencyKey })
+		});
 
 		return subscription;
+	}
+
+	/**
+	 * Cancel a pending delayed event by its derived key.
+	 *
+	 * Delegates to the EventCoordinator which forwards to the underlying provider.
+	 */
+	public async cancel<TPayload, TResponse>(
+		event: EventDefinition<TPayload, TResponse>,
+		key: string
+	): Promise<boolean> {
+		return this.eventCoordinator.cancel(event.name, key);
 	}
 }
 

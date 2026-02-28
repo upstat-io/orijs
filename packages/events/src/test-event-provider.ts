@@ -89,6 +89,8 @@ export class TestEventProvider implements EventProvider {
 	private readonly registry: IHandlerRegistry;
 	private readonly delivery: IEventDelivery;
 	private readonly pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
+	/** Tracks pending delayed events by key for cancellation. */
+	private readonly pendingDelayedByKey = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly processingDelay: number;
 	private started = false;
 
@@ -145,7 +147,7 @@ export class TestEventProvider implements EventProvider {
 		const totalDelay = emitDelay + this.processingDelay;
 
 		// Always use setTimeout - never synchronous
-		this.scheduleDelivery(message, subscription, totalDelay);
+		this.scheduleDelivery(message, subscription, totalDelay, options?.idempotencyKey);
 
 		return subscription;
 	}
@@ -180,7 +182,26 @@ export class TestEventProvider implements EventProvider {
 			clearTimeout(timeout);
 		}
 		this.pendingTimeouts.clear();
+		this.pendingDelayedByKey.clear();
 		this.started = false;
+	}
+
+	/**
+	 * Cancels a pending delayed event by its key.
+	 *
+	 * @param _eventName - The event name (unused for test provider, key is globally unique)
+	 * @param key - The idempotency key identifying the pending event
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	public async cancel(_eventName: string, key: string): Promise<boolean> {
+		const timeout = this.pendingDelayedByKey.get(key);
+		if (!timeout) {
+			return false;
+		}
+		clearTimeout(timeout);
+		this.pendingDelayedByKey.delete(key);
+		this.pendingTimeouts.delete(timeout);
+		return true;
 	}
 
 	/**
@@ -240,12 +261,19 @@ export class TestEventProvider implements EventProvider {
 	private scheduleDelivery<TReturn>(
 		message: EventMessage,
 		subscription: EventSubscription<TReturn>,
-		delay: number
+		delay: number,
+		key?: string
 	): void {
 		const timeout = setTimeout(() => {
 			this.pendingTimeouts.delete(timeout);
+			if (key) {
+				this.pendingDelayedByKey.delete(key);
+			}
 			this.delivery.deliver(message, subscription);
 		}, delay);
 		this.pendingTimeouts.add(timeout);
+		if (key) {
+			this.pendingDelayedByKey.set(key, timeout);
+		}
 	}
 }

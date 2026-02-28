@@ -155,7 +155,8 @@ describe('Event Utility Types', () => {
 				log: mockLogger,
 				timestamp: Date.now(),
 				correlationId: 'corr-123',
-				emit: () => ({ wait: async () => undefined as never })
+				emit: () => ({ wait: async () => undefined as never }),
+				cancel: async () => false
 			};
 
 			expect(ctx.data.userId).toBe('123');
@@ -395,7 +396,8 @@ describe('Functional Integration - Consumer Class Implementations', () => {
 			log: mockLogger,
 			timestamp: Date.now(),
 			correlationId: 'corr-001',
-			emit: () => ({ wait: async () => undefined as never })
+			emit: () => ({ wait: async () => undefined as never }),
+			cancel: async () => false
 		};
 
 		// Execute and verify

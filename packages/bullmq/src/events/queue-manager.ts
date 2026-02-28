@@ -63,6 +63,8 @@ export interface IQueueLike {
 	connection: IRedisConnection;
 	/** Clean jobs by grace period and status. Optional — not all queue implementations support this. */
 	clean?(grace: number, limit: number, type: string): Promise<string[]>;
+	/** Get a job by its ID. Optional — not all queue implementations support this. */
+	getJob?(jobId: string): Promise<{ remove(): Promise<void> } | undefined>;
 }
 
 /**
@@ -195,6 +197,8 @@ export interface IQueueManager {
 	stop(): Promise<void>;
 	/** Clean jobs from a queue by grace period and status type. Returns cleaned job IDs. */
 	cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]>;
+	/** Remove a specific job by its ID. Returns true if the job was found and removed. */
+	removeJob(eventName: string, jobId: string): Promise<boolean>;
 }
 
 /**
@@ -423,6 +427,28 @@ export class QueueManager implements IQueueManager {
 			return queue.clean(graceMs, limit, type);
 		}
 		return [];
+	}
+
+	/**
+	 * Removes a specific job by its ID.
+	 *
+	 * Used to cancel pending delayed events before they fire.
+	 *
+	 * @param eventName - The event name
+	 * @param jobId - The job ID (typically the idempotency key)
+	 * @returns true if the job was found and removed, false otherwise
+	 */
+	public async removeJob(eventName: string, jobId: string): Promise<boolean> {
+		const queue = this.getQueue(eventName);
+		if (!queue.getJob) {
+			return false;
+		}
+		const job = await queue.getJob(jobId);
+		if (!job) {
+			return false;
+		}
+		await job.remove();
+		return true;
 	}
 
 	/**

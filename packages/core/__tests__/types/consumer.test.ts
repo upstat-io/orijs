@@ -35,7 +35,8 @@ function createEventContext<T>(config: {
 		eventName: config.eventName ?? 'test.event',
 		timestamp: config.timestamp ?? Date.now(),
 		correlationId: config.correlationId ?? 'corr-test',
-		emit: config.emit ?? (() => ({ wait: async () => undefined as never }))
+		emit: config.emit ?? (() => ({ wait: async () => undefined as never })),
+		cancel: async () => false
 	};
 }
 

@@ -185,7 +185,7 @@ export class EventCoordinator {
 				emit: <TReturn = void>(
 					eventName: string,
 					eventPayload: unknown,
-					options?: { delay?: number }
+					options?: { delay?: number; idempotencyKey?: string }
 				): { wait: () => Promise<TReturn> } => {
 					// Emit chained event with proper causation propagation:
 					// - Same correlationId for end-to-end distributed tracing (from meta, not subscription ID)
@@ -193,6 +193,16 @@ export class EventCoordinator {
 					// Note: message.meta.correlationId is the tracing correlationId
 					//       message.correlationId is the subscription ID for request-response
 					const tracingCorrelationId = message.meta?.correlationId ?? message.correlationId;
+
+					// Resolve idempotency key: explicit option > definition key function > none
+					let idempotencyKey = options?.idempotencyKey;
+					if (!idempotencyKey) {
+						const chainedDef = this.eventDefinitions.get(eventName);
+						if (chainedDef?.key) {
+							idempotencyKey = chainedDef.key(eventPayload);
+						}
+					}
+
 					const subscription = this.eventProvider!.emit<TReturn>(
 						eventName,
 						eventPayload,
@@ -200,11 +210,21 @@ export class EventCoordinator {
 							correlationId: tracingCorrelationId,
 							causationId: message.eventId
 						},
-						{ delay: options?.delay, causationId: message.eventId }
+						{
+							delay: options?.delay,
+							causationId: message.eventId,
+							...(idempotencyKey && { idempotencyKey })
+						}
 					);
 					return {
 						wait: () => subscription.toPromise()
 					};
+				},
+				cancel: async (eventName: string, key: string): Promise<boolean> => {
+					if (!this.eventProvider) {
+						return false;
+					}
+					return this.eventProvider.cancel(eventName, key);
 				}
 			};
 
@@ -311,6 +331,20 @@ export class EventCoordinator {
 		if (this.eventProvider) {
 			await this.eventProvider.stop();
 		}
+	}
+
+	/**
+	 * Cancels a pending delayed event by its key.
+	 *
+	 * @param eventName - The event name
+	 * @param key - The key identifying the pending event
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	public async cancel(eventName: string, key: string): Promise<boolean> {
+		if (!this.eventProvider) {
+			return false;
+		}
+		return this.eventProvider.cancel(eventName, key);
 	}
 
 	/**

@@ -346,6 +346,20 @@ export class BullMQEventProvider implements EventProvider {
 	}
 
 	/**
+	 * Cancels a pending delayed event by its key.
+	 *
+	 * Removes the job from the BullMQ queue by its jobId (which is the
+	 * idempotency key or derived key from the event definition).
+	 *
+	 * @param eventName - The event name
+	 * @param key - The key identifying the pending event (BullMQ jobId)
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	public async cancel(eventName: string, key: string): Promise<boolean> {
+		return this.queueManager.removeJob(eventName, key);
+	}
+
+	/**
 	 * Starts the provider.
 	 * If TTL events are configured, starts a periodic sweep to clean stale jobs.
 	 */

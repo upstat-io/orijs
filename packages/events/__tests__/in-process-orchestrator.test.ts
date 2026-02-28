@@ -224,6 +224,49 @@ describe('InProcessEventProvider', () => {
 			expect(delivered).toBe(true);
 		});
 
+		it('should cancel a delayed event by key', async () => {
+			let delivered = false;
+
+			provider.subscribe('delayed.event', async () => {
+				delivered = true;
+			});
+
+			const meta: PropagationMeta = {};
+			provider.emit('delayed.event', {}, meta, { delay: 100, idempotencyKey: 'cancel-me' });
+
+			// Cancel before delivery
+			const cancelled = await provider.cancel('delayed.event', 'cancel-me');
+			expect(cancelled).toBe(true);
+
+			// Wait past the delay
+			await new Promise((resolve) => setTimeout(resolve, 150));
+			expect(delivered).toBe(false);
+		});
+
+		it('should return false when cancelling non-existent key', async () => {
+			const cancelled = await provider.cancel('delayed.event', 'does-not-exist');
+			expect(cancelled).toBe(false);
+		});
+
+		it('should return false when cancelling already-delivered event', async () => {
+			let delivered = false;
+
+			provider.subscribe('delayed.event', async () => {
+				delivered = true;
+			});
+
+			const meta: PropagationMeta = {};
+			provider.emit('delayed.event', {}, meta, { delay: 10, idempotencyKey: 'already-done' });
+
+			// Wait for delivery
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(delivered).toBe(true);
+
+			// Try to cancel after delivery
+			const cancelled = await provider.cancel('delayed.event', 'already-done');
+			expect(cancelled).toBe(false);
+		});
+
 		it('should cancel delayed events on stop', async () => {
 			let delivered = false;
 

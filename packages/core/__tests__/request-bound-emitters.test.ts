@@ -59,7 +59,8 @@ describe('RequestBoundEventEmitter', () => {
 			expect(mockProvider.emit).toHaveBeenCalledWith(
 				'test.event',
 				{ message: 'hello', count: 42 },
-				{ correlationId: 'req-123', causationId: 'req-123' }
+				{ correlationId: 'req-123', causationId: 'req-123' },
+				{}
 			);
 		});
 
@@ -95,6 +96,97 @@ describe('RequestBoundEventEmitter', () => {
 			await expect(
 				emitter.emit(TestEvent, { message: 'hello', count: 'not-a-number' } as any)
 			).rejects.toThrow(/payload validation failed/);
+		});
+
+		it('should pass delay option to provider', async () => {
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			await emitter.emit(TestEvent, { message: 'hello', count: 1 }, { delay: 5000 });
+
+			expect(mockProvider.emit).toHaveBeenCalledWith(
+				'test.event',
+				{ message: 'hello', count: 1 },
+				{ correlationId: 'req-123', causationId: 'req-123' },
+				{ delay: 5000 }
+			);
+		});
+
+		it('should pass explicit idempotencyKey option to provider', async () => {
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			await emitter.emit(TestEvent, { message: 'hello', count: 1 }, { idempotencyKey: 'my-key' });
+
+			expect(mockProvider.emit).toHaveBeenCalledWith(
+				'test.event',
+				{ message: 'hello', count: 1 },
+				{ correlationId: 'req-123', causationId: 'req-123' },
+				{ idempotencyKey: 'my-key' }
+			);
+		});
+
+		it('should derive idempotencyKey from event definition key function', async () => {
+			const KeyedEvent = Event.define({
+				name: 'keyed.event',
+				data: Type.Object({ alertUuid: Type.String() }),
+				result: Type.Void(),
+				key: (data) => data.alertUuid
+			});
+
+			mockEventCoordinator.getEventDefinition = mock(() => KeyedEvent) as typeof mockEventCoordinator.getEventDefinition;
+
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			await emitter.emit(KeyedEvent, { alertUuid: 'abc-123' });
+
+			expect(mockProvider.emit).toHaveBeenCalledWith(
+				'keyed.event',
+				{ alertUuid: 'abc-123' },
+				{ correlationId: 'req-123', causationId: 'req-123' },
+				{ idempotencyKey: 'abc-123' }
+			);
+		});
+
+		it('should prefer explicit idempotencyKey over definition key function', async () => {
+			const KeyedEvent = Event.define({
+				name: 'keyed.event',
+				data: Type.Object({ alertUuid: Type.String() }),
+				result: Type.Void(),
+				key: (data) => data.alertUuid
+			});
+
+			mockEventCoordinator.getEventDefinition = mock(() => KeyedEvent) as typeof mockEventCoordinator.getEventDefinition;
+
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			await emitter.emit(KeyedEvent, { alertUuid: 'abc-123' }, { idempotencyKey: 'explicit-key' });
+
+			expect(mockProvider.emit).toHaveBeenCalledWith(
+				'keyed.event',
+				{ alertUuid: 'abc-123' },
+				{ correlationId: 'req-123', causationId: 'req-123' },
+				{ idempotencyKey: 'explicit-key' }
+			);
+		});
+	});
+
+	describe('cancel', () => {
+		it('should delegate cancel to event coordinator', async () => {
+			mockEventCoordinator.cancel = mock(async () => true);
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			const result = await emitter.cancel(TestEvent, 'my-key');
+
+			expect(result).toBe(true);
+			expect(mockEventCoordinator.cancel).toHaveBeenCalledWith('test.event', 'my-key');
+		});
+
+		it('should return false when coordinator cancel returns false', async () => {
+			mockEventCoordinator.cancel = mock(async () => false);
+			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+
+			const result = await emitter.cancel(TestEvent, 'nonexistent');
+
+			expect(result).toBe(false);
 		});
 	});
 });

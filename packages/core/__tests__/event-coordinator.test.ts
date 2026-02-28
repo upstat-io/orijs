@@ -39,7 +39,8 @@ describe('EventCoordinator', () => {
 			start: async () => {},
 			stop: async () => {},
 			emit: () => ({}) as EventSub<any>,
-			subscribe: () => {}
+			subscribe: () => {},
+			cancel: async () => false
 		}) as unknown as EventProvider;
 
 	describe('Provider Factory Injection', () => {
@@ -109,7 +110,8 @@ describe('EventCoordinator', () => {
 				},
 				stop: async () => {},
 				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {}
+				subscribe: () => {},
+				cancel: async () => false
 			};
 
 			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
@@ -131,7 +133,8 @@ describe('EventCoordinator', () => {
 					throw new Error('Provider stop failed');
 				},
 				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {}
+				subscribe: () => {},
+				cancel: async () => false
 			};
 
 			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
@@ -241,7 +244,8 @@ describe('EventCoordinator', () => {
 					subscribeCount++;
 					subscribedEvents.push(eventName);
 					return realProvider.subscribe(eventName, handler);
-				}
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
 			};
 
 			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
@@ -280,7 +284,8 @@ describe('EventCoordinator', () => {
 					subscribeCount++;
 					subscribedEvents.push(eventName);
 					return realProvider.subscribe(eventName, handler);
-				}
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
 			};
 
 			// Define a second event that will have a consumer
@@ -333,7 +338,8 @@ describe('EventCoordinator', () => {
 				subscribe: (eventName, handler) => {
 					subscribeCount++;
 					return realProvider.subscribe(eventName, handler);
-				}
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
 			};
 
 			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
@@ -369,6 +375,7 @@ describe('EventCoordinator', () => {
 				stop: async () => {},
 				emit: () => ({}) as EventSub<any>,
 				subscribe: () => {},
+				cancel: async () => false,
 				configureEvent: (name, config) => {
 					configuredEvents.push({ name, config });
 				}
@@ -398,6 +405,7 @@ describe('EventCoordinator', () => {
 				stop: async () => {},
 				emit: () => ({}) as EventSub<any>,
 				subscribe: () => {},
+				cancel: async () => false,
 				configureEvent: (name, config) => {
 					configuredEvents.push({ name, config });
 				}
@@ -509,7 +517,8 @@ describe('EventCoordinator', () => {
 				subscribe: (eventName, handler) => {
 					subscribeCount++;
 					return realProvider.subscribe(eventName, handler);
-				}
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
 			};
 
 			const UserCreatedEvent = Event.define({
@@ -661,7 +670,8 @@ describe('EventCoordinator', () => {
 				},
 				subscribe: (eventName, handler) => {
 					return realProvider.subscribe(eventName, handler);
-				}
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
 			};
 
 			// Primary event that will emit a chained event
@@ -785,6 +795,107 @@ describe('EventCoordinator', () => {
 			expect(result).toEqual({ output: 'Processed: test, valid: true' });
 
 			await coordinator.stop();
+		});
+
+		it('should auto-derive idempotencyKey from chained event definition key function', async () => {
+			const emitOptions: Array<{ event: string; options?: unknown }> = [];
+
+			const { InProcessEventProvider } = await import('@orijs/events');
+			const realProvider = new InProcessEventProvider();
+
+			const spyProvider: EventProvider = {
+				start: () => realProvider.start(),
+				stop: () => realProvider.stop(),
+				emit: (eventName, payload, meta, options) => {
+					emitOptions.push({ event: eventName, options });
+					return realProvider.emit(eventName, payload, meta ?? {}, options);
+				},
+				subscribe: (eventName, handler) => {
+					return realProvider.subscribe(eventName, handler);
+				},
+				cancel: (eventName, key) => realProvider.cancel(eventName, key)
+			};
+
+			// Primary event
+			const TriggerEvent = Event.define({
+				name: 'trigger.event',
+				data: Type.Object({ alertId: Type.String() }),
+				result: Type.Void()
+			});
+
+			// Chained event with key function
+			const DelayedEvent = Event.define({
+				name: 'delayed.event',
+				data: Type.Object({ alertId: Type.String() }),
+				result: Type.Void(),
+				key: (data: { alertId: string }) => `esc-${data.alertId}`
+			});
+
+			class TriggerConsumer implements IEventConsumer<(typeof TriggerEvent)['_data'], void> {
+				onEvent = async (ctx: EventContext<(typeof TriggerEvent)['_data']>) => {
+					// Emit chained event — key should be auto-derived from DelayedEvent.key
+					ctx.emit('delayed.event', { alertId: ctx.data.alertId }, { delay: 5000 });
+				};
+			}
+
+			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
+			coordinator.registerEventDefinition(TriggerEvent);
+			coordinator.registerEventDefinition(DelayedEvent);
+			coordinator.addEventConsumer(TriggerEvent, TriggerConsumer, []);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			const provider = coordinator.getProvider();
+			provider!.emit('trigger.event', { alertId: 'alert-42' }, { correlationId: 'corr-1' });
+
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			// The chained emit should have auto-derived the idempotency key
+			const chainedEmit = emitOptions.find((e) => e.event === 'delayed.event');
+			expect(chainedEmit).toBeDefined();
+			const opts = chainedEmit!.options as { delay?: number; idempotencyKey?: string };
+			expect(opts.delay).toBe(5000);
+			expect(opts.idempotencyKey).toBe('esc-alert-42');
+
+			await coordinator.stop();
+		});
+	});
+
+	describe('cancel', () => {
+		it('should delegate cancel to the provider', async () => {
+			let cancelledEvent = '';
+			let cancelledKey = '';
+
+			const mockProvider: EventProvider = {
+				start: async () => {},
+				stop: async () => {},
+				emit: () => ({}) as EventSub<any>,
+				subscribe: () => {},
+				cancel: async (eventName, key) => {
+					cancelledEvent = eventName;
+					cancelledKey = key;
+					return true;
+				}
+			};
+
+			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
+			coordinator.registerEventDefinition(TestEvent);
+			coordinator.registerConsumers();
+
+			const result = await coordinator.cancel('test.event', 'my-key');
+
+			expect(result).toBe(true);
+			expect(cancelledEvent).toBe('test.event');
+			expect(cancelledKey).toBe('my-key');
+		});
+
+		it('should return false when no provider is configured', async () => {
+			const coordinator = new EventCoordinator(container, logger);
+			// Don't register anything — no provider will be created
+
+			const result = await coordinator.cancel('test.event', 'my-key');
+			expect(result).toBe(false);
 		});
 	});
 });

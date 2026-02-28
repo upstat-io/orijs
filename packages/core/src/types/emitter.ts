@@ -62,6 +62,19 @@ export type { SocketEmitter } from '@orijs/websocket';
  * };
  * ```
  */
+/**
+ * Options for controller-level event emission.
+ */
+export interface EventEmitOptions {
+	/** Delay in milliseconds before event delivery */
+	readonly delay?: number;
+	/**
+	 * Explicit idempotency key. Overrides the event definition's `key` function.
+	 * When provided, this key is used as the BullMQ jobId for deduplication and cancellation.
+	 */
+	readonly idempotencyKey?: string;
+}
+
 export interface EventEmitter {
 	/**
 	 * Emit an event with type-safe payload.
@@ -78,10 +91,17 @@ export interface EventEmitter {
 	 * events (Type.Void() response), the Promise resolves when the event
 	 * is successfully queued.
 	 *
+	 * ## Idempotency
+	 *
+	 * If the event definition has a `key` function, the derived key is automatically
+	 * used as the BullMQ jobId. This enables deduplication and cancellation.
+	 * An explicit `idempotencyKey` in options overrides the definition's key function.
+	 *
 	 * @template TPayload - The event payload type
 	 * @template TResponse - The event response type
 	 * @param event - The event definition created via Event.define()
 	 * @param payload - The event payload (validated against TypeBox schema)
+	 * @param options - Optional emit options (delay, idempotencyKey)
 	 * @returns Promise resolving to the consumer's response
 	 *
 	 * @throws {ValidationError} If payload fails TypeBox schema validation
@@ -90,8 +110,26 @@ export interface EventEmitter {
 	 */
 	emit<TPayload, TResponse>(
 		event: EventDefinition<TPayload, TResponse>,
-		payload: TPayload
+		payload: TPayload,
+		options?: EventEmitOptions
 	): Promise<TResponse>;
+
+	/**
+	 * Cancel a pending delayed event by its derived key.
+	 *
+	 * The key should match the value produced by the event definition's `key` function
+	 * or the explicit `idempotencyKey` used at emit time.
+	 *
+	 * @template TPayload - The event payload type (unused, for type inference)
+	 * @template TResponse - The event response type (unused, for type inference)
+	 * @param event - The event definition
+	 * @param key - The derived key identifying the pending event
+	 * @returns true if the event was found and cancelled, false otherwise
+	 */
+	cancel<TPayload, TResponse>(
+		event: EventDefinition<TPayload, TResponse>,
+		key: string
+	): Promise<boolean>;
 }
 
 /**
