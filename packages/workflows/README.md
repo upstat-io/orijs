@@ -42,7 +42,7 @@ class OrderWorkflow {
 }
 
 // Register and execute
-const registry = WorkflowRegistry.create().register(OrderWorkflow).build();
+const registry = WorkflowRegistry.create(OrderWorkflow).build();
 const provider = new InProcessWorkflowProvider({ registry });
 
 await provider.start();
@@ -68,4 +68,4 @@ await provider.stop();
 
 ## API Reference
 
-See [OriJS Workflows Documentation](/docs/guides/workflows.md) for complete API reference.
+See [OriJS Workflows Documentation](../../docs/workflows.md) for complete API reference.

@@ -157,7 +157,10 @@ export class RequestPipeline {
 					try {
 						// Handler may return Response or Promise<Response>
 						// Promise.resolve handles both cases, .catch() handles async rejections
-						return Promise.resolve(handler(ctx)).then(finalizeResponse).catch(handleError);
+						return Promise.resolve(handler(ctx))
+							.then((response) => this.applyResponseHeaders(response, ctx))
+							.then(finalizeResponse)
+							.catch(handleError);
 					} catch (error) {
 						// Sync throw from handler
 						return Promise.resolve(handleError(error));
@@ -348,6 +351,8 @@ export class RequestPipeline {
 			const result = await validate(schema.query, ctx.query);
 			if (!result.success) {
 				errors.push(...this.prefixErrors('query', result.errors));
+			} else {
+				ctx.setValidatedQuery(result.data);
 			}
 		}
 
@@ -358,6 +363,8 @@ export class RequestPipeline {
 				const result = await validate(schema.body, body);
 				if (!result.success) {
 					errors.push(...this.prefixErrors('body', result.errors));
+				} else {
+					ctx.setValidatedBody(result.data);
 				}
 			} catch {
 				errors.push({ path: 'body', message: 'Invalid JSON body' });

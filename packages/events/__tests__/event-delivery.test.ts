@@ -58,16 +58,15 @@ describe('EventDeliveryEngine', () => {
 	});
 
 	describe('deliver', () => {
-		it('should do nothing when no handlers registered', async () => {
+		it('should resolve with undefined when no handlers registered', async () => {
 			const subscription = createSubscription<string>();
 			const message = createTestMessage('no.handlers');
 
 			delivery.deliver(message, subscription);
 
-			// Wait for async execution
-			await new Promise((resolve) => setTimeout(resolve, 10));
-
-			expect(subscription.isSettled()).toBe(false);
+			const result = await subscription.toPromise();
+			expect(result).toBeUndefined();
+			expect(subscription.isSettled()).toBe(true);
 		});
 
 		it('should execute handler and resolve subscription with result', async () => {

@@ -276,7 +276,7 @@ private listArticles = async (ctx: RequestContext) => {
 };
 ```
 
-Query parameters are always strings (or arrays of strings for repeated keys). This is important -- `ctx.query.page` is `"2"`, not `2`. You need to parse them yourself or use validation schemas (covered in [Chapter 6](./06-validation.md)).
+Query parameters are always strings (or arrays of strings for repeated keys). This is important -- `ctx.query.page` is `"2"`, not `2`. You need to parse them yourself or use validation schemas (covered in [Chapter 6](./06-validation.md)). When a query schema is defined on the route, the decoded result is available via `ctx.validatedQuery` (which may contain transformed types like numbers), while `ctx.query` always returns raw strings.
 
 Query parsing is lazy: OriJS does not parse the query string until you access `ctx.query`. If your handler does not use query parameters, no parsing occurs.
 
@@ -319,7 +319,8 @@ Every handler receives a `RequestContext` that provides access to everything abo
 |----------|------|-------------|
 | `ctx.request` | `Request` | The raw Bun `Request` object |
 | `ctx.params` | `TParams` | URL path parameters (typed via `r.param()`) |
-| `ctx.query` | `Record<string, string \| string[]>` | Query string parameters (lazy) |
+| `ctx.query` | `Record<string, string \| string[]>` | Raw query string parameters (lazy, always strings) |
+| `ctx.validatedQuery` | `unknown` | Schema-decoded query (falls back to `ctx.query` when no schema) |
 | `ctx.state` | `TState` | Type-safe state set by guards |
 | `ctx.correlationId` | `string` | Unique request ID for tracing (lazy) |
 | `ctx.signal` | `AbortSignal` | Fires when client disconnects |

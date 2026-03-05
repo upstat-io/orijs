@@ -80,7 +80,7 @@ describe('EventHandlerBuilder', () => {
 	});
 
 	describe('registerWith()', () => {
-		it('should register all handlers with the orchestrator', () => {
+		it('should register all handlers with the orchestrator', async () => {
 			const builder = new EventHandlerBuilder<'event.a' | 'event.b'>();
 			builder.on('event.a', async () => {});
 			builder.on('event.b', async () => {});
@@ -97,7 +97,7 @@ describe('EventHandlerBuilder', () => {
 
 			const mockEmit = () => ({}) as EventSubscription<unknown>;
 
-			builder.registerWith(mockProvider, mockEmit as any);
+			await builder.registerWith(mockProvider, mockEmit as any);
 
 			expect(subscribeArgs).toHaveLength(2);
 			expect(subscribeArgs[0]![0]).toBe('event.a');
@@ -125,7 +125,7 @@ describe('EventHandlerBuilder', () => {
 
 			const mockEmit = () => ({}) as EventSubscription<unknown>;
 
-			builder.registerWith(mockProvider, mockEmit as any);
+			await builder.registerWith(mockProvider, mockEmit as any);
 
 			// Simulate message delivery
 			expect(capturedHandler).not.toBeNull();
@@ -164,7 +164,7 @@ describe('EventHandlerBuilder', () => {
 				stop: async () => {}
 			} as unknown as EventProvider;
 
-			builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
+			await builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
 
 			const result = await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,
@@ -204,7 +204,7 @@ describe('EventHandlerBuilder', () => {
 				return {} as EventSubscription<any>;
 			};
 
-			builder.registerWith(mockProvider, mockEmit as any);
+			await builder.registerWith(mockProvider, mockEmit as any);
 
 			await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,
@@ -283,7 +283,7 @@ describe('EventHandlerBuilder', () => {
 				stop: async () => {}
 			} as unknown as EventProvider;
 
-			builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
+			await builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
 
 			const result = await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,
@@ -323,7 +323,7 @@ describe('EventHandlerBuilder', () => {
 				return {} as EventSubscription<any>;
 			};
 
-			builder.registerWith(mockProvider, mockEmit as any);
+			await builder.registerWith(mockProvider, mockEmit as any);
 
 			await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,
@@ -364,7 +364,7 @@ describe('EventHandlerBuilder', () => {
 
 			const mockEmit = () => ({}) as EventSubscription<any>;
 
-			builder.registerWith(mockProvider, mockEmit as any);
+			await builder.registerWith(mockProvider, mockEmit as any);
 
 			await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,
@@ -396,7 +396,7 @@ describe('EventHandlerBuilder', () => {
 				stop: async () => {}
 			} as unknown as EventProvider;
 
-			builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
+			await builder.registerWith(mockProvider, (() => ({}) as EventSubscription<any>) as any);
 
 			await capturedHandler!({
 				version: EVENT_MESSAGE_VERSION,

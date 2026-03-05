@@ -972,7 +972,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 			extension(this);
 		}
 
-		this.bootstrap();
+		await this.bootstrap();
 
 		// Initialize socket routing coordinator if socket controllers are registered
 		if (this.socketRoutingCoordinator.hasRouters()) {
@@ -1260,12 +1260,6 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 			open: (ws: WebSocketConnection<unknown>) => {
 				// Add to coordinator for tracking
 				coordinator?.addConnection(ws);
-				// Subscribe to broadcast topic via coordinator (for Redis support)
-				if (coordinator) {
-					coordinator.subscribeToTopic(ws.data.socketId, '__broadcast__');
-				} else {
-					ws.subscribe('__broadcast__');
-				}
 
 				// Run socket controller connection guards if any controllers registered
 				if (hasSocketRouters) {
@@ -1279,6 +1273,12 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 								ws.close(1008, 'Connection rejected by guard');
 								return;
 							}
+							// Subscribe to broadcast AFTER guards pass to prevent auth race
+							if (coordinator) {
+								coordinator.subscribeToTopic(ws.data.socketId, '__broadcast__');
+							} else {
+								ws.subscribe('__broadcast__');
+							}
 							// Call user handler after guards pass
 							const wrappedWs = wrapWebSocket(ws);
 							safeCall('open', () => handlers?.open?.(wrappedWs));
@@ -1288,7 +1288,12 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 							ws.close(1011, 'Connection handler error');
 						});
 				} else {
-					// No socket controllers - just call user handler
+					// No socket controllers - no guards to wait for, subscribe immediately
+					if (coordinator) {
+						coordinator.subscribeToTopic(ws.data.socketId, '__broadcast__');
+					} else {
+						ws.subscribe('__broadcast__');
+					}
 					const wrappedWs = wrapWebSocket(ws);
 					safeCall('open', () => handlers?.open?.(wrappedWs));
 				}
@@ -1437,7 +1442,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 		return this.container;
 	}
 
-	private bootstrap(): void {
+	private async bootstrap(): Promise<void> {
 		// Set phase (AppContext created in constructor)
 		this._context.setPhase('bootstrapped');
 
@@ -1471,6 +1476,9 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 		this.socketRoutingCoordinator.registerRouters();
 		this.eventCoordinator.registerConsumers();
 		this.workflowCoordinator.registerConsumers();
+
+		// Await async subscription promises (BullMQ returns Promise from subscribe())
+		await this.eventCoordinator.awaitSubscriptions();
 
 		// Set workflow executor on AppContext AFTER registerConsumers() creates the provider
 		// Use createExecutor() to get a definition-aware executor that handles both

@@ -193,10 +193,16 @@ export class RoutingCoordinator {
 				// Multiple methods - use method object
 				const methodHandlers: MethodHandlers = {};
 				for (const route of pathRoutes) {
-					// Static Response on multi-method path - pass directly
 					if (route.handler instanceof Response) {
-						// Can't use static Response with method handlers, log warning
-						this.logger.warn('Static Response on multi-method path not supported', { path: bunPath });
+						const staticResponse = corsHeaders
+							? this.addCorsToStaticResponse(route.handler, corsHeaders)
+							: route.handler;
+						methodHandlers[route.method] = () => new Response(staticResponse.body, {
+							status: staticResponse.status,
+							statusText: staticResponse.statusText,
+							headers: staticResponse.headers
+						});
+						continue;
 					}
 					methodHandlers[route.method] = pipeline.createHandler(
 						route,

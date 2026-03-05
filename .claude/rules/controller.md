@@ -71,8 +71,9 @@ r.get('/users', this.list, { query: Query.pagination() });
 
 // Access validated query in handler
 private list = async (ctx: RequestContext): Promise<Response> => {
-  // ctx.query is already validated by route schema
-  const { page, limit } = ctx.query as { page: number; limit: number };
+  // ctx.validatedQuery contains schema-decoded values (e.g. numbers from Type.Transform)
+  // ctx.query always returns raw Record<string, string | string[]>
+  const { page, limit } = ctx.validatedQuery as { page: number; limit: number };
   const users = await this.userService.list({ page, limit });
   return Response.json(users);
 };

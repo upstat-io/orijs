@@ -44,6 +44,9 @@ export class EventCoordinator {
 	/** Event names that have registered consumers (populated after bootstrap) */
 	private registeredConsumerEvents: Set<string> = new Set();
 
+	/** Promises from async subscribe() calls (BullMQ), awaited during bootstrap */
+	private pendingSubscriptions: Promise<void>[] = [];
+
 	constructor(
 		private readonly container: Container,
 		private readonly logger: Logger,
@@ -138,8 +141,11 @@ export class EventCoordinator {
 			// Create wrapped handler with TypeBox validation
 			const wrappedHandler = this.createValidatedHandler(definition, consumer);
 
-			// Register with provider
-			this.eventProvider.subscribe(eventName, wrappedHandler);
+			// Register with provider — subscribe() may return Promise<void> (BullMQ) or void (in-process)
+			const result = this.eventProvider.subscribe(eventName, wrappedHandler);
+			if (result != null && typeof (result as Promise<void>).then === 'function') {
+				this.pendingSubscriptions.push(result as Promise<void>);
+			}
 
 			// Track that this event has a consumer
 			this.registeredConsumerEvents.add(eventName);
@@ -148,6 +154,13 @@ export class EventCoordinator {
 		}
 
 		this.pendingConsumers = [];
+	}
+
+	/** Awaits all pending subscriptions from registerConsumers(). Safe to call multiple times. */
+	public async awaitSubscriptions(): Promise<void> {
+		if (this.pendingSubscriptions.length === 0) return;
+		const batch = this.pendingSubscriptions.splice(0);
+		await Promise.all(batch);
 	}
 
 	/**

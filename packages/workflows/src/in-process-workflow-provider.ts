@@ -526,9 +526,8 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 		}
 
 		// All steps completed successfully - call handler (onComplete equivalent)
+		// Status stays 'running' during handler so timeout can still fire
 		const totalDurationMs = Math.round(performance.now() - workflowStartTime);
-
-		flowState.status = 'completed';
 
 		let result: TResult;
 		try {
@@ -544,14 +543,21 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 			return;
 		}
 
-		workflowLog.info('Workflow Completed', {
-			durationMs: totalDurationMs,
-			steps: Object.keys(state.results).length
-		});
+		// Guard: timeout may have set status to 'failed' during async handler execution.
+		// Re-read status to defeat TypeScript control flow narrowing (timeout modifies externally).
+		const currentStatus: string = flowState.status;
+		if (currentStatus !== 'failed') {
+			flowState.status = 'completed';
+			flowState.result = result;
 
-		flowState.result = result;
-		if (flowState.resolve) {
-			flowState.resolve(result);
+			workflowLog.info('Workflow Completed', {
+				durationMs: totalDurationMs,
+				steps: Object.keys(state.results).length
+			});
+
+			if (flowState.resolve) {
+				flowState.resolve(result);
+			}
 		}
 		this.scheduleCleanup(flowId);
 	}

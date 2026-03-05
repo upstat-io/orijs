@@ -108,6 +108,8 @@ export class RequestContext<
 	private parsedBody: unknown | undefined;
 	private hasParsedBody = false;
 	private parseType: 'json' | 'text' | null = null;
+	private _validatedQuery: unknown = undefined;
+	private _hasValidatedQuery = false;
 
 	// Lazy parsing config (primitives only - no object allocation)
 	private readonly requestUrl: string;
@@ -225,10 +227,31 @@ export class RequestContext<
 		return this.cachedQuery;
 	}
 
-	/** Lazily generated request ID */
+	/** Decoded query after schema validation (may contain transformed types like numbers). Falls back to raw query when no schema validation ran. */
+	get validatedQuery(): unknown {
+		return this._hasValidatedQuery ? this._validatedQuery : this.query;
+	}
+
+	/** @internal - Set decoded query from schema validation */
+	public setValidatedQuery(data: unknown): void {
+		this._validatedQuery = data;
+		this._hasValidatedQuery = true;
+	}
+
+	/** @internal - Set decoded body from schema validation */
+	public setValidatedBody(data: unknown): void {
+		this.parsedBody = data;
+		this.hasParsedBody = true;
+		this.parseType = 'json';
+	}
+
+	/** Lazily generated correlation ID, preferring x-correlation-id header then x-request-id */
 	get correlationId(): string {
 		if (this.cachedRequestId === null) {
-			this.cachedRequestId = this.request.headers.get('x-request-id') ?? crypto.randomUUID();
+			this.cachedRequestId =
+				this.request.headers.get('x-correlation-id') ??
+				this.request.headers.get('x-request-id') ??
+				crypto.randomUUID();
 		}
 		return this.cachedRequestId;
 	}
@@ -472,7 +495,7 @@ export class RequestContext<
 
 	/**
 	 * Get a validated UUID path parameter.
-	 * Validates the param is a properly formatted UUID v4.
+	 * Validates the param is a properly formatted UUID (RFC 4122).
 	 *
 	 * Performance: O(1) - UUID has fixed length (36 chars), so validation is constant time.
 	 *

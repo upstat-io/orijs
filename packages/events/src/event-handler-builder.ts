@@ -99,17 +99,17 @@ export class EventHandlerBuilder<TEventNames extends string = string> implements
 	 * @param provider - The event provider to register with
 	 * @param emitFn - Function to emit events (for context)
 	 */
-	public registerWith(
+	public async registerWith(
 		provider: EventProvider,
 		emitFn: (
 			eventName: TEventNames,
 			payload: unknown,
 			options?: { delay?: number; causationId?: string }
 		) => ReturnType<EventProvider['emit']>
-	): void {
+	): Promise<void> {
 		for (const { eventName, handler } of this.registrations) {
 			const wrappedHandler = this.createWrappedHandler(handler, emitFn);
-			provider.subscribe(eventName, wrappedHandler);
+			await provider.subscribe(eventName, wrappedHandler);
 		}
 	}
 

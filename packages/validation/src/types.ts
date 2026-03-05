@@ -131,11 +131,14 @@ function validateTypeBox<T>(schema: TSchema, data: unknown): ValidationResult<T>
 	// even if schema doesn't specify additionalProperties: false.
 	const sanitized = Json.sanitize(data);
 
-	const errors = [...Value.Errors(schema, sanitized)];
+	// Apply schema defaults BEFORE validation — fills missing fields that have defaults.
+	// structuredClone prevents mutating the caller's data.
+	const withDefaults = Value.Default(schema, structuredClone(sanitized));
+
+	const errors = [...Value.Errors(schema, withDefaults)];
 
 	if (errors.length === 0) {
-		// Apply defaults and coercion
-		const decoded = Value.Decode(schema, sanitized);
+		const decoded = Value.Decode(schema, withDefaults);
 		return { success: true, data: decoded as T };
 	}
 

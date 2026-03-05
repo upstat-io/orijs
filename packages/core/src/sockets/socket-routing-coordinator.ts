@@ -33,6 +33,7 @@ export class SocketRoutingCoordinator<TSocket extends SocketEmitter = SocketEmit
 	private readonly routerConfigs: SocketRouterConfig[] = [];
 	private readonly compiledRoutes = new Map<string, CompiledSocketRoute>();
 	private readonly connectionStates = new Map<string, ConnectionState>();
+	private readonly registeredMessageTypes = new Set<string>();
 	private connectionGuards: SocketGuardClass[] = [];
 	private pipeline: SocketPipeline<TSocket> | null = null;
 
@@ -79,16 +80,13 @@ export class SocketRoutingCoordinator<TSocket extends SocketEmitter = SocketEmit
 			});
 
 			for (const route of routes) {
-				if (this.compiledRoutes.has(route.messageType)) {
+				if (this.registeredMessageTypes.has(route.messageType)) {
 					throw new Error(
 						`Duplicate socket message type: '${route.messageType}' is already registered. ` +
 							`Each message type can only have one handler.`
 					);
 				}
-
-				if (this.pipeline) {
-					this.compiledRoutes.set(route.messageType, this.pipeline.compileRoute(route));
-				}
+				this.registeredMessageTypes.add(route.messageType);
 			}
 		}
 	}

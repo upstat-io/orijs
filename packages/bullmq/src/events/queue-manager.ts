@@ -404,8 +404,19 @@ export class QueueManager implements IQueueManager {
 		// before the worker is connected, causing race conditions.
 		await worker.waitUntilReady();
 
-		// Store worker for cleanup
+		// Atomically swap: new worker is ready, close old one if exists
+		const existing = this.workers.get(queueName);
 		this.workers.set(queueName, worker);
+		if (existing) {
+			try {
+				await existing.close();
+			} catch (err) {
+				this.logger?.warn('Failed to close replaced worker', {
+					queueName,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				});
+			}
+		}
 
 		this.logger?.info(`Event Worker Created -> [${queueName}]`, {
 			concurrency: this.defaultWorkerOptions.concurrency ?? 1

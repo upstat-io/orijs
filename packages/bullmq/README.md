@@ -93,4 +93,4 @@ new BullMQWorkflowProvider({
 
 ## API Reference
 
-See [OriJS BullMQ Documentation](/docs/reference/bullmq/_llms.md) for BullMQ patterns and [OriJS Workflows](/docs/guides/workflows.md) for workflow concepts.
+See [OriJS BullMQ Documentation](../../docs/bullmq.md) for BullMQ patterns and [OriJS Workflows](../../docs/workflows.md) for workflow concepts.

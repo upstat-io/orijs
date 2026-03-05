@@ -103,12 +103,12 @@ app.context.onShutdown(async () => {
 
 ## Documentation
 
-See the [full documentation](../../docs/guides/) for detailed guides on:
+See the [full documentation](../../docs/) for detailed guides on:
 
-- [Getting Started](../../docs/guides/getting-started.md)
-- [Core Concepts](../../docs/guides/core-concepts.md)
-- [HTTP Routing](../../docs/guides/http-routing.md)
-- [API Reference](../../docs/guides/api-reference.md)
+- [Core](../../docs/core.md)
+- [Validation](../../docs/validation.md)
+- [Events](../../docs/events.md)
+- [Workflows](../../docs/workflows.md)
 
 ## License
 

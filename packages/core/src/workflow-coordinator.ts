@@ -514,18 +514,29 @@ export class WorkflowCoordinator {
 								return { name: stepDef.name, result: stepResult, handler };
 							});
 
-							try {
-								const parallelResults = await Promise.all(parallelPromises);
-								for (const { name, result: stepResult, handler } of parallelResults) {
-									stepResults[name] = stepResult;
-									completedSteps.push({ name, handler });
+							const settledResults = await Promise.allSettled(parallelPromises);
+							const fulfilled: { name: string; result: unknown; handler: typeof stepHandlers[string] }[] = [];
+							let firstError: Error | null = null;
+
+							for (const settled of settledResults) {
+								if (settled.status === 'fulfilled') {
+									fulfilled.push(settled.value);
+								} else if (!firstError) {
+									firstError = settled.reason instanceof Error
+										? settled.reason
+										: new Error(String(settled.reason));
 								}
-							} catch (error) {
-								// For parallel steps, some may have completed - rollback those
-								await executeRollbacks(
-									'parallel-group',
-									error instanceof Error ? error : new Error(String(error))
-								);
+							}
+
+							// Track completed steps from fulfilled promises
+							for (const { name, result: stepResult, handler } of fulfilled) {
+								stepResults[name] = stepResult;
+								completedSteps.push({ name, handler });
+							}
+
+							if (firstError) {
+								// Rollback all completed steps (including those from this parallel group)
+								await executeRollbacks('parallel-group', firstError);
 							}
 						}
 					}

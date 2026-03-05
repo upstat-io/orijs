@@ -102,9 +102,9 @@ export class InProcessEventProvider implements EventProvider {
 	private readonly pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
 	/**
 	 * Tracks pending delayed events by key for cancellation.
-	 * Maps key -> timeout handle.
+	 * Maps key -> { timeout, subscription } so cancellation can reject the subscription.
 	 */
-	private readonly pendingDelayedByKey = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly pendingDelayedByKey = new Map<string, { timeout: ReturnType<typeof setTimeout>; subscription: EventSubscription<unknown> }>();
 	/**
 	 * Tracks processed idempotency keys to prevent duplicate event delivery.
 	 * Maps idempotencyKey -> timestamp for TTL-based cleanup.
@@ -237,6 +237,10 @@ export class InProcessEventProvider implements EventProvider {
 			clearTimeout(timeout);
 		}
 		this.pendingTimeouts.clear();
+		// Reject all pending delayed subscriptions before clearing
+		for (const entry of this.pendingDelayedByKey.values()) {
+			entry.subscription._reject(new Error('Event provider stopped'));
+		}
 		this.pendingDelayedByKey.clear();
 		this.processedIdempotencyKeys.clear();
 		if (this.idempotencyCleanupInterval) {
@@ -290,13 +294,17 @@ export class InProcessEventProvider implements EventProvider {
 	 * @returns true if the event was found and cancelled, false otherwise
 	 */
 	public async cancel(_eventName: string, key: string): Promise<boolean> {
-		const timeout = this.pendingDelayedByKey.get(key);
-		if (!timeout) {
+		const entry = this.pendingDelayedByKey.get(key);
+		if (!entry) {
 			return false;
 		}
-		clearTimeout(timeout);
+		clearTimeout(entry.timeout);
 		this.pendingDelayedByKey.delete(key);
-		this.pendingTimeouts.delete(timeout);
+		this.pendingTimeouts.delete(entry.timeout);
+		// Reject the pending subscription so callers don't hang
+		entry.subscription._reject(new Error('Event cancelled'));
+		// Remove idempotency key so the event can be re-emitted
+		this.processedIdempotencyKeys.delete(key);
 		return true;
 	}
 
@@ -318,7 +326,7 @@ export class InProcessEventProvider implements EventProvider {
 		}, delay);
 		this.pendingTimeouts.add(timeout);
 		if (key) {
-			this.pendingDelayedByKey.set(key, timeout);
+			this.pendingDelayedByKey.set(key, { timeout, subscription: subscription as EventSubscription<unknown> });
 		}
 	}
 }

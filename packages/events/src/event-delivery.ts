@@ -104,7 +104,7 @@ export class EventDeliveryEngine implements IEventDelivery {
 		const handlers = this.registry.getHandlers(message.eventName);
 
 		if (handlers.length === 0) {
-			// No handlers - subscription stays unresolved (fire-and-forget)
+			subscription._resolve(undefined as TReturn);
 			return;
 		}
 

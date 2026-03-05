@@ -1,4 +1,4 @@
-import { Type, type TSchema, type TProperties } from '@sinclair/typebox';
+import { Type, FormatRegistry, type TSchema, type TProperties } from '@sinclair/typebox';
 
 export interface StringParamOptions {
 	minLength?: number;
@@ -66,18 +66,30 @@ export const Params = {
 		// The handler can parse to number if needed
 		let pattern = '^[0-9]+$';
 		if (options.min !== undefined && options.min > 0) {
-			// Ensure at least the minimum number of digits
-			pattern = `^[1-9][0-9]*$`;
+			pattern = '^[1-9][0-9]*$';
+		}
+
+		// When min/max specified, register a custom format for numeric bounds
+		if (options.min !== undefined || options.max !== undefined) {
+			const formatName = `numeric-param:${options.min ?? ''}:${options.max ?? ''}`;
+			if (!FormatRegistry.Has(formatName)) {
+				FormatRegistry.Set(formatName, (value: string) => {
+					if (!new RegExp(pattern).test(value)) return false;
+					const num = parseInt(value, 10);
+					if (options.min !== undefined && num < options.min) return false;
+					if (options.max !== undefined && num > options.max) return false;
+					return true;
+				});
+			}
+			return Type.Object({
+				[name]: Type.String({ format: formatName, minLength: 1 })
+			});
 		}
 
 		return Type.Object({
 			[name]: Type.String({
 				pattern,
-				minLength: 1,
-				description:
-					options.min !== undefined || options.max !== undefined
-						? `Numeric string${options.min !== undefined ? ` >= ${options.min}` : ''}${options.max !== undefined ? ` <= ${options.max}` : ''}`
-						: 'Numeric string'
+				minLength: 1
 			})
 		});
 	}

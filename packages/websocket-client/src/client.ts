@@ -146,6 +146,11 @@ export class SocketClient {
 	/** Whether network events have been set up */
 	private networkEventsSet = false;
 
+	/** Stored listener references for cleanup in destroy() */
+	private offlineHandler: (() => void) | null = null;
+	private onlineHandler: (() => void) | null = null;
+	private visibilityHandler: (() => void) | null = null;
+
 	/** Resolved options with defaults */
 	private readonly options: Required<SocketClientOptions>;
 
@@ -212,7 +217,13 @@ export class SocketClient {
 		this.deviceWentOffline = false;
 		this.setState('connecting');
 
-		this.ws = new WebSocket(this.url);
+		try {
+			this.ws = new WebSocket(this.url);
+		} catch (error) {
+			this.setState('disconnected');
+			this.notifyError(error instanceof Error ? error : new Error(String(error)));
+			return;
+		}
 
 		// Connection timeout - fail fast if server doesn't respond
 		if (this.options.connectionTimeout > 0) {
@@ -325,6 +336,38 @@ export class SocketClient {
 	}
 
 	/**
+	 * Full teardown — disconnects and removes all browser event listeners.
+	 * After destroy(), the client is inert. connect() still works but without
+	 * network-event-driven recovery.
+	 */
+	destroy(): void {
+		this.disconnect();
+		const win =
+			typeof globalThis !== 'undefined'
+				? (globalThis as typeof globalThis & {
+						removeEventListener?: typeof removeEventListener;
+						document?: { removeEventListener: typeof removeEventListener };
+					})
+				: null;
+		if (win && typeof win.removeEventListener === 'function') {
+			if (this.offlineHandler) {
+				win.removeEventListener('offline', this.offlineHandler);
+				this.offlineHandler = null;
+			}
+			if (this.onlineHandler) {
+				win.removeEventListener('online', this.onlineHandler);
+				this.onlineHandler = null;
+			}
+		}
+		if (win?.document && typeof win.document.removeEventListener === 'function') {
+			if (this.visibilityHandler) {
+				win.document.removeEventListener('visibilitychange', this.visibilityHandler);
+				this.visibilityHandler = null;
+			}
+		}
+	}
+
+	/**
 	 * Subscribe to a message type.
 	 *
 	 * @template TData - The message data type (inferred from message definition)
@@ -394,7 +437,7 @@ export class SocketClient {
 	 * @param options - Send options
 	 */
 	send(type: string, payload: Record<string, unknown>, options?: { buffer?: boolean }): void {
-		const message = JSON.stringify({ type, ...payload });
+		const message = JSON.stringify({ ...payload, type });
 		const buffer = options?.buffer ?? true; // Default to buffering
 
 		if (this.isConnected && this.ws) {
@@ -430,7 +473,7 @@ export class SocketClient {
 	 * ```
 	 */
 	emit<TData>(message: ClientMessageDefinition<TData>, data: TData, options?: { buffer?: boolean }): void {
-		const envelope = JSON.stringify({ type: message.name, ...data });
+		const envelope = JSON.stringify({ ...(data as Record<string, unknown>), type: message.name });
 		const buffer = options?.buffer ?? true; // Default to buffering
 
 		if (this.isConnected && this.ws) {
@@ -695,17 +738,19 @@ export class SocketClient {
 		this.networkEventsSet = true;
 
 		// Offline detection - close connection immediately when network is lost
-		win.addEventListener('offline', () => {
+		this.offlineHandler = () => {
 			this.deviceWentOffline = true;
 			if (this.state === 'connected' || this.state === 'connecting') {
 				if (this.ws) {
 					this.ws.close();
 				}
 			}
-		});
+		};
+		win.addEventListener('offline', this.offlineHandler);
 
 		// Online detection - reconnect immediately when network is restored
-		win.addEventListener('online', () => {
+		this.onlineHandler = () => {
+			if (this.skipReconnect) return;
 			if (this.deviceWentOffline) {
 				this.deviceWentOffline = false;
 				if (this.reconnectTimer !== null) {
@@ -717,15 +762,17 @@ export class SocketClient {
 					this.connect();
 				}
 			}
-		});
+		};
+		win.addEventListener('online', this.onlineHandler);
 
 		// Visibility change - skip reconnecting while page is hidden
 		if (win.document && typeof win.document.addEventListener === 'function') {
-			win.document.addEventListener('visibilitychange', () => {
+			this.visibilityHandler = () => {
 				if (win.document?.visibilityState === 'hidden') {
 					this.pageHidden = true;
 				} else {
 					this.pageHidden = false;
+					if (this.skipReconnect) return;
 					if (this.state === 'disconnected' || this.state === 'reconnecting') {
 						if (this.reconnectTimer !== null) {
 							clearTimeout(this.reconnectTimer);
@@ -735,7 +782,8 @@ export class SocketClient {
 						this.connect();
 					}
 				}
-			});
+			};
+			win.document.addEventListener('visibilitychange', this.visibilityHandler);
 		}
 	}
 

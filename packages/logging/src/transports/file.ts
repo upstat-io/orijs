@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 
 export interface FileRotateOptions {
 	size?: string; // e.g., '10mb', '100kb'
+	/** @deprecated Not implemented. Will be removed in a future major version. Use size-based rotation instead. */
 	interval?: string; // e.g., '1d', '1h'
 	keep?: number; // number of old files to keep
 }
@@ -88,6 +89,11 @@ function getFileSize(path: string): number {
  * @param options - Rotation and sync options
  */
 export function fileTransport(path: string, options: FileTransportOptions = {}): Transport {
+	if (options.rotate?.interval) {
+		console.warn(
+			'[OriJS Logger] rotate.interval is not implemented and will be removed in a future major version. Use rotate.size for size-based rotation instead.'
+		);
+	}
 	const maxSize = options.rotate?.size ? parseSize(options.rotate.size) : null;
 	const keep = options.rotate?.keep ?? 5;
 	const isSync = options.sync ?? false;

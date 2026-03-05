@@ -388,8 +388,14 @@ export class CacheService {
 			return await this.provider.delByMetaMany(allMetaKeys);
 		}
 
-		// Direct deletion only (or InMemory provider)
-		return await this.provider.del(metaKey);
+		// Non-meta path (InMemory): reconstruct actual cache keys from tracked configs
+		const cacheKeys = this.generateCacheKeysForEntity(entityType, params as Record<string, unknown>);
+		if (cacheKeys.length > 0) {
+			return await this.provider.delMany(cacheKeys);
+		}
+		// No configs matched the provided params — likely a partial-scope invalidation.
+		// InMemory providers can't do pattern-based deletion; return 0.
+		return 0;
 	}
 
 	/**
@@ -413,15 +419,29 @@ export class CacheService {
 	): Promise<number> {
 		const { cascade = true } = options;
 
-		const metaKeys = invalidations.map((inv) => generateMetaKey(inv.entityType, inv.params));
-
 		// Cascade: use Redis-specific delByMetaMany if available
 		if (cascade && hasMetaSupport(this.provider)) {
-			return await this.provider.delByMetaMany(metaKeys);
+			const allMetaKeys: string[] = [];
+			for (const inv of invalidations) {
+				const metaKey = generateMetaKey(inv.entityType, inv.params);
+				const tags = getEntityInvalidationTags(inv.entityType, inv.params as Record<string, unknown>);
+				const tagMetaKeys = tags.map(generateTagMetaKey);
+				const keys = [metaKey, ...tagMetaKeys];
+				this.addTrackedMetaKeys(inv.entityType, inv.params, keys);
+				allMetaKeys.push(...keys);
+			}
+			return await this.provider.delByMetaMany(allMetaKeys);
 		}
 
-		// Direct deletion only (or InMemory provider)
-		return await this.provider.delMany(metaKeys);
+		// Non-meta path (InMemory): reconstruct actual cache keys from tracked configs
+		const allCacheKeys: string[] = [];
+		for (const inv of invalidations) {
+			allCacheKeys.push(...this.generateCacheKeysForEntity(inv.entityType, inv.params as Record<string, unknown>));
+		}
+		if (allCacheKeys.length > 0) {
+			return await this.provider.delMany(allCacheKeys);
+		}
+		return 0;
 	}
 
 	// ══════════════════════════════════════════════════════════════════════════
@@ -503,6 +523,35 @@ export class CacheService {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Registers a cache config for key reconstruction during invalidation.
+	 * Call this during service setup if this instance will invalidate entries
+	 * written by other instances (or by getOrSet on other configs).
+	 * Not needed when using Redis with cascade support (meta keys handle this).
+	 */
+	public registerConfig<TParams extends object>(config: CacheConfig<TParams>): void {
+		this.trackConfig(config);
+	}
+
+	/**
+	 * Generate cache keys for an entity type by iterating tracked configs.
+	 * Used by non-meta (InMemory) invalidation paths.
+	 */
+	private generateCacheKeysForEntity(entityType: string, params: Record<string, unknown>): string[] {
+		const configs = this.configsByEntity.get(entityType);
+		if (!configs) return [];
+		const keys: string[] = [];
+		for (const config of configs) {
+			try {
+				const cacheKey = generateCacheKey(config, params);
+				keys.push(cacheKey);
+			} catch {
+				// Params don't match this config's requirements — skip
+			}
+		}
+		return keys;
 	}
 
 	/**

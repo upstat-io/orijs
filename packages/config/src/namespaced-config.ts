@@ -288,7 +288,7 @@ export class NamespacedConfigBuilder {
 			},
 			async getRequired(key: string): Promise<string> {
 				const value = await this.get(key);
-				if (value === undefined) {
+				if (value === undefined || value === '') {
 					throw new Error(`Required config key '${key}' not found`);
 				}
 				return value;

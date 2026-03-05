@@ -64,11 +64,11 @@ export function parseQueryString(queryString: string): Record<string, string | s
 		let value: string;
 
 		if (eqIndex === -1) {
-			key = safeDecodeURIComponent(pair);
+			key = safeDecodeURIComponent(pair.replace(/\+/g, ' '));
 			value = '';
 		} else {
-			key = safeDecodeURIComponent(pair.slice(0, eqIndex));
-			value = safeDecodeURIComponent(pair.slice(eqIndex + 1));
+			key = safeDecodeURIComponent(pair.slice(0, eqIndex).replace(/\+/g, ' '));
+			value = safeDecodeURIComponent(pair.slice(eqIndex + 1).replace(/\+/g, ' '));
 		}
 
 		addQueryValue(query, key, value);

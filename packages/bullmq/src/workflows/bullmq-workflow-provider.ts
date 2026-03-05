@@ -2028,9 +2028,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	}
 
 	private extractWorkflowName(queueName: string, queueType: 'steps' | 'workflow'): string {
-		const pattern = queueType === 'steps' ? /^[^.]+\.([^.]+)\.steps$/ : /^[^.]+\.([^.]+)$/;
-		const match = queueName.match(pattern);
-		if (!match) {
+		const prefix = this.queuePrefix;
+		if (!queueName.startsWith(prefix + '.')) {
 			const error = new Error(`Invalid ${queueType} queue name: ${queueName}`);
 			this.log.error('Failed to extract workflow name from queue', {
 				queueName,
@@ -2039,7 +2038,20 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			});
 			throw error;
 		}
-		return match[1]!;
+		const rest = queueName.slice(prefix.length + 1);
+		if (queueType === 'steps') {
+			if (!rest.endsWith('.steps')) {
+				const error = new Error(`Invalid steps queue name: ${queueName}`);
+				this.log.error('Failed to extract workflow name from queue', {
+					queueName,
+					queueType,
+					error: error.message
+				});
+				throw error;
+			}
+			return rest.slice(0, -6); // strip '.steps'
+		}
+		return rest;
 	}
 
 	private createContext(

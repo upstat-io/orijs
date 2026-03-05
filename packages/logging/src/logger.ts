@@ -172,26 +172,24 @@ export class Logger {
 
 	/**
 	 * Shutdown the logger - flushes all buffers and awaits transport cleanup.
-	 * Call this during application shutdown.
 	 *
-	 * This method:
-	 * 1. Stops the LogBuffer timer and flushes buffered logs to transports
-	 * 2. Flushes all transports in parallel (ensures async buffers like file transport are written)
-	 * 3. Closes all transports in parallel (cleanup file handles, connections, etc.)
-	 *
-	 * Uses Promise.allSettled to ensure all transports complete shutdown regardless of
-	 * individual failures. This prevents one failing transport from blocking others.
+	 * @param additionalTransports - Transports not in globalTransports to also flush/close.
+	 *   Loggers created with explicit transports own those transports. Pass them here
+	 *   during teardown so they get flushed and closed. In OriJS apps, Application
+	 *   handles this automatically.
 	 */
-	static async shutdown(): Promise<void> {
+	static async shutdown(additionalTransports?: Transport[]): Promise<void> {
 		// Stop timer and flush LogBuffer (writes to transports synchronously)
 		logBuffer.shutdown();
 		Logger.flush();
 
-		// Flush and close all transports in parallel
-		// Using allSettled ensures all transports get a chance to close even if some fail
-		const transports = Logger.globalTransports ?? [];
-		await Promise.allSettled(transports.map((transport) => transport.flush()));
-		await Promise.allSettled(transports.map((transport) => transport.close()));
+		// Flush and close all transports in parallel (deduped via Set)
+		const allTransports = new Set<Transport>([
+			...(Logger.globalTransports ?? []),
+			...(additionalTransports ?? [])
+		]);
+		await Promise.allSettled([...allTransports].map((t) => t.flush()));
+		await Promise.allSettled([...allTransports].map((t) => t.close()));
 	}
 
 	debug(msg: string, data?: Record<string, unknown>): void {

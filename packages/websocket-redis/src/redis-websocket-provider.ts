@@ -169,6 +169,12 @@ export class RedisWsProvider implements WebSocketProvider {
 	private readonly pendingUnsubscriptions: Set<string> = new Set();
 
 	/**
+	 * Tracks channels that need resubscribing after an in-flight unsubscribe completes.
+	 * Maps channel -> topic for the resubscribe.
+	 */
+	private readonly pendingResubscribe = new Map<string, string>();
+
+	/**
 	 * Tracks pending retry timeouts for cleanup during stop().
 	 */
 	private readonly retryTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
@@ -271,6 +277,7 @@ export class RedisWsProvider implements WebSocketProvider {
 		this.redisSubscriptions.clear();
 		this.pendingSubscriptions.clear();
 		this.pendingUnsubscriptions.clear();
+		this.pendingResubscribe.clear();
 
 		// Clear pending retry timeouts
 		for (const timeoutId of this.retryTimeouts) {
@@ -466,13 +473,9 @@ export class RedisWsProvider implements WebSocketProvider {
 		if (wasEmpty && this.subscriber) {
 			const channel = this.getRedisChannel(topic);
 
-			// If there's a pending unsubscription, cancel it - the channel is still subscribed
-			// (the Redis unsubscribe is in-flight but we'll keep receiving messages until it completes)
+			// If there's a pending unsubscription, can't cancel it — mark for resubscribe after it completes
 			if (this.pendingUnsubscriptions.has(channel)) {
-				this.pendingUnsubscriptions.delete(channel);
-				// Re-add to redisSubscriptions since we want to keep it
-				this.redisSubscriptions.add(channel);
-				// Channel is still subscribed, no need to resubscribe
+				this.pendingResubscribe.set(channel, topic);
 				return;
 			}
 
@@ -496,8 +499,17 @@ export class RedisWsProvider implements WebSocketProvider {
 		this.subscriber
 			.subscribe(channel)
 			.then(() => {
-				// Success: move from pending to subscribed
 				this.pendingSubscriptions.delete(channel);
+
+				// Check if local subscribers still exist after the subscribe round-trip
+				const topic = this.getTopicFromChannel(channel);
+				const subs = this.localSubscriptions.get(topic);
+				if (!subs || subs.size === 0) {
+					// No local subscribers — orphaned, unsubscribe
+					this.unsubscribeTracked(channel);
+					return;
+				}
+
 				this.redisSubscriptions.add(channel);
 			})
 			.catch((err) => {
@@ -555,18 +567,7 @@ export class RedisWsProvider implements WebSocketProvider {
 			const channel = this.getRedisChannel(topic);
 			if (this.redisSubscriptions.has(channel) && this.subscriber) {
 				this.redisSubscriptions.delete(channel);
-				this.pendingUnsubscriptions.add(channel);
-				this.subscriber
-					.unsubscribe(channel)
-					.catch((err) => {
-						this.logger.warn('Failed to unsubscribe from Redis channel', {
-							channel,
-							error: err instanceof Error ? err.message : 'Unknown error'
-						});
-					})
-					.finally(() => {
-						this.pendingUnsubscriptions.delete(channel);
-					});
+				this.unsubscribeTracked(channel);
 			}
 		}
 
@@ -603,18 +604,7 @@ export class RedisWsProvider implements WebSocketProvider {
 						const channel = this.getRedisChannel(topic);
 						if (this.redisSubscriptions.has(channel) && this.subscriber) {
 							this.redisSubscriptions.delete(channel);
-							this.pendingUnsubscriptions.add(channel);
-							this.subscriber
-								.unsubscribe(channel)
-								.catch((err) => {
-									this.logger.warn('Failed to unsubscribe from Redis channel during disconnect', {
-										channel,
-										error: err instanceof Error ? err.message : 'Unknown error'
-									});
-								})
-								.finally(() => {
-									this.pendingUnsubscriptions.delete(channel);
-								});
+							this.unsubscribeTracked(channel);
 						}
 					}
 				}
@@ -659,6 +649,37 @@ export class RedisWsProvider implements WebSocketProvider {
 	 */
 	private getRedisChannel(topic: string): string {
 		return `${this.keyPrefix}:${topic}`;
+	}
+
+	/** Reverse of getRedisChannel — extracts topic from a channel string. */
+	private getTopicFromChannel(channel: string): string {
+		return channel.slice(this.keyPrefix.length + 1);
+	}
+
+	/** Unsubscribe from a Redis channel with full tracking and resubscribe support. */
+	private unsubscribeTracked(channel: string): void {
+		if (!this.subscriber || !this.started) return;
+		this.pendingUnsubscriptions.add(channel);
+		this.subscriber
+			.unsubscribe(channel)
+			.catch((err) => {
+				this.logger.warn('Failed to unsubscribe from Redis channel', {
+					channel,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				});
+			})
+			.finally(() => {
+				this.pendingUnsubscriptions.delete(channel);
+				if (this.pendingResubscribe.has(channel)) {
+					const resubTopic = this.pendingResubscribe.get(channel)!;
+					this.pendingResubscribe.delete(channel);
+					const subs = this.localSubscriptions.get(resubTopic);
+					if (subs && subs.size > 0) {
+						this.pendingSubscriptions.add(channel);
+						this.subscribeWithRetry(channel);
+					}
+				}
+			});
 	}
 
 	/**

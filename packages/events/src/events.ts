@@ -92,6 +92,10 @@ export interface CreateEventSystemOptions {
 	provider?: EventProvider;
 	/** Default propagation metadata */
 	defaultMeta?: PropagationMeta;
+	/** Logger for post-start registration failure warnings */
+	logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+	/** Callback for post-start registration failures (alternative to logger) */
+	onRegistrationError?: (eventName: string, error: Error) => void;
 }
 
 /**
@@ -132,6 +136,32 @@ export function createEventSystem<TEventNames extends string>(
 	// Track propagation metadata (can be updated per-request)
 	let currentMeta: PropagationMeta = defaultMeta;
 
+	// Subscription tracking for start() to await
+	let started = false;
+	let startPromise: Promise<void> | null = null;
+	const pendingSubscriptions: Promise<void>[] = [];
+	const subscriptionErrors: Error[] = [];
+
+	const trackSubscription = (promise: Promise<void>): void => {
+		pendingSubscriptions.push(
+			promise.catch((err: unknown) => {
+				subscriptionErrors.push(err instanceof Error ? err : new Error(String(err)));
+			})
+		);
+	};
+
+	const drainPending = async (): Promise<void> => {
+		while (pendingSubscriptions.length > 0) {
+			const batch = pendingSubscriptions.splice(0);
+			await Promise.all(batch);
+		}
+		if (subscriptionErrors.length > 0) {
+			const errors = [...subscriptionErrors];
+			subscriptionErrors.length = 0;
+			throw new AggregateError(errors, `${errors.length} subscription(s) failed during startup`);
+		}
+	};
+
 	/**
 	 * Type-safe emit function.
 	 * Automatically propagates trace context from AsyncLocalStorage.
@@ -167,7 +197,26 @@ export function createEventSystem<TEventNames extends string>(
 
 		const builder = new EventHandlerBuilder<TEventNames>();
 		builder.on(eventName, handler);
-		builder.registerWith(provider, emit);
+		const promise = builder.registerWith(provider, emit);
+
+		if (started) {
+			// Post-start: catch with observability
+			promise.catch((err) => {
+				try {
+					const msg = err instanceof Error ? err.message : String(err);
+					if (options?.logger) {
+						options.logger.warn('Late event handler registration failed', { event: eventName, error: msg });
+					} else if (options?.onRegistrationError) {
+						options.onRegistrationError(eventName, err instanceof Error ? err : new Error(msg));
+					}
+				} catch {
+					// Swallow observability handler errors to prevent unhandled rejection
+				}
+			});
+		} else {
+			// Pre-start: collect for start() to await
+			trackSubscription(promise);
+		}
 	};
 
 	/**
@@ -184,7 +233,23 @@ export function createEventSystem<TEventNames extends string>(
 		registry,
 		onEvent,
 		createBuilder,
-		start: () => provider.start(),
+		start: async () => {
+			if (started) return;
+			if (startPromise) return startPromise;
+
+			startPromise = (async () => {
+				try {
+					await drainPending();
+					await provider.start();
+					await drainPending();
+					started = true;
+				} finally {
+					startPromise = null;
+				}
+			})();
+
+			return startPromise;
+		},
 		stop: () => provider.stop()
 	};
 }

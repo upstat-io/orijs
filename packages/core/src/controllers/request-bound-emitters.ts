@@ -163,8 +163,8 @@ class DirectInvocationHandle<TResult> implements WorkflowHandle<TResult> {
 	}
 
 	public async result(): Promise<TResult> {
-		if (this.state === 'completed' && this.resultValue !== undefined) {
-			return this.resultValue;
+		if (this.state === 'completed') {
+			return this.resultValue as TResult;
 		}
 		if (this.state === 'failed' && this.error) {
 			throw this.error;
@@ -230,6 +230,13 @@ export class RequestBoundWorkflowExecutor implements WorkflowExecutor {
 		data: TData,
 		_options?: WorkflowExecuteOptions
 	): Promise<WorkflowHandle<TResult>> {
+		// Validate data first — applies to ALL execution paths (consumer, null-handle, etc.)
+		if (!Value.Check(workflow.dataSchema, data)) {
+			const errors = [...Value.Errors(workflow.dataSchema, data)];
+			const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
+			throw new Error(`Workflow "${workflow.name}" data validation failed: ${errorDetails}`);
+		}
+
 		// Check if workflow has a registered consumer
 		const consumerEntry = this.workflowCoordinator.getConsumer(workflow.name);
 		if (!consumerEntry) {
@@ -247,13 +254,6 @@ export class RequestBoundWorkflowExecutor implements WorkflowExecutor {
 				`Cannot execute workflow "${workflow.name}": no consumer registered. ` + `Returning null handle.`
 			);
 			return new NullWorkflowHandle<TResult>(workflow.name);
-		}
-
-		// Validate data against TypeBox schema
-		if (!Value.Check(workflow.dataSchema, data)) {
-			const errors = [...Value.Errors(workflow.dataSchema, data)];
-			const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-			throw new Error(`Workflow "${workflow.name}" data validation failed: ${errorDetails}`);
 		}
 
 		// Create handle for tracking execution
@@ -287,6 +287,8 @@ export class RequestBoundWorkflowExecutor implements WorkflowExecutor {
 			// Create minimal workflow context
 			// Note: Full WorkflowContext from @orijs/workflows would have more features
 			const ctx = {
+				flowId: handle.id,
+				correlationId: this.context.correlationId,
 				data,
 				results: {},
 				log: this.context.logger,

@@ -66,13 +66,15 @@ describe('InProcessEventProvider', () => {
 			expect(received2).toHaveLength(1);
 		});
 
-		it('should not block when no subscribers exist', () => {
+		it('should resolve with undefined when no subscribers exist', async () => {
 			const meta: PropagationMeta = {};
 			const subscription = provider.emit('unknown.event', {}, meta);
 
-			// Should not throw
+			// Should resolve immediately with undefined (not hang)
 			expect(subscription).toBeDefined();
-			expect(subscription.isSettled()).toBe(false);
+			const result = await subscription.toPromise();
+			expect(result).toBeUndefined();
+			expect(subscription.isSettled()).toBe(true);
 		});
 
 		it('should propagate metadata to handler', async () => {
