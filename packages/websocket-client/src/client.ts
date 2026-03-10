@@ -125,6 +125,8 @@ export class SocketClient {
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Connection timeout timer */
 	private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Deferred backoff reset — only fires if connection stays stable */
+	private backoffResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/** Rooms the client has joined (for auto-rejoin on reconnect) */
 	private readonly rooms = new Set<string>();
@@ -242,8 +244,18 @@ export class SocketClient {
 
 			const wasReconnect = this.backoff.attempts > 0;
 			this.setState('connected');
-			this.backoff.reset();
 			this.reconnecting = false;
+
+			// Defer backoff reset until connection is stable.
+			// If server rejects immediately (guard/rate-limit),
+			// onclose fires before this timer and backoff keeps growing.
+			this.backoffResetTimer = setTimeout(() => {
+				this.backoffResetTimer = null;
+				if (this.state === 'connected') {
+					this.backoff.reset();
+				}
+			}, this.options.reconnectDelay);
+
 			this.startHeartbeat();
 
 			// Auto-rejoin rooms from previous session
@@ -259,9 +271,15 @@ export class SocketClient {
 			this.handleMessage(event.data as string);
 		};
 
-		this.ws.onclose = () => {
+		this.ws.onclose = (event) => {
 			// Clear connection timeout
 			this.clearConnectionTimeout();
+
+			// Cancel deferred backoff reset — connection wasn't stable
+			if (this.backoffResetTimer !== null) {
+				clearTimeout(this.backoffResetTimer);
+				this.backoffResetTimer = null;
+			}
 
 			const wasConnected = this.state === 'connected';
 			this.ws = null;
@@ -270,6 +288,16 @@ export class SocketClient {
 
 			if (wasConnected) {
 				this.emitInternal(DISCONNECTED_MESSAGE, {});
+			}
+
+			// Server explicitly rejected — don't reconnect
+			// 1008 = Policy Violation (auth/rate limit)
+			// 1011 = Server Error (guard threw)
+			if (event.code === 1008 || event.code === 1011) {
+				this.notifyError(
+					new Error(`Connection rejected (${event.code}: ${event.reason || 'unknown'})`)
+				);
+				return;
 			}
 
 			this.maybeReconnect();
@@ -317,6 +345,10 @@ export class SocketClient {
 		if (this.reconnectTimer !== null) {
 			clearTimeout(this.reconnectTimer);
 			this.reconnectTimer = null;
+		}
+		if (this.backoffResetTimer !== null) {
+			clearTimeout(this.backoffResetTimer);
+			this.backoffResetTimer = null;
 		}
 		this.clearConnectionTimeout();
 
