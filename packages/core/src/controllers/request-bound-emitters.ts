@@ -60,26 +60,29 @@ export class RequestBoundEventEmitter implements EventEmitter {
 	): Promise<TResponse> {
 		const provider = this.eventCoordinator.getProvider();
 		if (!provider) {
-			throw new Error(
+			this.context.logger.error(
 				`Cannot emit event "${event.name}": no event provider configured. ` +
 					`Call .use(addBullMQEvents) or configure a provider before emitting events.`
 			);
+			return undefined as TResponse;
 		}
 
 		// Check if event is registered (either as definition or has consumer)
 		const definition = this.eventCoordinator.getEventDefinition(event.name);
 		if (!definition) {
-			throw new Error(
+			this.context.logger.error(
 				`Cannot emit event "${event.name}": event not registered. ` +
 					`Register with .event(${event.name}) before emitting.`
 			);
+			return undefined as TResponse;
 		}
 
 		// Validate payload against TypeBox schema
 		if (!Value.Check(event.dataSchema, payload)) {
 			const errors = [...Value.Errors(event.dataSchema, payload)];
 			const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-			throw new Error(`Event "${event.name}" payload validation failed: ${errorDetails}`);
+			this.context.logger.error(`Event "${event.name}" payload validation failed: ${errorDetails}`);
+			return undefined as TResponse;
 		}
 
 		// Create propagation meta with request binding
@@ -234,7 +237,8 @@ export class RequestBoundWorkflowExecutor implements WorkflowExecutor {
 		if (!Value.Check(workflow.dataSchema, data)) {
 			const errors = [...Value.Errors(workflow.dataSchema, data)];
 			const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-			throw new Error(`Workflow "${workflow.name}" data validation failed: ${errorDetails}`);
+			this.context.logger.error(`Workflow "${workflow.name}" data validation failed: ${errorDetails}`);
+			return new NullWorkflowHandle<TResult>(workflow.name);
 		}
 
 		// Check if workflow has a registered consumer
@@ -243,10 +247,11 @@ export class RequestBoundWorkflowExecutor implements WorkflowExecutor {
 			// Check if workflow is at least defined (emitter-only)
 			const definition = this.workflowCoordinator.getWorkflowDefinition(workflow.name);
 			if (!definition) {
-				throw new Error(
+				this.context.logger.error(
 					`Cannot execute workflow "${workflow.name}": workflow not registered. ` +
 						`Register with .workflow(${workflow.name}) before executing.`
 				);
+				return new NullWorkflowHandle<TResult>(workflow.name);
 			}
 
 			// Workflow defined but no consumer - can't execute
