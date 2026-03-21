@@ -220,6 +220,11 @@ export class EventSubscription<T = void> {
 				// Store handlers for later resolution
 				this.promiseHandlers = { resolve, reject };
 			});
+
+			// Safety net: prevent unhandled rejection from crashing the process.
+			// Callers using await/then still receive the rejection normally —
+			// this only prevents the "unhandled" classification if nobody is listening.
+			this.promise.catch(() => {});
 		}
 
 		// If no timeout or already settled, return cached promise

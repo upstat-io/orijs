@@ -206,52 +206,66 @@ export class CompletionTracker implements ICompletionTracker {
 
 		// Listen for job completions
 		events.on('completed', (...eventArgs: unknown[]) => {
-			const args = eventArgs[0] as { jobId: string; returnvalue?: string | unknown };
-			const { jobId, returnvalue } = args;
-			const correlationId = this.getCorrelationId(queueName, jobId);
+			try {
+				const args = eventArgs[0] as { jobId: string; returnvalue?: string | unknown };
+				const { jobId, returnvalue } = args;
+				const correlationId = this.getCorrelationId(queueName, jobId);
 
-			// Parse the result
-			let result: unknown;
-			if (returnvalue == null) {
-				result = undefined;
-			} else if (typeof returnvalue === 'string') {
-				try {
-					result = JSON.parse(returnvalue);
-				} catch (error) {
-					this.logger.warn('Failed to parse job result as JSON', {
-						queueName,
-						jobId,
-						correlationId: correlationId ?? 'unknown',
-						returnvalue: returnvalue.substring(0, 100),
-						error: error instanceof Error ? error.message : String(error)
-					});
+				// Parse the result
+				let result: unknown;
+				if (returnvalue == null) {
+					result = undefined;
+				} else if (typeof returnvalue === 'string') {
+					try {
+						result = JSON.parse(returnvalue);
+					} catch (error) {
+						this.logger.warn('Failed to parse job result as JSON', {
+							queueName,
+							jobId,
+							correlationId: correlationId ?? 'unknown',
+							returnvalue: returnvalue.substring(0, 100),
+							error: error instanceof Error ? error.message : String(error)
+						});
+						result = returnvalue;
+					}
+				} else {
 					result = returnvalue;
 				}
-			} else {
-				result = returnvalue;
-			}
 
-			if (correlationId) {
-				this.complete(queueName, correlationId, result);
-			} else {
-				// Race condition: job completed before mapJobId was called
-				// Store the result to be delivered when mapJobId is called
-				this.storeEarlyResult(queueName, jobId, { result, isFailure: false });
+				if (correlationId) {
+					this.complete(queueName, correlationId, result);
+				} else {
+					// Race condition: job completed before mapJobId was called
+					// Store the result to be delivered when mapJobId is called
+					this.storeEarlyResult(queueName, jobId, { result, isFailure: false });
+				}
+			} catch (handlerError) {
+				this.logger.error('Unhandled error in completed event handler', {
+					queueName,
+					error: handlerError instanceof Error ? handlerError.message : String(handlerError)
+				});
 			}
 		});
 
 		// Listen for job failures
 		events.on('failed', (...eventArgs: unknown[]) => {
-			const args = eventArgs[0] as { jobId: string; failedReason: string };
-			const { jobId, failedReason } = args;
-			const correlationId = this.getCorrelationId(queueName, jobId);
-			const error = new Error(failedReason);
-			if (correlationId) {
-				this.fail(queueName, correlationId, error);
-			} else {
-				// Race condition: job failed before mapJobId was called
-				// Store the error to be delivered when mapJobId is called
-				this.storeEarlyResult(queueName, jobId, { result: undefined, isFailure: true, error });
+			try {
+				const args = eventArgs[0] as { jobId: string; failedReason: string };
+				const { jobId, failedReason } = args;
+				const correlationId = this.getCorrelationId(queueName, jobId);
+				const error = new Error(failedReason);
+				if (correlationId) {
+					this.fail(queueName, correlationId, error);
+				} else {
+					// Race condition: job failed before mapJobId was called
+					// Store the error to be delivered when mapJobId is called
+					this.storeEarlyResult(queueName, jobId, { result: undefined, isFailure: true, error });
+				}
+			} catch (handlerError) {
+				this.logger.error('Unhandled error in failed event handler', {
+					queueName,
+					error: handlerError instanceof Error ? handlerError.message : String(handlerError)
+				});
 			}
 		});
 
@@ -322,8 +336,16 @@ export class CompletionTracker implements ICompletionTracker {
 
 		if (timeout > 0) {
 			timeoutHandle = setTimeout(() => {
-				const error = new Error(`Request timeout after ${timeout}ms`);
-				this.fail(queueName, correlationId, error);
+				try {
+					const error = new Error(`Request timeout after ${timeout}ms`);
+					this.fail(queueName, correlationId, error);
+				} catch (timeoutError) {
+					this.logger.error('Error in timeout handler', {
+						queueName,
+						correlationId,
+						error: timeoutError instanceof Error ? timeoutError.message : String(timeoutError)
+					});
+				}
 			}, timeout);
 		}
 
@@ -397,8 +419,16 @@ export class CompletionTracker implements ICompletionTracker {
 		// Clean up job ID mapping
 		this.cleanupJobIdMapping(queueName, correlationId);
 
-		// Call success callback
-		completion.onSuccess(result);
+		// Call success callback (protected — never crash the process)
+		try {
+			completion.onSuccess(result);
+		} catch (callbackError) {
+			this.logger.error('Error in completion success callback', {
+				queueName,
+				correlationId,
+				error: callbackError instanceof Error ? callbackError.message : String(callbackError)
+			});
+		}
 	}
 
 	/**
@@ -426,9 +456,17 @@ export class CompletionTracker implements ICompletionTracker {
 		// Clean up job ID mapping
 		this.cleanupJobIdMapping(queueName, correlationId);
 
-		// Call error callback if provided
+		// Call error callback if provided (protected — never crash the process)
 		if (completion.onError) {
-			completion.onError(error);
+			try {
+				completion.onError(error);
+			} catch (callbackError) {
+				this.logger.error('Error in completion error callback', {
+					queueName,
+					correlationId,
+					error: callbackError instanceof Error ? callbackError.message : String(callbackError)
+				});
+			}
 		}
 	}
 

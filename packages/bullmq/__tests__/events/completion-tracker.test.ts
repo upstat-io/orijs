@@ -244,6 +244,66 @@ describe('CompletionTracker', () => {
 		});
 	});
 
+	describe('callback error resilience', () => {
+		it('should not crash when onSuccess callback throws', async () => {
+			const mockQueueEvents = {
+				on: mock(() => {}),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } }
+			};
+			const MockQueueEvents = mock(() => mockQueueEvents);
+
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const tracker = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+
+			const throwingCallback = mock(() => {
+				throw new Error('callback exploded');
+			});
+			tracker.register('event.test', 'corr-1', throwingCallback);
+
+			// Should not throw — error is caught and logged
+			expect(() => {
+				tracker.complete('event.test', 'corr-1', { data: true });
+			}).not.toThrow();
+
+			expect(throwingCallback).toHaveBeenCalled();
+			expect(tracker.hasPending('event.test', 'corr-1')).toBe(false);
+		});
+
+		it('should not crash when onError callback throws', async () => {
+			const mockQueueEvents = {
+				on: mock(() => {}),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } }
+			};
+			const MockQueueEvents = mock(() => mockQueueEvents);
+
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const tracker = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+
+			const onSuccess = mock(() => {});
+			const throwingOnError = mock(() => {
+				throw new Error('error callback exploded');
+			});
+			tracker.register('event.test', 'corr-1', onSuccess, throwingOnError);
+
+			// Should not throw — error is caught and logged
+			expect(() => {
+				tracker.fail('event.test', 'corr-1', new Error('job failed'));
+			}).not.toThrow();
+
+			expect(throwingOnError).toHaveBeenCalled();
+			expect(onSuccess).not.toHaveBeenCalled();
+			expect(tracker.hasPending('event.test', 'corr-1')).toBe(false);
+		});
+	});
+
 	describe('timeout handling', () => {
 		it('should support timeout for pending completions', async () => {
 			const mockQueueEvents = {
