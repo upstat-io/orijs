@@ -955,6 +955,17 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 */
 	public async listen(port: number, callback?: () => void): Promise<BunServer> {
 		const startTime = performance.now();
+
+		// Prevent unhandled promise rejections from crashing the server.
+		// Standard safety net for production HTTP servers — logs the error
+		// instead of exiting the process.
+		process.on('unhandledRejection', (reason: unknown) => {
+			this.appLogger.error('Unhandled promise rejection', {
+				error: reason instanceof Error ? reason.message : String(reason),
+				stack: reason instanceof Error ? reason.stack : undefined
+			});
+		});
+
 		this.logHeader();
 
 		// Await async config factory before bootstrap
