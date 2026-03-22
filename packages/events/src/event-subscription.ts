@@ -233,7 +233,7 @@ export class EventSubscription<T = void> {
 		}
 
 		// Wrap with timeout that cleans up properly
-		return new Promise<T>((resolve, reject) => {
+		const wrapped = new Promise<T>((resolve, reject) => {
 			const timeoutId = setTimeout(() => {
 				if (!this.isSettled()) {
 					reject(new Error(`EventSubscription timeout after ${timeoutMs}ms`));
@@ -248,6 +248,13 @@ export class EventSubscription<T = void> {
 				reject(error);
 			});
 		});
+
+		// Safety net: prevent unhandled rejection from crashing the process.
+		// Same protection as the base promise (line 227). Callers using
+		// await/then still receive the rejection — this only prevents the
+		// "unhandled" classification when nobody is listening (fire-and-forget).
+		wrapped.catch(() => {});
+		return wrapped;
 	}
 
 	/**
