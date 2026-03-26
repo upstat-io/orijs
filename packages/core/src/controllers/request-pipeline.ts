@@ -169,6 +169,8 @@ export class RequestPipeline {
 			};
 		}
 
+		const deferGuards = !!route.deferGuards;
+
 		// Full path: guards, interceptors, and/or schema validation
 		return async (req: BunRequest): Promise<Response> => {
 			const params = req.params || {};
@@ -183,8 +185,11 @@ export class RequestPipeline {
 						ctx.setRouteData(route.data!);
 					}
 
-					// Run guards (pre-resolved at route registration)
-					if (hasGuards) {
+					if (deferGuards && hasGuards) {
+						// Deferred guards: handler calls ctx.guards(options) to trigger
+						ctx.setGuardRunner((_ctx, _options) => this.runGuards(guards, _ctx));
+					} else if (hasGuards) {
+						// Standard guards: run before handler
 						const guardResult = await this.runGuards(guards, ctx);
 						if (guardResult) {
 							return finalizeResponse(guardResult);
@@ -217,6 +222,10 @@ export class RequestPipeline {
 
 					return finalizeResponse(this.applyResponseHeaders(response, ctx));
 				} catch (error) {
+					// Deferred guard rejection: ctx.guards() throws the Response directly
+					if (error instanceof Response) {
+						return finalizeResponse(error);
+					}
 					this.appLogger.error('Unhandled error in request handler', {
 						correlationId,
 						error: error instanceof Error ? error.message : String(error),

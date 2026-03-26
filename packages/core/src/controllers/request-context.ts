@@ -126,6 +126,12 @@ export class RequestContext<
 	private routeData: Map<symbol, unknown> | null = null;
 	private responseHeaders: [string, string][] | null = null;
 
+	// Deferred guard execution
+	private _guardOptions: Record<string, unknown> | null = null;
+	// biome-ignore lint/suspicious/noExplicitAny: guard runner accepts any RequestContext generic variant
+	private _guardRunner: ((ctx: any, options: Record<string, unknown>) => Promise<Response | null>) | null = null;
+	private _guardsExecuted = false;
+
 	/**
 	 * Access state variables set by guards.
 	 * Lazily initialized on first access.
@@ -164,6 +170,57 @@ export class RequestContext<
 	 */
 	public setRouteData(data: Map<symbol, unknown>): void {
 		this.routeData = data;
+	}
+
+	/**
+	 * Sets the deferred guard runner. Called by the pipeline for routes with `deferGuards: true`.
+	 * @internal
+	 */
+	public setGuardRunner(
+		runner: (ctx: RequestContext, options: Record<string, unknown>) => Promise<Response | null>
+	): void {
+		this._guardRunner = runner;
+	}
+
+	/**
+	 * Run guards with custom options. Only available on routes with `deferGuards: true`.
+	 *
+	 * Call this at the top of a handler to override global guard behavior for this request.
+	 * Guards read the options via `ctx.guardOptions` to adjust their verification logic.
+	 *
+	 * @param options - Guard-specific options (e.g., `{ authCheck: false, appCheck: true }`)
+	 * @throws Error if guards are not deferred on this route or if a guard rejects the request
+	 *
+	 * @example
+	 * ```ts
+	 * private getUser = async (ctx: Context<AuthState>) => {
+	 *   await ctx.guards({ authCheck: false, appCheck: true });
+	 *   return Response.json(ctx.state.user);
+	 * };
+	 * ```
+	 */
+	public async guards(options: Record<string, unknown>): Promise<void> {
+		if (!this._guardRunner) {
+			throw new Error('ctx.guards() requires deferGuards: true in the route schema options');
+		}
+		if (this._guardsExecuted) {
+			throw new Error('ctx.guards() can only be called once per request');
+		}
+		this._guardOptions = options;
+		this._guardsExecuted = true;
+		const result = await this._guardRunner(this, options);
+		if (result) {
+			throw result;
+		}
+	}
+
+	/**
+	 * Guard options set by the handler via `ctx.guards()`.
+	 * Guards read this to adjust their verification behavior.
+	 * Returns null if `ctx.guards()` was not called.
+	 */
+	public get guardOptions(): Record<string, unknown> | null {
+		return this._guardOptions;
 	}
 
 	/**

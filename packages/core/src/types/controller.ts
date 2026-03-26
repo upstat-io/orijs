@@ -18,6 +18,8 @@ export interface RouteSchemaOptions {
 	query?: Schema;
 	/** Schema for request body */
 	body?: Schema;
+	/** Defer guard execution until the handler calls `ctx.guards(options)`. Default: false */
+	deferGuards?: boolean;
 }
 
 /**
@@ -71,6 +73,7 @@ export interface RouteDefinition {
 	schema?: RouteSchemaOptions;
 	paramValidators?: Map<string, ParamValidatorClass>;
 	data?: Map<symbol, unknown>;
+	deferGuards?: boolean;
 }
 
 /**

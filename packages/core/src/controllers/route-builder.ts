@@ -430,7 +430,8 @@ export class RouteBuilder<
 			pipes: [...this.controllerPipes],
 			schema,
 			paramValidators,
-			data: this.controllerData ? new Map(this.controllerData) : undefined
+			data: this.controllerData ? new Map(this.controllerData) : undefined,
+			deferGuards: schema?.deferGuards
 		};
 		this.routeGuardsOverride = null;
 		this.routeInterceptorsOverride = null;
