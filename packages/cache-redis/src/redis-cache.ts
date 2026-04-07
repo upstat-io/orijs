@@ -49,6 +49,8 @@ const META_KEY_TTL_BUFFER_SECONDS = 60;
 export interface RedisConnectionOptions {
 	readonly host: string;
 	readonly port: number;
+	/** Optional Redis database index (0-15 by default). Useful for test isolation. */
+	readonly db?: number;
 }
 
 /**

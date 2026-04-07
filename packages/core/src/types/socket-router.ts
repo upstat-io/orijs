@@ -76,6 +76,12 @@ export interface SocketContextLike<
 	readonly socketId: string;
 	set<K extends keyof TState>(key: K, value: TState[K]): void;
 	get<K extends keyof TState>(key: K): TState[K];
+	/** Subscribe this socket connection to a topic (room) for fan-out delivery. */
+	subscribe(topic: string): void;
+	/** Unsubscribe this socket connection from a previously subscribed topic. */
+	unsubscribe(topic: string): void;
+	/** Publish data to all subscribers of a topic. */
+	publish(topic: string, data: unknown): void;
 }
 
 /**
