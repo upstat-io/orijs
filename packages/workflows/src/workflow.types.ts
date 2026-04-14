@@ -75,6 +75,34 @@ export interface WorkflowDefinitionLike<TData = unknown, TResult = unknown> {
  * }
  * ```
  */
+/**
+ * Options for workflow execution.
+ *
+ * All options are optional; omit for default behavior.
+ */
+export interface WorkflowExecuteOptions {
+	/**
+	 * Custom workflow ID. Re-executing with the same id is a no-op (idempotency).
+	 * Providers may map this to their native deduplication key (e.g., BullMQ jobId).
+	 */
+	readonly id?: string;
+	/**
+	 * Priority level. Lower numbers = higher priority.
+	 * @default 0
+	 */
+	readonly priority?: number;
+	/**
+	 * Delay in milliseconds before the workflow starts executing.
+	 * @default 0
+	 */
+	readonly delay?: number;
+	/**
+	 * Workflow timeout override in milliseconds. Pass 0 to disable timeout.
+	 * BullMQ provider adds stall interval to the effective timeout.
+	 */
+	readonly timeout?: number;
+}
+
 export interface WorkflowExecutor {
 	/**
 	 * Execute a workflow with input data.
@@ -83,11 +111,13 @@ export interface WorkflowExecutor {
 	 * @template TResult - Result type from onComplete
 	 * @param workflow - The workflow definition to execute
 	 * @param data - Input data for the workflow
+	 * @param options - Optional execution options (id, priority, delay)
 	 * @returns FlowHandle for status checking and result retrieval
 	 */
 	execute<TData, TResult>(
 		workflow: WorkflowDefinitionLike<TData, TResult>,
-		data: TData
+		data: TData,
+		options?: WorkflowExecuteOptions
 	): Promise<FlowHandle<TResult>>;
 
 	/**

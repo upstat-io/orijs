@@ -6,6 +6,7 @@
 // Types needed by consumers and sibling packages
 export type {
 	WorkflowExecutor,
+	WorkflowExecuteOptions,
 	WorkflowProvider,
 	WorkflowLifecycle,
 	WorkflowDefinitionLike,

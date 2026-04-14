@@ -31,7 +31,7 @@ describe('Workflow timeout race', () => {
 
 		await provider.start();
 
-		const handle = await provider.execute(SlowWorkflow, {}, 50); // 50ms timeout
+		const handle = await provider.execute(SlowWorkflow, {}, { timeout: 50 }); // 50ms timeout
 
 		// The workflow should have timed out
 		try {
@@ -61,7 +61,7 @@ describe('Workflow timeout race', () => {
 
 		await provider.start();
 
-		const handle = await provider.execute(QuickTimeoutWorkflow, {}, 10); // 10ms timeout
+		const handle = await provider.execute(QuickTimeoutWorkflow, {}, { timeout: 10 }); // 10ms timeout
 
 		// Wait for timeout to fire
 		await new Promise((resolve) => setTimeout(resolve, 50));

@@ -18,6 +18,7 @@ import {
 	WorkflowStepError,
 	type WorkflowProvider,
 	type WorkflowDefinitionLike,
+	type WorkflowExecuteOptions,
 	type FlowHandle,
 	type FlowStatus,
 	type StepGroup,
@@ -201,7 +202,9 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 	 * @template TResult - Result type from onComplete
 	 * @param workflow - The workflow definition to execute
 	 * @param data - Input data for the workflow
-	 * @param timeout - Optional timeout override in milliseconds (0 to disable)
+	 * @param options - Optional execution options (id, priority, delay).
+	 *   In-process provider: id/priority/delay are no-ops since in-memory
+	 *   execution has no deduplication, priority queue, or delay scheduling.
 	 * @returns FlowHandle for status checking and result retrieval
 	 * @throws {Error} If provider not started (call start() first)
 	 * @throws {Error} If workflow not registered
@@ -209,7 +212,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 	public async execute<TData, TResult>(
 		workflow: WorkflowDefinitionLike<TData, TResult>,
 		data: TData,
-		timeout?: number
+		options?: WorkflowExecuteOptions
 	): Promise<FlowHandle<TResult>> {
 		if (!this.started) {
 			throw new Error('Provider not started. Call start() before execute().');
@@ -221,7 +224,9 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				`Workflow '${workflowName}' not registered. ` + `Call registerDefinitionConsumer() first.`
 			);
 		}
-		return this.executeDefinitionWorkflow(workflowName, data, timeout);
+		// In-process provider honors `timeout` (legacy behavior). `id`/`priority`/
+		// `delay` are no-ops — in-memory execution has no dedup/priority/delay queue.
+		return this.executeDefinitionWorkflow(workflowName, data, options?.timeout);
 	}
 
 	/**

@@ -167,6 +167,13 @@ export interface ExecuteOptions {
 	 */
 	readonly timeout?: number;
 	/**
+	 * Custom workflow ID for idempotency (unified WorkflowExecutor contract field).
+	 *
+	 * Alias for `idempotencyKey` — if both are provided, `idempotencyKey` wins.
+	 * Re-executing a workflow with the same `id` is a no-op (BullMQ-native jobId dedup).
+	 */
+	readonly id?: string;
+	/**
 	 * Optional idempotency key for deduplication.
 	 *
 	 * When provided, BullMQ will use this key to deduplicate workflow submissions.
@@ -642,7 +649,18 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			}
 		}
 
-		return this.executeDefinition<TData, TResult>(workflowName, data, options, effectiveStepGroups);
+		// Unify the WorkflowExecutor contract's `id` field with BullMQ's
+		// native `idempotencyKey`. If caller provided both, idempotencyKey wins.
+		const normalizedOptions: ExecuteOptions | undefined = options?.id
+			? { ...options, idempotencyKey: options.idempotencyKey ?? options.id }
+			: options;
+
+		return this.executeDefinition<TData, TResult>(
+			workflowName,
+			data,
+			normalizedOptions,
+			effectiveStepGroups
+		);
 	}
 
 	/**
