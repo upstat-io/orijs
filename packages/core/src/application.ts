@@ -94,7 +94,7 @@ export interface EventRegistration<TPayload, TResponse> extends OriApplication {
 	 */
 	consumer(
 		consumerClass: Constructor<IEventConsumer<TPayload, TResponse>>,
-		deps?: Constructor[]
+		deps?: InjectionToken[]
 	): OriApplication;
 }
 
@@ -119,7 +119,7 @@ export interface WorkflowRegistration<TData, TResult, TSteps = Record<never, nev
 	 */
 	consumer(
 		consumerClass: Constructor<IWorkflowConsumer<TData, TResult, NoInfer<TSteps>>>,
-		deps?: Constructor[]
+		deps?: InjectionToken[]
 	): OriApplication;
 }
 
