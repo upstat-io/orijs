@@ -148,6 +148,28 @@ describe('CacheBuilder.dependsOn auto-narrow (BUG-11-083 cure)', () => {
 			expect(caught).toBeInstanceOf(CacheBuilderError);
 			expect(caught?.message).toContain("'teamUuid'");
 		});
+
+		it('explicit override with key in dependent but NOT in source: THROWS (cascade meta-key would diverge)', () => {
+			const Cache = createCacheBuilder(createTestRegistry());
+			// MonitorSettings (Project + monitorUuid) dependsOn Team (Project + teamUuid).
+			// `monitorUuid` IS in MonitorSettings's params but NOT in Team's. Passing it
+			// would silently break cascade: set-time meta-key would include monitorUuid
+			// (dependent has it), but at invalidate-time Team's invalidation params don't
+			// include monitorUuid, so the meta-key would diverge — same failure mode as
+			// the original BUG-11-083 auto-derive bug, just triggered via explicit override.
+			let caught: Error | null = null;
+			try {
+				Cache.for<TestParams>('MonitorSettings')
+					.ttl('5m')
+					.dependsOn('Team', ['accountUuid', 'projectUuid', 'monitorUuid'])
+					.build();
+			} catch (e) {
+				caught = e as Error;
+			}
+			expect(caught).toBeInstanceOf(CacheBuilderError);
+			expect(caught?.message).toContain("'monitorUuid'");
+			expect(caught?.message).toContain('source entity');
+		});
 	});
 
 	describe('self-dependency guard', () => {

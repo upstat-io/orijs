@@ -319,14 +319,24 @@ class CacheBuilderInternal<TEntityNames extends string, TParams extends object>
 		}
 
 		if (params !== undefined) {
-			// Explicit params override. Validate every key is a member of the dependent's params
-			// (degenerate empty array `[]` is a valid override declaring no shared keys; cascade
-			// requires tags for that case).
+			// Explicit params override. Validate every key is a member of BOTH the dependent's
+			// params AND the source's params. Cascade meta-keys must match at set-time AND
+			// invalidate-time; a key absent from EITHER side will silently drop and break the
+			// cascade (the failure mode BUG-11-083 documented).
+			// Degenerate empty array `[]` is a valid override declaring no shared keys; cascade
+			// requires tags for that case.
 			const dependentParamSet = new Set<string>(dependentEntity.params as readonly string[]);
-			const invalidKeys = (params as readonly string[]).filter((k) => !dependentParamSet.has(k));
-			if (invalidKeys.length > 0) {
+			const sourceParamSet = new Set<string>(depEntity.params as readonly string[]);
+			const invalidForDependent = (params as readonly string[]).filter((k) => !dependentParamSet.has(k));
+			if (invalidForDependent.length > 0) {
 				throw new CacheBuilderError(
-					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidKeys.map((k) => `'${k}'`).join(', ')} are not in the dependent entity's params [${(dependentEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Pass only keys the dependent entity actually has.`
+					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForDependent.map((k) => `'${k}'`).join(', ')} are not in the dependent entity's params [${(dependentEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Pass only keys the dependent entity actually has.`
+				);
+			}
+			const invalidForSource = (params as readonly string[]).filter((k) => !sourceParamSet.has(k));
+			if (invalidForSource.length > 0) {
+				throw new CacheBuilderError(
+					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForSource.map((k) => `'${k}'`).join(', ')} are not in the source entity's params [${(depEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Cascade meta-keys would diverge between set-time and invalidate-time (BUG-11-083 failure mode). Pass only keys present in BOTH dependent and source.`
 				);
 			}
 			this.additionalDeps.set(depEntityName, params);
