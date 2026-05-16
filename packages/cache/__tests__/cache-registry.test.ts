@@ -209,30 +209,34 @@ describe('CacheRegistry', () => {
 			expect(() => cacheRegistry.validateNoCycles()).not.toThrow();
 		});
 
-		it('should detect direct cycle (A -> A)', () => {
+		it('should detect direct cycle (A -> A) at build time via self-dependency guard', () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
 
-			// Self-reference via explicit dependsOn
-			const config = Cache.for('User').ttl('1h').dependsOn('User').build();
-
-			cacheRegistry.register(config);
-
-			expect(() => cacheRegistry.validateNoCycles()).toThrow(/Circular cache dependency detected/);
+			// Self-reference is now caught at build time by CacheBuilder's self-dep guard
+			// (BUG-11-083 cure), BEFORE the config is registered. This is a stricter guarantee
+			// than the previous register-time validateNoCycles() check — direct cycles are
+			// rejected with a clearer error at the call site that introduces the cycle.
+			expect(() => Cache.for('User').ttl('1h').dependsOn('User').build()).toThrow(
+				/Self-dependency: 'User'\.dependsOn\('User'\) would create a cycle/
+			);
 		});
 
-		it('should detect indirect cycle (A -> B -> A)', () => {
+		it('should detect indirect cycle (A -> B -> A) via validateNoCycles() at register time', () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
 
-			// User depends on Monitor (explicit)
-			const userConfig = Cache.for('User').ttl('1h').dependsOn('Monitor').build();
+			// Use two same-scope entities (Monitor + Alert, both project-scoped per
+			// createTestRegistry above) so the new cross-scope guard (BUG-11-083 cure)
+			// does not block cycle setup.
+			// Monitor depends on Alert
+			const monitorConfig = Cache.for('Monitor').ttl('5m').dependsOn('Alert').build();
 
-			// Monitor depends on User (explicit, creates cycle)
-			const monitorConfig = Cache.for('Monitor').ttl('5m').dependsOn('User').build();
+			// Alert depends on Monitor (creates cycle)
+			const alertConfig = Cache.for('Alert').ttl('5m').dependsOn('Monitor').build();
 
-			cacheRegistry.register(userConfig);
 			cacheRegistry.register(monitorConfig);
+			cacheRegistry.register(alertConfig);
 
 			expect(() => cacheRegistry.validateNoCycles()).toThrow(/Circular cache dependency detected/);
 		});

@@ -106,6 +106,22 @@ function getLogger(): Logger {
 	return logger;
 }
 
+// --- ERRORS ---
+
+/**
+ * Thrown by CacheBuilder.dependsOn() when the caller provides an invalid dependency
+ * declaration: self-dependency, cross-scope upward cascade, or explicit params keys
+ * absent from the dependent entity.
+ *
+ * Named subclass so tests can discriminate via `instanceof CacheBuilderError`.
+ */
+export class CacheBuilderError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'CacheBuilderError';
+	}
+}
+
 // --- UTILITIES ---
 
 /**
@@ -278,13 +294,52 @@ class CacheBuilderInternal<TEntityNames extends string, TParams extends object>
 	): CacheBuilderWithTtl<TEntityNames, TParams> {
 		const depEntityName = extractEntityName(entity);
 
+		// Self-dependency guard: an entity cannot depend on itself.
+		if (depEntityName === this.entityName) {
+			throw new CacheBuilderError(
+				`Self-dependency: '${this.entityName}'.dependsOn('${depEntityName}') would create a cycle. Remove the redundant self-reference.`
+			);
+		}
+
+		const depEntity = this.registry.getEntity(depEntityName);
+		const dependentEntity = this.registry.getEntity(this.entityName);
+
+		// Cross-scope guard: cascade cannot bridge upward across the scope hierarchy.
+		// When the source's scope is HIGHER than the dependent's (e.g., Project dependent
+		// → Account source), the cascade walker's set-time and invalidate-time meta-keys
+		// cannot match because the dependent's params don't carry the source's scope key.
+		// Tag-based invalidation is the correct cross-scope cascade pattern.
+		const scopeNames = this.registry.getScopeNames() as readonly string[];
+		const sourceScopeIndex = scopeNames.indexOf(depEntity.scope);
+		const dependentScopeIndex = scopeNames.indexOf(dependentEntity.scope);
+		if (sourceScopeIndex !== -1 && dependentScopeIndex !== -1 && sourceScopeIndex > dependentScopeIndex) {
+			throw new CacheBuilderError(
+				`Cross-scope dependsOn: '${this.entityName}' (scope='${dependentEntity.scope}') cannot depend on '${depEntityName}' (scope='${depEntity.scope}') — cascade cannot bridge upward across the scope hierarchy (dependent's scope is shallower than source's). Use .tags() instead. See cache/invalidation.md §Tag-Based Invalidation.`
+			);
+		}
+
 		if (params !== undefined) {
-			// Explicit params override
+			// Explicit params override. Validate every key is a member of the dependent's params
+			// (degenerate empty array `[]` is a valid override declaring no shared keys; cascade
+			// requires tags for that case).
+			const dependentParamSet = new Set<string>(dependentEntity.params as readonly string[]);
+			const invalidKeys = (params as readonly string[]).filter((k) => !dependentParamSet.has(k));
+			if (invalidKeys.length > 0) {
+				throw new CacheBuilderError(
+					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidKeys.map((k) => `'${k}'`).join(', ')} are not in the dependent entity's params [${(dependentEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Pass only keys the dependent entity actually has.`
+				);
+			}
 			this.additionalDeps.set(depEntityName, params);
 		} else {
-			// Auto-lookup params from registry
-			const depEntity = this.registry.getEntity(depEntityName);
-			this.additionalDeps.set(depEntityName, depEntity.params as readonly (keyof TParams)[]);
+			// Auto-narrow: intersect source's full params with dependent's actual params.
+			// The unbounded source-params list was the silent-cascade-break cause —
+			// setEntry would generate a partial-key meta entry while invalidate generates
+			// the full-key meta entry, and the two never matched. See BUG-11-083.
+			const dependentParamSet = new Set<string>(dependentEntity.params as readonly string[]);
+			const narrowedParams = (depEntity.params as readonly string[]).filter((p) =>
+				dependentParamSet.has(p)
+			);
+			this.additionalDeps.set(depEntityName, narrowedParams as unknown as readonly (keyof TParams)[]);
 		}
 		return this;
 	}

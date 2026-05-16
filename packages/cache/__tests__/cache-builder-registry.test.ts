@@ -238,7 +238,7 @@ describe('dependsOn', () => {
 			expect(config.dependsOn.Monitor).toEqual(['accountUuid', 'projectUuid', 'monitorUuid']);
 		});
 
-		it('should accumulate multiple dependencies', () => {
+		it('should accumulate multiple dependencies and auto-narrow each to the dependent entity actual params', () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
 
@@ -248,8 +248,13 @@ describe('dependsOn', () => {
 				.dependsOn('Team')
 				.build();
 
+			// Monitor and MonitorSettings share params (both have monitorUuid) — full set retained.
 			expect(config.dependsOn.Monitor).toEqual(['accountUuid', 'projectUuid', 'monitorUuid']);
-			expect(config.dependsOn.Team).toEqual(['accountUuid', 'projectUuid', 'teamUuid']);
+			// Team has teamUuid which MonitorSettings does NOT carry — auto-narrow drops teamUuid
+			// to prevent the BUG-11-083 silent cascade-break (set-time meta-key includes teamUuid
+			// from source, invalidate-time meta-key omits it because dependent's params don't have
+			// it; the two never matched, cascade walker found nothing).
+			expect(config.dependsOn.Team).toEqual(['accountUuid', 'projectUuid']);
 		});
 
 		it('should merge with hierarchy deps', () => {
