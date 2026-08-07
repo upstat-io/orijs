@@ -11,7 +11,6 @@
 		"types": ["bun-types"],
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
-		"baseUrl": ".",
 		"paths": {
 			"@orijs/core": ["../../../../frameworks/orijs/packages/core/src/index.ts"],
 			"@orijs/logging": ["../../../../frameworks/orijs/packages/logging/src/index.ts"],

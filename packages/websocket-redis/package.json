@@ -26,7 +26,7 @@
 	"devDependencies": {
 		"@orijs/test-utils": "workspace:*",
 		"@types/bun": "^1.2.15",
-		"typescript": "^5.9.2"
+		"typescript": "~6.0.3"
 	},
 	"peerDependencies": {
 		"ioredis": ">=5.0.0"

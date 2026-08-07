@@ -7,7 +7,6 @@
 		"lib": ["ESNext"],
 
 		// Workspace package paths
-		"baseUrl": ".",
 		"paths": {
 			"@orijs/core": ["./packages/core/src/index.ts"],
 			"@orijs/logging": ["./packages/logging/src/index.ts"],

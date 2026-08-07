@@ -61,7 +61,7 @@
 		"ioredis": "5.8.2",
 		"oxlint": "^0.16.0",
 		"testcontainers": "^10.7.2",
-		"typescript": "^5.9.2"
+		"typescript": "~6.0.3"
 	},
 	"peerDependencies": {
 		"ioredis": "^5.4.0"
