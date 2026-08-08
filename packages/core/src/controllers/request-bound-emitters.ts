@@ -7,6 +7,7 @@
 
 import type { PropagationMeta, Logger } from '@orijs/logging';
 import { Value } from '@orijs/validation';
+import { expectsResultFromSchema } from '../events/delivery-hint.ts';
 import type { EventDefinition } from '../types/event-definition.ts';
 import type { WorkflowDefinition } from '../types/workflow-definition.ts';
 import type {
@@ -98,10 +99,12 @@ export class RequestBoundEventEmitter implements EventEmitter {
 			idempotencyKey = event.key(payload);
 		}
 
-		// Emit via underlying provider with options
+		// Emit via underlying provider with options. The result schema does not
+		// cross the provider boundary, so classify it here and pass the verdict.
 		const subscription = provider.emit<TResponse>(event.name, payload, meta, {
 			...(options?.delay && { delay: options.delay }),
-			...(idempotencyKey && { idempotencyKey })
+			...(idempotencyKey && { idempotencyKey }),
+			expectsResult: expectsResultFromSchema(event.resultSchema)
 		});
 
 		return subscription;

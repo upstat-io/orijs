@@ -80,6 +80,19 @@ export interface EmitOptions {
 	 * Note: For BullMQ, the key must NOT contain colons `:` as BullMQ uses them as separators.
 	 */
 	readonly idempotencyKey?: string;
+	/**
+	 * Whether the caller expects a result from the consumer.
+	 *
+	 * Derived by the emitter from the event definition's result schema: a
+	 * `Type.Void()` result means fire-and-forget, anything else is
+	 * request-response. Providers use this to decide whether to track
+	 * completion — a fire-and-forget emission settles on the enqueue outcome
+	 * alone and never waits for a consumer.
+	 *
+	 * Omitted means request-response, preserving the behaviour of callers that
+	 * emit without a definition in scope.
+	 */
+	readonly expectsResult?: boolean;
 }
 
 /**

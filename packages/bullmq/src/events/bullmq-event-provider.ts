@@ -255,6 +255,23 @@ export class BullMQEventProvider implements EventProvider {
 			...(ttl !== undefined && { removeOnFail: { age: Math.ceil(ttl / 1000) } })
 		};
 
+		// A fire-and-forget emission settles on the enqueue outcome alone. Tracking
+		// completion for it would couple the caller to consumer availability and to
+		// the tracker's timeout, which is what `expectsResult: false` exists to avoid.
+		if (options?.expectsResult === false) {
+			this.queueManager
+				.addJob(eventName, jobData, jobOptions)
+				.then(() => {
+					subscription._resolve(undefined as TReturn);
+				})
+				.catch((error) => {
+					// No tracker entry exists to fail, so reject the subscription directly.
+					subscription._reject(error);
+				});
+
+			return subscription;
+		}
+
 		// Determine timeout: explicit option > default > 0 means no timeout
 		const timeout = options?.timeout ?? this.defaultTimeout;
 

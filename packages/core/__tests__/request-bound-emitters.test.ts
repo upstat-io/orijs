@@ -60,7 +60,7 @@ describe('RequestBoundEventEmitter', () => {
 				'test.event',
 				{ message: 'hello', count: 42 },
 				{ correlationId: 'req-123', causationId: 'req-123' },
-				{}
+				{ expectsResult: true }
 			);
 		});
 
@@ -107,7 +107,7 @@ describe('RequestBoundEventEmitter', () => {
 				'test.event',
 				{ message: 'hello', count: 1 },
 				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ delay: 5000 }
+				{ delay: 5000, expectsResult: true }
 			);
 		});
 
@@ -120,7 +120,7 @@ describe('RequestBoundEventEmitter', () => {
 				'test.event',
 				{ message: 'hello', count: 1 },
 				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'my-key' }
+				{ idempotencyKey: 'my-key', expectsResult: true }
 			);
 		});
 
@@ -142,7 +142,7 @@ describe('RequestBoundEventEmitter', () => {
 				'keyed.event',
 				{ alertUuid: 'abc-123' },
 				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'abc-123' }
+				{ idempotencyKey: 'abc-123', expectsResult: true }
 			);
 		});
 
@@ -164,7 +164,7 @@ describe('RequestBoundEventEmitter', () => {
 				'keyed.event',
 				{ alertUuid: 'abc-123' },
 				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'explicit-key' }
+				{ idempotencyKey: 'explicit-key', expectsResult: true }
 			);
 		});
 	});
