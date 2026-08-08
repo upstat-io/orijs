@@ -33,6 +33,8 @@ type TestParams = {
 	monitorUuid: string;
 };
 
+type CollectionParams = Pick<TestParams, 'accountUuid' | 'projectUuid'>;
+
 interface Monitor {
 	uuid: string;
 	name: string;
@@ -87,7 +89,7 @@ describe('CacheBuilder cascade end-to-end (BUG-11-083 cure verification)', () =>
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
 			const MonitorCache = Cache.for<TestParams>('Monitor').ttl('1h').build();
-			const MonitorCollectionCache = Cache.for<TestParams>('MonitorCollection')
+			const MonitorCollectionCache = Cache.for<CollectionParams>('MonitorCollection')
 				.ttl('1h')
 				.dependsOn('Monitor') // auto-narrowed to [accountUuid, projectUuid] per BUG-11-083 cure
 				.build();
@@ -131,8 +133,7 @@ describe('CacheBuilder cascade end-to-end (BUG-11-083 cure verification)', () =>
 		it('negative pin: invalidating an unrelated Individual (different uuid) does NOT cascade to Collection', async () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
-			const MonitorCache = Cache.for<TestParams>('Monitor').ttl('1h').build();
-			const MonitorCollectionCache = Cache.for<TestParams>('MonitorCollection')
+			const MonitorCollectionCache = Cache.for<CollectionParams>('MonitorCollection')
 				.ttl('1h')
 				.dependsOn('Monitor')
 				.build();
@@ -158,8 +159,7 @@ describe('CacheBuilder cascade end-to-end (BUG-11-083 cure verification)', () =>
 		it('tenant isolation: invalidating Individual in tenant A does NOT cascade to Collection in tenant B', async () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
-			const MonitorCache = Cache.for<TestParams>('Monitor').ttl('1h').build();
-			const MonitorCollectionCache = Cache.for<TestParams>('MonitorCollection')
+			const MonitorCollectionCache = Cache.for<CollectionParams>('MonitorCollection')
 				.ttl('1h')
 				.dependsOn('Monitor')
 				.build();

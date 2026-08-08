@@ -8,7 +8,7 @@
 		"skipLibCheck": true,
 		"declaration": true,
 		"outDir": "dist",
-		"types": ["bun-types"],
+		"types": ["bun"],
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
 		"paths": {

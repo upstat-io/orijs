@@ -100,7 +100,7 @@ describe('CacheBuilder.dependsOn auto-narrow (BUG-11-083 cure)', () => {
 			const Cache = createCacheBuilder(createTestRegistry());
 			const a = Cache.for<TestParams>('MonitorCollection').ttl('5m').dependsOn('Monitor').build();
 			const b = Cache.for<TestParams>('MonitorCollection').ttl('5m').dependsOn('Monitor').build();
-			expect(a.dependsOn.Monitor).toEqual(b.dependsOn.Monitor as unknown as string[]);
+			expect(a.dependsOn.Monitor).toEqual(b.dependsOn.Monitor);
 		});
 	});
 
