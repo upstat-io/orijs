@@ -369,7 +369,7 @@ export class AppContext<
   public async executeShutdownHooks(): Promise<void> {
     this.currentPhase = "stopping";
     // LIFO order - reverse the array
-    const hooks = [...this.shutdownHooks].toReversed();
+    const hooks = [...this.shutdownHooks].reverse();
     for (const hook of hooks) {
       try {
         await hook();

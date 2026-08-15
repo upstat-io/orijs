@@ -382,7 +382,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
     }>,
   ): Promise<Error[]> {
     // Run rollbacks in reverse order (last completed first)
-    const stepsToRollback = [...completedStepsWithRollback].toReversed();
+    const stepsToRollback = [...completedStepsWithRollback].reverse();
     const failures: Error[] = [];
 
     for (const step of stepsToRollback) {

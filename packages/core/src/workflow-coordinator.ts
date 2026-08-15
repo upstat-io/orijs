@@ -477,7 +477,7 @@ export class WorkflowCoordinator {
           );
 
           // Rollback in reverse order
-          const stepsToRollback = [...completedSteps].toReversed();
+          const stepsToRollback = [...completedSteps].reverse();
           for (const step of stepsToRollback) {
             if (step.handler.rollback) {
               try {
