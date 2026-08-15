@@ -299,7 +299,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
       handler,
       stepGroups: stepGroups ?? [],
       stepHandlers: stepHandlers ?? {},
-      onError,
+      ...(onError === undefined ? {} : { onError }),
     });
   }
 

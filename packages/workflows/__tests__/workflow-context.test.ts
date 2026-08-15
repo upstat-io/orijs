@@ -80,6 +80,28 @@ describe("WorkflowContext", () => {
   });
 
   describe("createWorkflowContext", () => {
+    it("should omit absent provider IDs and retain configured IDs", () => {
+      const withoutProvider = createWorkflowContext(
+        "flow-without-provider",
+        {},
+        {},
+        testLogger,
+        testMeta,
+      );
+      const withProvider = createWorkflowContext(
+        "flow-with-provider",
+        {},
+        {},
+        testLogger,
+        testMeta,
+        { providerId: "provider-1" },
+      );
+
+      expect(Object.hasOwn(withoutProvider, "providerId")).toBe(false);
+      expect(Object.hasOwn(withProvider, "providerId")).toBe(true);
+      expect(withProvider.providerId).toBe("provider-1");
+    });
+
     it("should create frozen context", () => {
       const ctx = createWorkflowContext(
         "flow-frozen",

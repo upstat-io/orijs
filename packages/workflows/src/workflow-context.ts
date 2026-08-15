@@ -93,6 +93,7 @@ export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<
   Record<string, unknown>
 > {
   public readonly correlationId: string;
+  declare public readonly providerId?: string;
 
   public constructor(
     public readonly flowId: string,
@@ -100,9 +101,12 @@ export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<
     public readonly results: Record<string, unknown>,
     public readonly log: Logger,
     public readonly meta: PropagationMeta,
-    public readonly providerId?: string,
+    providerId?: string,
     public readonly signal: AbortSignal = new AbortController().signal,
   ) {
+    if (providerId !== undefined) {
+      this.providerId = providerId;
+    }
     // Extract correlationId from meta for convenience access
     this.correlationId = (meta.correlationId as string) ?? flowId;
   }
