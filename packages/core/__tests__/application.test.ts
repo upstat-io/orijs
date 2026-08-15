@@ -1565,14 +1565,13 @@ describe('Application', () => {
 			const appContext = app.context;
 			appContext?.onShutdown(async () => {
 				hookStarted = true;
-				// This hook hangs for 5 seconds - longer than timeout
-				await new Promise((resolve) => setTimeout(resolve, 5000));
+				await new Promise<void>(() => {});
 				hookCompleted = true;
 			});
 
-			const startTime = Date.now();
+			const startTime = performance.now();
 			await app.stop();
-			const elapsed = Date.now() - startTime;
+			const elapsed = performance.now() - startTime;
 
 			expect(hookStarted).toBe(true);
 			expect(hookCompleted).toBe(false); // Hook should NOT have completed
