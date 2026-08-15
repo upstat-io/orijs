@@ -119,8 +119,12 @@ export class Logger {
     // Configure async buffering via LogBuffer
     logBuffer.configure({
       enabled: options.async ?? true,
-      flushInterval: options.flushInterval,
-      bufferSize: options.bufferSize,
+      ...(options.flushInterval !== undefined && {
+        flushInterval: options.flushInterval,
+      }),
+      ...(options.bufferSize !== undefined && {
+        bufferSize: options.bufferSize,
+      }),
     });
 
     // Set transport resolver so LogBuffer can flush to transports

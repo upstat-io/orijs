@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { Logger, type LogObject, type Transport } from "../src/index.ts";
+import { logBuffer } from "../src/log-buffer.ts";
 import { ValidatedConfig } from "@orijs/config";
 import type { ConfigProvider } from "@orijs/config";
 
@@ -23,6 +24,37 @@ describe("Logger buffering", () => {
       async close() {},
     };
   }
+
+  test("omits absent buffer settings and retains explicit values", () => {
+    const configureSpy = spyOn(logBuffer, "configure");
+
+    try {
+      Logger.configure({ transports: [createCollectorTransport()] });
+
+      expect(configureSpy).toHaveBeenLastCalledWith({ enabled: true });
+      expect(
+        Object.hasOwn(configureSpy.mock.calls[0]![0], "flushInterval"),
+      ).toBe(false);
+      expect(Object.hasOwn(configureSpy.mock.calls[0]![0], "bufferSize")).toBe(
+        false,
+      );
+
+      Logger.configure({
+        transports: [createCollectorTransport()],
+        async: false,
+        flushInterval: 25,
+        bufferSize: 2048,
+      });
+
+      expect(configureSpy).toHaveBeenLastCalledWith({
+        enabled: false,
+        flushInterval: 25,
+        bufferSize: 2048,
+      });
+    } finally {
+      configureSpy.mockRestore();
+    }
+  });
 
   describe("pending logs before initialization", () => {
     test("should buffer logs when Logger is not initialized", () => {
