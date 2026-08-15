@@ -126,7 +126,10 @@ describe("StepRegistry", () => {
 
       const steps = registry.getWorkflowSteps("TestWorkflow");
 
-      expect(steps.toSorted()).toEqual(["notify", "process", "validate"]);
+      expect(steps).toHaveLength(3);
+      expect(new Set(steps)).toEqual(
+        new Set(["notify", "process", "validate"]),
+      );
     });
 
     it("should return empty array when workflow is unknown", () => {
