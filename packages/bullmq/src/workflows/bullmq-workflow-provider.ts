@@ -1247,9 +1247,11 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 		const errorHandler = this.createShutdownErrorHandler();
 
-		// Close workers first (they process jobs) - sequentially to avoid race conditions
-		await this.closeWorkerMap(this.stepWorkers, errorHandler);
-		await this.closeWorkerMap(this.workflowWorkers, errorHandler);
+		// Close all workers before moving to resources that observe their results.
+		await Promise.all([
+			this.closeWorkerMap(this.stepWorkers, errorHandler),
+			this.closeWorkerMap(this.workflowWorkers, errorHandler)
+		]);
 
 		// Close queue events (they listen for completions)
 		await this.closeQueueEventsMap(this.queueEvents, errorHandler);
@@ -1298,11 +1300,12 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		workers: Map<string, IWorker>,
 		errorHandler: (err: Error) => void
 	): Promise<void> {
-		for (const worker of workers.values()) {
+		const closes = Array.from(workers.values(), (worker) => {
 			worker.connection._client.on('error', errorHandler as (...args: unknown[]) => void);
 			worker.blockingConnection._client.on('error', errorHandler as (...args: unknown[]) => void);
-			await worker.close();
-		}
+			return worker.close();
+		});
+		await Promise.all(closes);
 		workers.clear();
 	}
 
@@ -1313,10 +1316,11 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		queueEventsMap: Map<string, IQueueEvents>,
 		errorHandler: (err: Error) => void
 	): Promise<void> {
-		for (const events of queueEventsMap.values()) {
+		const closes = Array.from(queueEventsMap.values(), (events) => {
 			events.connection._client.on('error', errorHandler as (...args: unknown[]) => void);
-			await events.close();
-		}
+			return events.close();
+		});
+		await Promise.all(closes);
 		queueEventsMap.clear();
 	}
 
