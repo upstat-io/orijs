@@ -285,14 +285,6 @@ export class RedisWsProvider implements WebSocketProvider {
 		}
 		this.retryTimeouts.clear();
 
-		// Remove event listeners before closing connections
-		if (this.publisher) {
-			this.publisher.removeAllListeners();
-		}
-		if (this.subscriber) {
-			this.subscriber.removeAllListeners();
-		}
-
 		// Close Redis connections gracefully
 		await this.closeRedisConnection(this.publisher, 'publisher');
 		await this.closeRedisConnection(this.subscriber, 'subscriber');
@@ -314,10 +306,18 @@ export class RedisWsProvider implements WebSocketProvider {
 		if (!redis) {
 			return;
 		}
+		const removeListeners = () => redis.removeAllListeners();
+		if (this.hasRedisConnectionEnded(redis)) {
+			removeListeners();
+			return;
+		}
+		redis.once('end', removeListeners);
 
 		try {
 			if (redis.status === 'ready' || redis.status === 'connecting') {
 				await redis.quit();
+			} else if (!this.hasRedisConnectionEnded(redis)) {
+				redis.disconnect();
 			}
 		} catch {
 			// Force disconnect if quit fails
@@ -328,7 +328,15 @@ export class RedisWsProvider implements WebSocketProvider {
 					error: disconnectErr instanceof Error ? disconnectErr.message : 'Unknown error'
 				});
 			}
+		} finally {
+			if (this.hasRedisConnectionEnded(redis)) {
+				removeListeners();
+			}
 		}
+	}
+
+	private hasRedisConnectionEnded(redis: Redis): boolean {
+		return redis.status === 'end';
 	}
 
 	// ==========================================================================

@@ -16,6 +16,26 @@ const SOCKET_3 = '550e8400-e29b-41d4-a716-446655440003';
 const SOCKET_A = '550e8400-e29b-41d4-a716-446655440004';
 const SOCKET_B = '550e8400-e29b-41d4-a716-446655440005';
 
+interface RedisConnectionProbe {
+	readonly status: string;
+	once(event: 'end', listener: () => void): void;
+	listenerCount(event: 'error'): number;
+}
+
+function getRedisConnection(provider: RedisWsProvider, field: 'publisher' | 'subscriber'): RedisConnectionProbe {
+	const connection = Reflect.get(provider, field);
+	if (
+		typeof connection !== 'object' ||
+		connection === null ||
+		!('status' in connection) ||
+		!('once' in connection) ||
+		!('listenerCount' in connection)
+	) {
+		throw new Error(`Expected ${field} Redis connection`);
+	}
+	return connection as RedisConnectionProbe;
+}
+
 /**
  * Creates a mock Bun server that tracks published messages.
  * Used to verify that Redis messages are forwarded correctly.
@@ -89,6 +109,37 @@ describe('RedisWsProvider (functional)', () => {
 			expect(provider.getConnectionCount()).toBe(0);
 
 			await provider.stop();
+		});
+
+		it('should retain Redis error ownership until both connections end', async () => {
+			await provider.start();
+			const publisher = getRedisConnection(provider, 'publisher');
+			const subscriber = getRedisConnection(provider, 'subscriber');
+			await waitFor(() => publisher.status === 'ready' && subscriber.status === 'ready', {
+				timeout: 2000,
+				message: 'Redis connections did not become ready'
+			});
+
+			const errorListenerCountsAtEnd: number[] = [];
+			const publisherEnded = new Promise<void>((resolve) =>
+				publisher.once('end', () => {
+					errorListenerCountsAtEnd.push(publisher.listenerCount('error'));
+					resolve();
+				})
+			);
+			const subscriberEnded = new Promise<void>((resolve) =>
+				subscriber.once('end', () => {
+					errorListenerCountsAtEnd.push(subscriber.listenerCount('error'));
+					resolve();
+				})
+			);
+
+			await provider.stop();
+			await Promise.all([publisherEnded, subscriberEnded]);
+
+			expect(errorListenerCountsAtEnd).toEqual([1, 1]);
+			expect(publisher.listenerCount('error')).toBe(0);
+			expect(subscriber.listenerCount('error')).toBe(0);
 		});
 
 		it('should be idempotent on start', async () => {
