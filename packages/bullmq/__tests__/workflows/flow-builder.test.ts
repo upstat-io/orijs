@@ -28,6 +28,31 @@ function createStep(name: string): StepDefinitionBase {
 }
 
 describe("FlowBuilder", () => {
+  describe("constructor", () => {
+    it("omits absent optional storage and retains provided options", () => {
+      const minimal = new FlowBuilder({
+        workflowName: "MinimalWorkflow",
+        flowId: "flow-minimal",
+        queuePrefix: "workflow",
+      });
+      const configured = new FlowBuilder({
+        workflowName: "ConfiguredWorkflow",
+        flowId: "flow-configured",
+        queuePrefix: "workflow",
+        meta: { request_id: "req-123" },
+        idempotencyKey: "workflow-key",
+        stepJobOpts: { attempts: 5 },
+      });
+
+      expect(Object.hasOwn(minimal, "meta")).toBeFalse();
+      expect(Object.hasOwn(minimal, "idempotencyKey")).toBeFalse();
+      expect(Object.hasOwn(minimal, "stepJobOpts")).toBeFalse();
+      expect(Object.hasOwn(configured, "meta")).toBeTrue();
+      expect(Object.hasOwn(configured, "idempotencyKey")).toBeTrue();
+      expect(Object.hasOwn(configured, "stepJobOpts")).toBeTrue();
+    });
+  });
+
   describe("buildFlow", () => {
     it("bounds completed and failed retention for parent and step jobs", () => {
       const flow = new FlowBuilder({

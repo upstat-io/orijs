@@ -182,17 +182,19 @@ export class FlowBuilder {
   private readonly workflowName: string;
   private readonly flowId: string;
   private readonly queuePrefix: string;
-  private readonly meta?: PropagationMeta;
-  private readonly idempotencyKey?: string;
-  private readonly stepJobOpts?: StepJobRetryOpts;
+  declare private readonly meta?: PropagationMeta;
+  declare private readonly idempotencyKey?: string;
+  declare private readonly stepJobOpts?: StepJobRetryOpts;
 
   public constructor(options: FlowBuilderOptions) {
     this.workflowName = options.workflowName;
     this.flowId = options.flowId;
     this.queuePrefix = options.queuePrefix;
-    this.meta = options.meta;
-    this.idempotencyKey = options.idempotencyKey;
-    this.stepJobOpts = options.stepJobOpts;
+    if (options.meta !== undefined) this.meta = options.meta;
+    if (options.idempotencyKey !== undefined)
+      this.idempotencyKey = options.idempotencyKey;
+    if (options.stepJobOpts !== undefined)
+      this.stepJobOpts = options.stepJobOpts;
   }
 
   /**
