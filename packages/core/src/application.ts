@@ -341,23 +341,25 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
       console.clear();
     }
 
+    const loggerOptions: LoggerOptions = {
+      level: options.level ?? "info",
+      ...(options.transports !== undefined && {
+        transports: options.transports,
+      }),
+    };
+
     // Configure global defaults for all loggers (flushes any buffered logs)
     Logger.configure({
-      level: options.level ?? "info",
-      transports: options.transports,
-      traceFields: options.traceFields,
+      ...loggerOptions,
+      ...(options.traceFields !== undefined && {
+        traceFields: options.traceFields,
+      }),
     });
 
     // Update shared logger options for request contexts
-    this.sharedLoggerOptions = {
-      level: options.level ?? "info",
-      transports: options.transports,
-    };
+    this.sharedLoggerOptions = loggerOptions;
 
-    this.appLogger = new Logger("OriJS", {
-      level: options.level ?? "info",
-      transports: options.transports,
-    });
+    this.appLogger = new Logger("OriJS", loggerOptions);
     this.container.setLogger(this.appLogger);
 
     // Recreate pipeline with new logger

@@ -5,6 +5,7 @@ import {
   beforeEach,
   afterEach,
   afterAll,
+  spyOn,
 } from "bun:test";
 import { Application, Ori, createToken } from "../src/index.ts";
 import { Type } from "@orijs/validation";
@@ -1209,6 +1210,57 @@ describe("Application", () => {
   });
 
   describe("logger configuration", () => {
+    test("should omit absent logger options and retain supplied values", () => {
+      const configureSpy = spyOn(Logger, "configure");
+      const transport = {
+        write: () => {},
+        flush: async () => {},
+        close: async () => {},
+      };
+      const traceFields = {
+        accountUuid: { abbrev: "acct", color: "cyan" },
+      };
+
+      try {
+        app = Ori.create().logger({ level: "error" });
+
+        expect(configureSpy).toHaveBeenLastCalledWith({ level: "error" });
+        expect(app["sharedLoggerOptions"]).toEqual({ level: "error" });
+        const absentGlobalOptions = configureSpy.mock.lastCall?.[0];
+        expect(absentGlobalOptions).toBeDefined();
+        expect(Object.hasOwn(absentGlobalOptions!, "transports")).toBeFalse();
+        expect(Object.hasOwn(absentGlobalOptions!, "traceFields")).toBeFalse();
+        expect(
+          Object.hasOwn(app["sharedLoggerOptions"], "transports"),
+        ).toBeFalse();
+
+        app.logger({
+          level: "debug",
+          transports: [transport],
+          traceFields,
+        });
+
+        expect(configureSpy).toHaveBeenLastCalledWith({
+          level: "debug",
+          transports: [transport],
+          traceFields,
+        });
+        expect(app["sharedLoggerOptions"]).toEqual({
+          level: "debug",
+          transports: [transport],
+        });
+        const presentGlobalOptions = configureSpy.mock.lastCall?.[0];
+        expect(presentGlobalOptions).toBeDefined();
+        expect(Object.hasOwn(presentGlobalOptions!, "transports")).toBeTrue();
+        expect(Object.hasOwn(presentGlobalOptions!, "traceFields")).toBeTrue();
+        expect(
+          Object.hasOwn(app["sharedLoggerOptions"], "transports"),
+        ).toBeTrue();
+      } finally {
+        configureSpy.mockRestore();
+      }
+    });
+
     test("should use configured log level", async () => {
       class TestController implements OriController {
         configure(r: RouteBuilder) {
