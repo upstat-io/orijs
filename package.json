@@ -60,6 +60,7 @@
 		"bullmq": "^5.0.0",
 		"ioredis": "5.8.2",
 		"oxlint": "^1.77.0",
+		"prettier": "3.9.6",
 		"testcontainers": "^11.2.1",
 		"typescript": "~6.0.3"
 	},
