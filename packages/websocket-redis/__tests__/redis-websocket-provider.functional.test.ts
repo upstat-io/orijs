@@ -458,32 +458,62 @@ describe("RedisWsProvider (functional)", () => {
 
   describe("connection failure behavior", () => {
     it("should fail fast when Redis connection is invalid", async () => {
-      // Note: This provider uses an invalid connection intentionally,
-      // so we create it directly and handle cleanup manually
+      const errorMock = mock(
+        (_message: string, _context?: Record<string, unknown>) => {},
+      );
+      const mockLogger = {
+        info: mock(
+          (_message: string, _context?: Record<string, unknown>) => {},
+        ),
+        warn: mock(
+          (_message: string, _context?: Record<string, unknown>) => {},
+        ),
+        error: errorMock,
+        debug: mock(
+          (_message: string, _context?: Record<string, unknown>) => {},
+        ),
+        child: () => mockLogger,
+      };
       const badProvider = new RedisWsProvider({
         connection: { host: "localhost", port: 59999 },
-        connectTimeout: 500, // 500ms for test speed
+        connectTimeout: 500,
+        logger: mockLogger as never,
       });
 
       try {
-        // start() itself doesn't throw - it just creates connections
-        // The error occurs on first operation
         await badProvider.start();
 
-        // Try to subscribe - this should trigger connection error
         badProvider.subscribe(SOCKET_1, "room:123");
 
-        // Wait for connection attempt to fail - use reasonable timeout for CI load
-        // Under heavy CI load, connection timeouts can be delayed
-        await delay(2000);
+        await waitFor(
+          () =>
+            errorMock.mock.calls.some(
+              ([message]) =>
+                message === "Redis subscribe failed after max retries",
+            ),
+          {
+            timeout: 5000,
+            message: "Invalid Redis subscription did not fail",
+          },
+        );
 
-        // The key assertion is that the test completes (doesn't hang)
-        // and the provider can be stopped cleanly - if we get here without
-        // hanging, the error was handled properly via internal logging
+        expect(errorMock).toHaveBeenCalledWith(
+          "Redis subscribe failed after max retries",
+          expect.objectContaining({
+            channel: "ws:room:123",
+            attempts: 3,
+            error: expect.any(String),
+          }),
+        );
+
+        await badProvider.stop();
+
+        expect(Reflect.get(badProvider, "publisher")).toBeNull();
+        expect(Reflect.get(badProvider, "subscriber")).toBeNull();
       } finally {
         await badProvider.stop().catch(() => {});
       }
-    }, 10000); // 10 second timeout for CI environments
+    }, 10000);
   });
 
   describe("key prefix", () => {
