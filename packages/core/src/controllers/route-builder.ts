@@ -242,10 +242,14 @@ export class RouteBuilder<
    * ```
    */
   public pipe(pipe: PipeClass, schema?: Schema): this {
+    const pipeConfig = {
+      pipe,
+      ...(schema !== undefined && { schema }),
+    };
     if (this.currentRoute) {
-      this.currentRoute.pipes.push({ pipe, schema });
+      this.currentRoute.pipes.push(pipeConfig);
     } else {
-      this.controllerPipes.push({ pipe, schema });
+      this.controllerPipes.push(pipeConfig);
     }
     return this;
   }
@@ -455,22 +459,25 @@ export class RouteBuilder<
     schema?: RouteSchemaOptions,
   ): this {
     const paramValidators = this.buildParamValidators(path);
-    this.currentRoute = {
+    const data = this.controllerData ? new Map(this.controllerData) : undefined;
+    const deferGuards = schema?.deferGuards;
+    const route: RouteDefinition = {
       method,
       path,
       handler,
       guards: this.getEffectiveGuards(),
       interceptors: this.getEffectiveInterceptors(),
       pipes: [...this.controllerPipes],
-      schema,
-      paramValidators,
-      data: this.controllerData ? new Map(this.controllerData) : undefined,
-      deferGuards: schema?.deferGuards,
+      ...(schema !== undefined && { schema }),
+      ...(paramValidators !== undefined && { paramValidators }),
+      ...(data !== undefined && { data }),
+      ...(deferGuards !== undefined && { deferGuards }),
     };
+    this.currentRoute = route;
     this.routeGuardsOverride = null;
     this.routeInterceptorsOverride = null;
     this.routeDataOverride = null;
-    this.routes.push(this.currentRoute);
+    this.routes.push(route);
     return this;
   }
 

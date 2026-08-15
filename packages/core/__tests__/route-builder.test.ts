@@ -265,6 +265,41 @@ describe("RouteBuilder", () => {
 
       expect(routes[0]!.pipes[0]!.schema).toBe(schema);
     });
+
+    test("should omit absent optional metadata and retain supplied values", () => {
+      const routeKey = createRouteKey<string>("Config");
+      const schema = (data: unknown) => data as string;
+      const routeSchema = { body: schema, deferGuards: false };
+
+      builder.get("/minimal", dummyHandler).pipe(MockPipe);
+      const minimalRoute = builder.getRoutes()[0]!;
+      const minimalPipe = minimalRoute.pipes[0]!;
+
+      const configuredBuilder = new RouteBuilder();
+      configuredBuilder
+        .param("id", NumberParam)
+        .set(routeKey, "configured")
+        .pipe(MockPipe, schema)
+        .get("/:id", dummyHandler, routeSchema);
+      const configuredRoute = configuredBuilder.getRoutes()[0]!;
+      const configuredPipe = configuredRoute.pipes[0]!;
+
+      expect(Object.hasOwn(minimalRoute, "schema")).toBeFalse();
+      expect(Object.hasOwn(minimalRoute, "paramValidators")).toBeFalse();
+      expect(Object.hasOwn(minimalRoute, "data")).toBeFalse();
+      expect(Object.hasOwn(minimalRoute, "deferGuards")).toBeFalse();
+      expect(Object.hasOwn(minimalPipe, "schema")).toBeFalse();
+      expect(Object.hasOwn(configuredRoute, "schema")).toBeTrue();
+      expect(configuredRoute.schema).toBe(routeSchema);
+      expect(Object.hasOwn(configuredRoute, "paramValidators")).toBeTrue();
+      expect(configuredRoute.paramValidators?.get("id")).toBe(NumberParam);
+      expect(Object.hasOwn(configuredRoute, "data")).toBeTrue();
+      expect(configuredRoute.data?.get(routeKey)).toBe("configured");
+      expect(Object.hasOwn(configuredRoute, "deferGuards")).toBeTrue();
+      expect(configuredRoute.deferGuards).toBeFalse();
+      expect(Object.hasOwn(configuredPipe, "schema")).toBeTrue();
+      expect(configuredPipe.schema).toBe(schema);
+    });
   });
 
   describe("clear", () => {
