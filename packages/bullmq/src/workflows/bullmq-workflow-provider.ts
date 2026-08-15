@@ -2589,9 +2589,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
       meta ?? {},
       {
         workflowName,
-        stepName,
-        providerId: this.providerId,
-        signal,
+        ...(stepName !== undefined && { stepName }),
+        ...(this.providerId !== undefined && { providerId: this.providerId }),
+        ...(signal !== undefined && { signal }),
       },
     );
   }
