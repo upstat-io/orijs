@@ -28,7 +28,11 @@ export class ProviderCoordinator {
     deps: Constructor[],
     eager?: boolean,
   ): void {
-    this.providers.push({ service, deps, eager });
+    this.providers.push({
+      service,
+      deps,
+      ...(eager !== undefined && { eager }),
+    });
   }
 
   /**
