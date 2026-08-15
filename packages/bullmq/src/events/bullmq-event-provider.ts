@@ -187,8 +187,12 @@ export class BullMQEventProvider implements EventProvider {
 			options.queueManager ??
 			new QueueManager({
 				connection: this.connection,
-				defaultJobOptions: options.defaultJobOptions,
-				defaultWorkerOptions: options.defaultWorkerOptions
+				...(options.defaultJobOptions === undefined
+					? {}
+					: { defaultJobOptions: options.defaultJobOptions }),
+				...(options.defaultWorkerOptions === undefined
+					? {}
+					: { defaultWorkerOptions: options.defaultWorkerOptions })
 			});
 		this.completionTracker =
 			options.completionTracker ?? new CompletionTracker({ connection: this.connection });
