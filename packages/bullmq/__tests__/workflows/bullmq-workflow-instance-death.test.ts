@@ -234,6 +234,8 @@ describe('BullMQ Workflow Instance Death', () => {
 				// Verify started
 				expect(handles[0].id).toBeDefined();
 				expect(handles[1].id).toBeDefined();
+				const initialResults = await Promise.all(handles.map((handle) => handle.result()));
+				expect(initialResults).toEqual([{ result: 24 }, { result: 28 }]);
 
 				// Stop secondary
 				await harness.stopInstance('secondary');
@@ -243,13 +245,14 @@ describe('BullMQ Workflow Instance Death', () => {
 				await harness.startInstance('replacement');
 
 				// Start more workflows
-				await Promise.all([
+				const replacementHandles = await Promise.all([
 					primary.execute(TrackedWorkflowDef, { value: 3 }),
 					primary.execute(TrackedWorkflowDef, { value: 4 })
 				]);
-
-				// Wait for all to complete
-				await delay(TEST_TIMEOUTS.WORKFLOW_EXECUTION / 2);
+				const replacementResults = await Promise.all(
+					replacementHandles.map((handle) => handle.result())
+				);
+				expect(replacementResults).toEqual([{ result: 32 }, { result: 36 }]);
 
 				// Should have at least 12 step executions (4 workflows * 3 steps)
 				// May have more due to stalled job recovery in BullMQ (at-least-once delivery)
