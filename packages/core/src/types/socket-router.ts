@@ -41,16 +41,18 @@
  * ```
  */
 
-import type { Schema } from '@orijs/validation';
-import type { Constructor } from './context';
-import type { SocketEmitter } from './emitter';
+import type { Schema } from "@orijs/validation";
+import type { Constructor } from "./context";
+import type { SocketEmitter } from "./emitter";
 
 /**
  * Forward declaration for AppContext socket access.
  * This avoids circular dependencies while maintaining type safety.
  */
-export interface AppContextSocketLike<TSocket extends SocketEmitter = SocketEmitter> {
-	readonly socket: TSocket;
+export interface AppContextSocketLike<
+  TSocket extends SocketEmitter = SocketEmitter,
+> {
+  readonly socket: TSocket;
 }
 
 /**
@@ -61,27 +63,27 @@ export interface AppContextSocketLike<TSocket extends SocketEmitter = SocketEmit
  * @typeParam TSocket - The socket emitter type for typed access to custom methods
  */
 export interface SocketContextLike<
-	TState extends object = Record<string, unknown>,
-	TSocket extends SocketEmitter = SocketEmitter
+  TState extends object = Record<string, unknown>,
+  TSocket extends SocketEmitter = SocketEmitter,
 > {
-	readonly state: TState;
-	readonly app: AppContextSocketLike<TSocket>;
-	/** The parsed message data */
-	readonly data: unknown;
-	/** The message type being handled */
-	readonly messageType: string;
-	/** Correlation ID for tracing */
-	readonly correlationId: string;
-	/** Socket ID of the connection */
-	readonly socketId: string;
-	set<K extends keyof TState>(key: K, value: TState[K]): void;
-	get<K extends keyof TState>(key: K): TState[K];
-	/** Subscribe this socket connection to a topic (room) for fan-out delivery. */
-	subscribe(topic: string): void;
-	/** Unsubscribe this socket connection from a previously subscribed topic. */
-	unsubscribe(topic: string): void;
-	/** Publish data to all subscribers of a topic. */
-	publish(topic: string, data: unknown): void;
+  readonly state: TState;
+  readonly app: AppContextSocketLike<TSocket>;
+  /** The parsed message data */
+  readonly data: unknown;
+  /** The message type being handled */
+  readonly messageType: string;
+  /** Correlation ID for tracing */
+  readonly correlationId: string;
+  /** Socket ID of the connection */
+  readonly socketId: string;
+  set<K extends keyof TState>(key: K, value: TState[K]): void;
+  get<K extends keyof TState>(key: K): TState[K];
+  /** Subscribe this socket connection to a topic (room) for fan-out delivery. */
+  subscribe(topic: string): void;
+  /** Unsubscribe this socket connection from a previously subscribed topic. */
+  unsubscribe(topic: string): void;
+  /** Publish data to all subscribers of a topic. */
+  publish(topic: string, data: unknown): void;
 }
 
 /**
@@ -93,12 +95,12 @@ export interface SocketContextLike<
  * - guard(): runs per-message (optional, for rate limiting etc.)
  */
 export interface SocketGuard {
-	/**
-	 * Determines if the connection/message should proceed.
-	 * @param ctx - The socket context
-	 * @returns `true` to allow, `false` to deny
-	 */
-	canActivate(ctx: SocketContextLike): boolean | Promise<boolean>;
+  /**
+   * Determines if the connection/message should proceed.
+   * @param ctx - The socket context
+   * @returns `true` to allow, `false` to deny
+   */
+  canActivate(ctx: SocketContextLike): boolean | Promise<boolean>;
 }
 
 /** Constructor type for SocketGuard classes */
@@ -114,19 +116,21 @@ export type SocketGuardClass = new (...args: any[]) => SocketGuard;
  *   When specified, `ctx.app.socket` returns this type in handlers.
  */
 export interface OriSocketRouter<
-	TState extends object = Record<string, unknown>,
-	TSocket extends SocketEmitter = SocketEmitter
+  TState extends object = Record<string, unknown>,
+  TSocket extends SocketEmitter = SocketEmitter,
 > {
-	/**
-	 * Configures message routes for this socket router using the SocketRouteBuilder.
-	 * @param route - The socket route builder instance
-	 */
-	configure(route: SocketRouteBuilder<TState, TSocket>): void;
+  /**
+   * Configures message routes for this socket router using the SocketRouteBuilder.
+   * @param route - The socket route builder instance
+   */
+  configure(route: SocketRouteBuilder<TState, TSocket>): void;
 }
 
 /** Constructor type for SocketRouter classes */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type SocketRouterClass = new (...args: any[]) => OriSocketRouter<any, any>;
+export type SocketRouterClass = new (
+  ...args: any[]
+) => OriSocketRouter<any, any>;
 
 /**
  * Handler function type for socket messages.
@@ -142,23 +146,23 @@ export type SocketRouterClass = new (...args: any[]) => OriSocketRouter<any, any
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SocketHandler<
-	_TState extends object = Record<string, unknown>,
-	_TSocket extends SocketEmitter = SocketEmitter,
-	TResponse = unknown
+  _TState extends object = Record<string, unknown>,
+  _TSocket extends SocketEmitter = SocketEmitter,
+  TResponse = unknown,
 > = (ctx: any) => TResponse | Promise<TResponse>;
 
 /**
  * Internal socket route definition after building.
  */
 export interface SocketRouteDefinition {
-	/** Message type to match (e.g., 'heartbeat', 'subscribe') */
-	messageType: string;
-	/** Handler function */
-	handler: SocketHandler;
-	/** Guards to run before this handler */
-	guards: SocketGuardClass[];
-	/** Schema for message data validation */
-	schema?: Schema;
+  /** Message type to match (e.g., 'heartbeat', 'subscribe') */
+  messageType: string;
+  /** Handler function */
+  handler: SocketHandler;
+  /** Guards to run before this handler */
+  guards: SocketGuardClass[];
+  /** Schema for message data validation */
+  schema?: Schema;
 }
 
 /**
@@ -183,74 +187,74 @@ export interface SocketRouteDefinition {
  * ```
  */
 export interface SocketRouteBuilder<
-	TState extends object = Record<string, unknown>,
-	TSocket extends SocketEmitter = SocketEmitter
+  TState extends object = Record<string, unknown>,
+  TSocket extends SocketEmitter = SocketEmitter,
 > {
-	/**
-	 * Adds a connection guard (runs ONCE on WebSocket upgrade).
-	 * Connection guards determine if the client can connect at all.
-	 * They set state that persists for the entire connection.
-	 *
-	 * @param guard - The guard class to add
-	 */
-	connectionGuard(guard: SocketGuardClass): SocketRouteBuilder<TState, TSocket>;
+  /**
+   * Adds a connection guard (runs ONCE on WebSocket upgrade).
+   * Connection guards determine if the client can connect at all.
+   * They set state that persists for the entire connection.
+   *
+   * @param guard - The guard class to add
+   */
+  connectionGuard(guard: SocketGuardClass): SocketRouteBuilder<TState, TSocket>;
 
-	/**
-	 * Adds a guard to the router or current route.
-	 * These guards run on each message (optional, for rate limiting etc.).
-	 *
-	 * When called before any route method, applies to all routes in the router.
-	 * When called after a route method, applies only to that route.
-	 *
-	 * @param guard - Guard class to add
-	 */
-	guard(guard: SocketGuardClass): SocketRouteBuilder<TState, TSocket>;
+  /**
+   * Adds a guard to the router or current route.
+   * These guards run on each message (optional, for rate limiting etc.).
+   *
+   * When called before any route method, applies to all routes in the router.
+   * When called after a route method, applies only to that route.
+   *
+   * @param guard - Guard class to add
+   */
+  guard(guard: SocketGuardClass): SocketRouteBuilder<TState, TSocket>;
 
-	/**
-	 * Replaces all message guards for the current route or router.
-	 * Does NOT affect connection guards.
-	 *
-	 * @param guards - The guard classes to use
-	 */
-	guards(guards: SocketGuardClass[]): SocketRouteBuilder<TState, TSocket>;
+  /**
+   * Replaces all message guards for the current route or router.
+   * Does NOT affect connection guards.
+   *
+   * @param guards - The guard classes to use
+   */
+  guards(guards: SocketGuardClass[]): SocketRouteBuilder<TState, TSocket>;
 
-	/**
-	 * Clears all message guards (NOT connection guards).
-	 */
-	clearGuards(): SocketRouteBuilder<TState, TSocket>;
+  /**
+   * Clears all message guards (NOT connection guards).
+   */
+  clearGuards(): SocketRouteBuilder<TState, TSocket>;
 
-	/**
-	 * Registers a message handler for a specific message type.
-	 *
-	 * @param messageType - The message type to handle (e.g., 'heartbeat', 'subscribe')
-	 * @param handler - Handler function that receives SocketContext and returns response data
-	 * @param schema - Optional TypeBox schema for message data validation
-	 */
-	on<TResponse = unknown>(
-		messageType: string,
-		handler: SocketHandler<TState, TSocket, TResponse>,
-		schema?: Schema
-	): SocketRouteBuilder<TState, TSocket>;
+  /**
+   * Registers a message handler for a specific message type.
+   *
+   * @param messageType - The message type to handle (e.g., 'heartbeat', 'subscribe')
+   * @param handler - Handler function that receives SocketContext and returns response data
+   * @param schema - Optional TypeBox schema for message data validation
+   */
+  on<TResponse = unknown>(
+    messageType: string,
+    handler: SocketHandler<TState, TSocket, TResponse>,
+    schema?: Schema,
+  ): SocketRouteBuilder<TState, TSocket>;
 
-	/**
-	 * Returns all registered connection guards (internal use).
-	 */
-	getConnectionGuards(): readonly SocketGuardClass[];
+  /**
+   * Returns all registered connection guards (internal use).
+   */
+  getConnectionGuards(): readonly SocketGuardClass[];
 
-	/**
-	 * Returns all registered routes (internal use).
-	 */
-	getRoutes(): readonly SocketRouteDefinition[];
+  /**
+   * Returns all registered routes (internal use).
+   */
+  getRoutes(): readonly SocketRouteDefinition[];
 }
 
 /**
  * Configuration for registering a socket router.
  */
 export interface SocketRouterConfig {
-	/** The socket router class */
-	router: SocketRouterClass;
-	/** Dependencies to inject into the router */
-	deps: Constructor[];
+  /** The socket router class */
+  router: SocketRouterClass;
+  /** Dependencies to inject into the router */
+  deps: Constructor[];
 }
 
 /**
@@ -258,12 +262,12 @@ export interface SocketRouterConfig {
  * Messages must include a type field for routing.
  */
 export interface SocketMessage<TData = unknown> {
-	/** Message type for routing (e.g., 'heartbeat', 'subscribe') */
-	type: string;
-	/** Optional message data */
-	data?: TData;
-	/** Optional correlation ID for request-response matching */
-	correlationId?: string;
+  /** Message type for routing (e.g., 'heartbeat', 'subscribe') */
+  type: string;
+  /** Optional message data */
+  data?: TData;
+  /** Optional correlation ID for request-response matching */
+  correlationId?: string;
 }
 
 /**
@@ -271,14 +275,14 @@ export interface SocketMessage<TData = unknown> {
  * Responses include the original type and data.
  */
 export interface SocketResponse<TData = unknown> {
-	/** Original message type */
-	type: string;
-	/** Response data */
-	data: TData;
-	/** Correlation ID if provided in request */
-	correlationId?: string;
-	/** Error details if handler failed */
-	error?: string;
+  /** Original message type */
+  type: string;
+  /** Response data */
+  data: TData;
+  /** Correlation ID if provided in request */
+  correlationId?: string;
+  /** Error details if handler failed */
+  error?: string;
 }
 
 /**
@@ -299,6 +303,6 @@ export interface SocketResponse<TData = unknown> {
  * ```
  */
 export type SocketCtx<
-	TState extends object = Record<string, unknown>,
-	TSocket extends SocketEmitter = SocketEmitter
+  TState extends object = Record<string, unknown>,
+  TSocket extends SocketEmitter = SocketEmitter,
 > = SocketContextLike<TState, TSocket>;

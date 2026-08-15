@@ -65,13 +65,13 @@
  */
 
 // Import context types for use in this file
-import type { EventContext } from './event-definition';
-import type { WorkflowContext, StepContext } from './workflow-definition';
+import type { EventContext } from "./event-definition";
+import type { WorkflowContext, StepContext } from "./workflow-definition";
 
 // Re-export context types from their canonical locations
 // EventContext lives with EventDefinition, WorkflowContext with WorkflowDefinition
-export type { EventContext } from './event-definition';
-export type { WorkflowContext, StepContext } from './workflow-definition';
+export type { EventContext } from "./event-definition";
+export type { WorkflowContext, StepContext } from "./workflow-definition";
 
 /**
  * Interface for event consumers.
@@ -90,27 +90,33 @@ export type { WorkflowContext, StepContext } from './workflow-definition';
  * ```
  */
 export interface IEventConsumer<TData, TResult> {
-	/**
-	 * Handle the event. This is the main handler method.
-	 *
-	 * **Must be an arrow function property** (not a method) to ensure `this`
-	 * is correctly bound when the framework invokes the handler. See module
-	 * documentation for detailed explanation.
-	 *
-	 * @param ctx - Event context with data, eventId, and metadata
-	 * @returns The result (or Promise of result) matching the event definition
-	 */
-	readonly onEvent: (ctx: EventContext<TData>) => Promise<TResult> | TResult;
+  /**
+   * Handle the event. This is the main handler method.
+   *
+   * **Must be an arrow function property** (not a method) to ensure `this`
+   * is correctly bound when the framework invokes the handler. See module
+   * documentation for detailed explanation.
+   *
+   * @param ctx - Event context with data, eventId, and metadata
+   * @returns The result (or Promise of result) matching the event definition
+   */
+  readonly onEvent: (ctx: EventContext<TData>) => Promise<TResult> | TResult;
 
-	/**
-	 * Optional success callback. Called after onEvent completes successfully.
-	 */
-	readonly onSuccess?: (ctx: EventContext<TData>, result: TResult) => Promise<void> | void;
+  /**
+   * Optional success callback. Called after onEvent completes successfully.
+   */
+  readonly onSuccess?: (
+    ctx: EventContext<TData>,
+    result: TResult,
+  ) => Promise<void> | void;
 
-	/**
-	 * Optional error callback. Called when onEvent throws an error.
-	 */
-	readonly onError?: (ctx: EventContext<TData>, error: Error) => Promise<void> | void;
+  /**
+   * Optional error callback. Called when onEvent throws an error.
+   */
+  readonly onError?: (
+    ctx: EventContext<TData>,
+    error: Error,
+  ) => Promise<void> | void;
 }
 
 /**
@@ -137,23 +143,31 @@ export interface IEventConsumer<TData, TResult> {
  * };
  * ```
  */
-export interface StepHandler<TData = unknown, TOutput = unknown, TResults = Record<string, unknown>> {
-	/**
-	 * Execute the step.
-	 * @param ctx - Step context with workflow data and accumulated results
-	 * @returns The step output (or Promise of output)
-	 */
-	readonly execute: (ctx: StepContext<TData, TResults>) => Promise<TOutput> | TOutput;
+export interface StepHandler<
+  TData = unknown,
+  TOutput = unknown,
+  TResults = Record<string, unknown>,
+> {
+  /**
+   * Execute the step.
+   * @param ctx - Step context with workflow data and accumulated results
+   * @returns The step output (or Promise of output)
+   */
+  readonly execute: (
+    ctx: StepContext<TData, TResults>,
+  ) => Promise<TOutput> | TOutput;
 
-	/**
-	 * Optional rollback handler. Called when a later step fails.
-	 *
-	 * **IMPORTANT: Rollback handlers MUST be idempotent.**
-	 * In distributed systems with retries, rollback may be called multiple times.
-	 *
-	 * @param ctx - Step context with workflow data and accumulated results
-	 */
-	readonly rollback?: (ctx: StepContext<TData, TResults>) => Promise<void> | void;
+  /**
+   * Optional rollback handler. Called when a later step fails.
+   *
+   * **IMPORTANT: Rollback handlers MUST be idempotent.**
+   * In distributed systems with retries, rollback may be called multiple times.
+   *
+   * @param ctx - Step context with workflow data and accumulated results
+   */
+  readonly rollback?: (
+    ctx: StepContext<TData, TResults>,
+  ) => Promise<void> | void;
 }
 
 /**
@@ -193,33 +207,42 @@ export interface StepHandler<TData = unknown, TOutput = unknown, TResults = Reco
  * }
  * ```
  */
-export interface IWorkflowConsumer<TData, TResult, TSteps = Record<never, never>> {
-	/**
-	 * Step handlers for workflows with steps.
-	 *
-	 * Keys are step names (must match step names in WorkflowDefinition.steps()).
-	 * Values are StepHandler objects with execute and optional rollback.
-	 *
-	 * **Must be arrow function properties** to ensure `this` is correctly bound.
-	 */
-	readonly steps?: {
-		[K in keyof TSteps]?: StepHandler<TData, TSteps[K], TSteps>;
-	};
+export interface IWorkflowConsumer<
+  TData,
+  TResult,
+  TSteps = Record<never, never>,
+> {
+  /**
+   * Step handlers for workflows with steps.
+   *
+   * Keys are step names (must match step names in WorkflowDefinition.steps()).
+   * Values are StepHandler objects with execute and optional rollback.
+   *
+   * **Must be arrow function properties** to ensure `this` is correctly bound.
+   */
+  readonly steps?: {
+    [K in keyof TSteps]?: StepHandler<TData, TSteps[K], TSteps>;
+  };
 
-	/**
-	 * Handle workflow completion. Called when all steps complete.
-	 *
-	 * **Must be an arrow function property** (not a method) to ensure `this`
-	 * is correctly bound when the framework invokes the handler. See module
-	 * documentation for detailed explanation.
-	 *
-	 * @param ctx - Workflow context with data, workflowId, and metadata
-	 * @returns The result (or Promise of result) matching the workflow definition
-	 */
-	readonly onComplete: (ctx: WorkflowContext<TData, TSteps>) => Promise<TResult> | TResult;
+  /**
+   * Handle workflow completion. Called when all steps complete.
+   *
+   * **Must be an arrow function property** (not a method) to ensure `this`
+   * is correctly bound when the framework invokes the handler. See module
+   * documentation for detailed explanation.
+   *
+   * @param ctx - Workflow context with data, workflowId, and metadata
+   * @returns The result (or Promise of result) matching the workflow definition
+   */
+  readonly onComplete: (
+    ctx: WorkflowContext<TData, TSteps>,
+  ) => Promise<TResult> | TResult;
 
-	/**
-	 * Optional error callback. Called when workflow fails.
-	 */
-	readonly onError?: (ctx: WorkflowContext<TData, TSteps>, error: Error) => Promise<void> | void;
+  /**
+   * Optional error callback. Called when workflow fails.
+   */
+  readonly onError?: (
+    ctx: WorkflowContext<TData, TSteps>,
+    error: Error,
+  ) => Promise<void> | void;
 }

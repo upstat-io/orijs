@@ -1,936 +1,1090 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { EventCoordinator } from '../src/event-coordinator.ts';
-import { Container } from '../src/container.ts';
-import { Logger } from '@orijs/logging';
-import { Event } from '../src/types/event-definition.ts';
-import { Type } from '@orijs/validation';
-import type { IEventConsumer, EventContext } from '../src/types/consumer.ts';
-import type { EventProvider, EventSubscription as EventSub } from '@orijs/events';
-
-describe('EventCoordinator', () => {
-	let container: Container;
-	let logger: Logger;
-
-	beforeEach(() => {
-		container = new Container();
-		logger = new Logger('test');
-	});
-
-	// Test event definition
-	const TestEvent = Event.define({
-		name: 'test.event',
-		data: Type.Object({ message: Type.String() }),
-		result: Type.Object({ received: Type.Boolean() })
-	});
-
-	// Test consumer class
-	class TestEventConsumer implements IEventConsumer<
-		(typeof TestEvent)['_data'],
-		(typeof TestEvent)['_result']
-	> {
-		onEvent = async (_ctx: EventContext<(typeof TestEvent)['_data']>) => {
-			return { received: true };
-		};
-	}
-
-	// Helper to create a minimal mock provider
-	const createMockProvider = (_overrides: Partial<EventProvider> = {}): EventProvider =>
-		({
-			start: async () => {},
-			stop: async () => {},
-			emit: () => ({}) as EventSub<any>,
-			subscribe: () => {},
-			cancel: async () => false
-		}) as unknown as EventProvider;
-
-	describe('Provider Factory Injection', () => {
-		it('should use injected provider factory when registering consumers', () => {
-			let factoryCalled = false;
-			const mockProvider = createMockProvider();
-
-			const customFactory = () => {
-				factoryCalled = true;
-				return mockProvider;
-			};
-
-			const coordinator = new EventCoordinator(container, logger, customFactory);
-
-			// Register an event definition with consumer
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-
-			// Factory is called during registerConsumers
-			coordinator.registerConsumers();
-
-			expect(factoryCalled).toBe(true);
-		});
-
-		it('should NOT use factory when explicit provider is set', () => {
-			let factoryCalled = false;
-			const explicitProvider = createMockProvider();
-
-			const customFactory = () => {
-				factoryCalled = true;
-				return createMockProvider();
-			};
-
-			const coordinator = new EventCoordinator(container, logger, customFactory);
-
-			// Set provider explicitly BEFORE registering consumers
-			coordinator.setProvider(explicitProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			expect(factoryCalled).toBe(false);
-			expect(coordinator.getProvider()).toBe(explicitProvider);
-		});
-
-		it('should use default InProcessEventProvider when no factory is injected', async () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			expect(coordinator.isConfigured()).toBe(true);
-			expect(coordinator.getProvider()).not.toBeNull();
-
-			await coordinator.start();
-			await coordinator.stop();
-		});
-	});
-
-	describe('Provider Lifecycle Error Handling', () => {
-		it('should propagate provider.start() errors', async () => {
-			// Create mock provider directly without helper to ensure override works
-			const mockProvider: EventProvider = {
-				start: async () => {
-					throw new Error('Provider start failed');
-				},
-				stop: async () => {},
-				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {},
-				cancel: async () => false
-			};
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			await expect(coordinator.start()).rejects.toThrow('Provider start failed');
-		});
-
-		it('should propagate provider.stop() errors', async () => {
-			let started = false;
-			// Create mock provider directly without helper to ensure override works
-			const mockProvider: EventProvider = {
-				start: async () => {
-					started = true;
-				},
-				stop: async () => {
-					throw new Error('Provider stop failed');
-				},
-				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {},
-				cancel: async () => false
-			};
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-			expect(started).toBe(true);
-
-			await expect(coordinator.stop()).rejects.toThrow('Provider stop failed');
-		});
-
-		it('should handle start() gracefully when no event system is configured', async () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			// Should not throw - just no-op
-			await coordinator.start();
-			expect(coordinator.isConfigured()).toBe(false);
-		});
-
-		it('should handle stop() gracefully when no event system is configured', async () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			// Should not throw - just no-op
-			await coordinator.stop();
-			expect(coordinator.isConfigured()).toBe(false);
-		});
-	});
-
-	describe('Event Definition Registration', () => {
-		it('should register event definition', () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			coordinator.registerEventDefinition(TestEvent);
-
-			expect(coordinator.getEventDefinition('test.event')).toBeDefined();
-			expect(coordinator.getEventDefinition('test.event')?.name).toBe('test.event');
-		});
-
-		it('should throw on duplicate event registration', () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			coordinator.registerEventDefinition(TestEvent);
-
-			expect(() => {
-				coordinator.registerEventDefinition(TestEvent);
-			}).toThrow(/duplicate/i);
-		});
-
-		it('should return undefined for unregistered event', () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			expect(coordinator.getEventDefinition('non-existent')).toBeUndefined();
-		});
-	});
-
-	describe('Consumer Registration', () => {
-		it('should instantiate consumer via DI during registerConsumers()', () => {
-			const coordinator = new EventCoordinator(container, logger);
-
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			expect(coordinator.isConfigured()).toBe(true);
-		});
-
-		it('should return registered event names', () => {
-			const SecondEvent = Event.define({
-				name: 'second.event',
-				data: Type.Object({ id: Type.Number() }),
-				result: Type.Void()
-			});
-
-			const coordinator = new EventCoordinator(container, logger);
-
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.registerEventDefinition(SecondEvent);
-
-			const names = coordinator.getRegisteredEventNames();
-			expect(names).toContain('test.event');
-			expect(names).toContain('second.event');
-			expect(names).toHaveLength(2);
-		});
-	});
-
-	describe('Worker Registration (CRITICAL - Subscribe Calls)', () => {
-		// CRITICAL INVARIANT: Emitter-only apps must NOT call subscribe()
-		// If BullMQ registers a worker for an app with no consumer, jobs will
-		// be sent to that instance and silently fail/timeout since no handler exists.
-
-		it('should NOT call subscribe for definition-only registration (emitter-only app)', async () => {
-			let subscribeCount = 0;
-			const subscribedEvents: string[] = [];
-
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					subscribeCount++;
-					subscribedEvents.push(eventName);
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-
-			// Register ONLY the event definition - NO consumer
-			// This simulates an emitter-only app that just publishes events
-			coordinator.registerEventDefinition(TestEvent);
-
-			// Call registerConsumers even though we have no consumers
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// CRITICAL: subscribe should NOT have been called
-			// An emitter-only app should NOT register as a worker
-			expect(subscribeCount).toBe(0);
-			expect(subscribedEvents).toEqual([]);
-
-			await coordinator.stop();
-		});
-
-		it('should call subscribe ONLY for events with registered consumers', async () => {
-			let subscribeCount = 0;
-			const subscribedEvents: string[] = [];
-
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					subscribeCount++;
-					subscribedEvents.push(eventName);
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			// Define a second event that will have a consumer
-			const ConsumerEvent = Event.define({
-				name: 'consumer.event',
-				data: Type.Object({ data: Type.String() }),
-				result: Type.Void()
-			});
-
-			class ConsumerEventHandler implements IEventConsumer<(typeof ConsumerEvent)['_data'], void> {
-				onEvent = async (_ctx: EventContext<(typeof ConsumerEvent)['_data']>) => {};
-			}
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-
-			// Register TestEvent definition ONLY (emitter-only for this event)
-			coordinator.registerEventDefinition(TestEvent);
-
-			// Register ConsumerEvent WITH a consumer (worker for this event)
-			coordinator.registerEventDefinition(ConsumerEvent);
-			coordinator.addEventConsumer(ConsumerEvent, ConsumerEventHandler, []);
-
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// subscribe should be called ONLY for ConsumerEvent
-			expect(subscribeCount).toBe(1);
-			expect(subscribedEvents).toEqual(['consumer.event']);
-			// TestEvent should NOT appear - it's emitter-only
-			expect(subscribedEvents).not.toContain('test.event');
-
-			await coordinator.stop();
-		});
-
-		it('should allow emitting events without being subscribed (emitter-only pattern)', async () => {
-			let subscribeCount = 0;
-			const emittedEvents: Array<{ event: string; payload: unknown }> = [];
-
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					emittedEvents.push({ event: eventName, payload });
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					subscribeCount++;
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-
-			// Register definition only - emitter-only app
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// Emit event even though we're not subscribed
-			const provider = coordinator.getProvider();
-			provider!.emit('test.event', { message: 'hello from emitter' });
-
-			// Verify we emitted but didn't subscribe
-			expect(emittedEvents).toHaveLength(1);
-			expect(emittedEvents[0]).toEqual({
-				event: 'test.event',
-				payload: { message: 'hello from emitter' }
-			});
-			expect(subscribeCount).toBe(0);
-
-			await coordinator.stop();
-		});
-	});
-
-	describe('TTL Configuration Bridge', () => {
-		it('should call configureEvent for TTL events', () => {
-			const configuredEvents: Array<{ name: string; config: { ttl?: number } }> = [];
-
-			const mockProvider: EventProvider & { configureEvent: (name: string, config: { ttl?: number }) => void } = {
-				start: async () => {},
-				stop: async () => {},
-				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {},
-				cancel: async () => false,
-				configureEvent: (name, config) => {
-					configuredEvents.push({ name, config });
-				}
-			};
-
-			const TtlEvent = Event.define({
-				name: 'ttl.event',
-				data: Type.Object({ v: Type.Number() }),
-				result: Type.Void(),
-				ttl: 120_000
-			});
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider as EventProvider);
-			coordinator.setProvider(mockProvider as EventProvider);
-			coordinator.registerEventDefinition(TtlEvent);
-			coordinator.registerConsumers();
-
-			expect(configuredEvents).toHaveLength(1);
-			expect(configuredEvents[0]).toEqual({ name: 'ttl.event', config: { ttl: 120_000 } });
-		});
-
-		it('should skip configureEvent for non-TTL events', () => {
-			const configuredEvents: Array<{ name: string; config: { ttl?: number } }> = [];
-
-			const mockProvider: EventProvider & { configureEvent: (name: string, config: { ttl?: number }) => void } = {
-				start: async () => {},
-				stop: async () => {},
-				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {},
-				cancel: async () => false,
-				configureEvent: (name, config) => {
-					configuredEvents.push({ name, config });
-				}
-			};
-
-			const NoTtlEvent = Event.define({
-				name: 'no.ttl',
-				data: Type.Object({ id: Type.String() }),
-				result: Type.Void()
-			});
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider as EventProvider);
-			coordinator.setProvider(mockProvider as EventProvider);
-			coordinator.registerEventDefinition(NoTtlEvent);
-			coordinator.registerConsumers();
-
-			expect(configuredEvents).toHaveLength(0);
-		});
-
-		it('should work when provider lacks configureEvent', () => {
-			const mockProvider = createMockProvider();
-
-			const TtlEvent = Event.define({
-				name: 'ttl.event',
-				data: Type.Object({ v: Type.Number() }),
-				result: Type.Void(),
-				ttl: 60_000
-			});
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
-			coordinator.setProvider(mockProvider);
-			coordinator.registerEventDefinition(TtlEvent);
-
-			// Should not throw even though provider has no configureEvent
-			expect(() => coordinator.registerConsumers()).not.toThrow();
-		});
-	});
-
-	describe('Consumer-less Event Warning', () => {
-		it('should log warning for consumer-less events when provider has active consumers (mixed mode)', async () => {
-			const warnSpy = mock((..._args: unknown[]) => {});
-			const spyLogger = new Logger('test');
-			spyLogger.warn = warnSpy as any;
-
-			const mockProvider = createMockProvider();
-
-			const EmitterOnlyEvent = Event.define({
-				name: 'emitter.only',
-				data: Type.Object({ id: Type.String() }),
-				result: Type.Void()
-			});
-
-			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
-			coordinator.setProvider(mockProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerEventDefinition(EmitterOnlyEvent);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			expect(warnSpy).toHaveBeenCalled();
-			const warnMessage = String(warnSpy.mock.calls[0]?.[0] ?? '');
-			expect(warnMessage).toContain('emitter.only');
-			expect(warnMessage).toContain('without consumers');
-
-			await coordinator.stop();
-		});
-
-		it('should not warn for emitter-only provider with zero consumers', async () => {
-			const warnSpy = mock((..._args: unknown[]) => {});
-			const spyLogger = new Logger('test');
-			spyLogger.warn = warnSpy as any;
-
-			const mockProvider = createMockProvider();
-
-			const EmitterOnlyEvent = Event.define({
-				name: 'emitter.only',
-				data: Type.Object({ id: Type.String() }),
-				result: Type.Void()
-			});
-
-			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
-			coordinator.setProvider(mockProvider);
-			coordinator.registerEventDefinition(EmitterOnlyEvent);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
-				String(call[0] ?? '').includes('without consumers')
-			);
-			expect(warnCalls).toHaveLength(0);
-
-			await coordinator.stop();
-		});
-
-		it('should not warn when all events have consumers', async () => {
-			const warnSpy = mock((..._args: unknown[]) => {});
-			const spyLogger = new Logger('test');
-			spyLogger.warn = warnSpy as any;
-
-			const mockProvider = createMockProvider();
-
-			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
-			coordinator.setProvider(mockProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// warn should not have been called for consumer-less events
-			const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
-				String(call[0] ?? '').includes('without consumers')
-			);
-			expect(warnCalls).toHaveLength(0);
-
-			await coordinator.stop();
-		});
-	});
-
-	describe('Mock Provider for Testing', () => {
-		it('should allow tracking emit calls with mock provider', async () => {
-			const emittedEvents: Array<{ event: string; payload: unknown }> = [];
-			let subscribeCount = 0;
-
-			// Create a spy provider that wraps InProcessEventProvider
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					emittedEvents.push({ event: eventName, payload });
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					subscribeCount++;
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			const UserCreatedEvent = Event.define({
-				name: 'user.created',
-				data: Type.Object({ userId: Type.Number() }),
-				result: Type.Void()
-			});
-
-			let receivedPayload: unknown = null;
-
-			class UserCreatedConsumer implements IEventConsumer<(typeof UserCreatedEvent)['_data'], void> {
-				onEvent = async (ctx: EventContext<(typeof UserCreatedEvent)['_data']>) => {
-					receivedPayload = ctx.data;
-				};
-			}
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-
-			coordinator.registerEventDefinition(UserCreatedEvent);
-			coordinator.addEventConsumer(UserCreatedEvent, UserCreatedConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			const provider = coordinator.getProvider();
-			provider!.emit('user.created', { userId: 123 });
-
-			// Wait for async handler to complete
-			await new Promise((resolve) => setTimeout(resolve, 10));
-
-			// Verify spy captured the event
-			expect(emittedEvents).toHaveLength(1);
-			expect(emittedEvents[0]).toEqual({
-				event: 'user.created',
-				payload: { userId: 123 }
-			});
-
-			// Verify subscription was registered
-			expect(subscribeCount).toBe(1);
-
-			// Verify handler received payload
-			expect(receivedPayload).toEqual({ userId: 123 });
-
-			await coordinator.stop();
-		});
-	});
-
-	describe('Validation Error Logging', () => {
-		it('should log error when payload validation fails', async () => {
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const errorSpy = mock((..._args: unknown[]) => {});
-			const spyLogger = new Logger('test');
-			spyLogger.error = errorSpy as any;
-
-			const StrictEvent = Event.define({
-				name: 'strict.event',
-				data: Type.Object({ required: Type.String() }),
-				result: Type.Object({ ok: Type.Boolean() })
-			});
-
-			class StrictConsumer implements IEventConsumer<(typeof StrictEvent)['_data'], (typeof StrictEvent)['_result']> {
-				onEvent = async () => ({ ok: true });
-			}
-
-			const coordinator = new EventCoordinator(container, spyLogger, () => realProvider);
-			coordinator.registerEventDefinition(StrictEvent);
-			coordinator.addEventConsumer(StrictEvent, StrictConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// Emit with invalid payload (missing required field)
-			const provider = coordinator.getProvider()!;
-			try {
-				await provider.emit('strict.event', { wrong: 'field' }).toPromise();
-			} catch {
-				// Expected to throw
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, 50));
-
-			expect(errorSpy).toHaveBeenCalled();
-			const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? '');
-			expect(errorMessage).toContain('payload validation failed');
-			expect(errorMessage).toContain('strict.event');
-
-			await coordinator.stop();
-		});
-
-		it('should log error when response validation fails', async () => {
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const errorSpy = mock((..._args: unknown[]) => {});
-			const spyLogger = new Logger('test');
-			spyLogger.error = errorSpy as any;
-
-			const ResponseEvent = Event.define({
-				name: 'response.event',
-				data: Type.Object({ input: Type.String() }),
-				result: Type.Object({ count: Type.Number() })
-			});
-
-			// Consumer returns wrong response type
-			class BadResponseConsumer implements IEventConsumer<(typeof ResponseEvent)['_data'], (typeof ResponseEvent)['_result']> {
-				onEvent = async () => ({ count: 'not-a-number' }) as any;
-			}
-
-			const coordinator = new EventCoordinator(container, spyLogger, () => realProvider);
-			coordinator.registerEventDefinition(ResponseEvent);
-			coordinator.addEventConsumer(ResponseEvent, BadResponseConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			const provider = coordinator.getProvider()!;
-			try {
-				await provider.emit('response.event', { input: 'test' }).toPromise();
-			} catch {
-				// Expected to throw
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, 50));
-
-			expect(errorSpy).toHaveBeenCalled();
-			const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? '');
-			expect(errorMessage).toContain('response validation failed');
-			expect(errorMessage).toContain('response.event');
-
-			await coordinator.stop();
-		});
-	});
-
-	describe('Event Chaining (ctx.emit)', () => {
-		it('should allow emitting chained events from within a consumer', async () => {
-			const emittedEvents: Array<{ event: string; payload: unknown; meta?: unknown; options?: unknown }> = [];
-
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					emittedEvents.push({ event: eventName, payload, meta, options });
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			// Primary event that will emit a chained event
-			const PrimaryEvent = Event.define({
-				name: 'primary.event',
-				data: Type.Object({ userId: Type.Number() }),
-				result: Type.Void()
-			});
-
-			// Secondary event to be emitted from within the primary consumer
-			const SecondaryEvent = Event.define({
-				name: 'secondary.event',
-				data: Type.Object({ message: Type.String() }),
-				result: Type.Void()
-			});
-
-			class PrimaryEventConsumer implements IEventConsumer<(typeof PrimaryEvent)['_data'], void> {
-				onEvent = async (ctx: EventContext<(typeof PrimaryEvent)['_data']>) => {
-					// Emit chained event using ctx.emit (fire-and-forget)
-					ctx.emit('secondary.event', { message: `User ${ctx.data.userId} processed` });
-				};
-			}
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-
-			coordinator.registerEventDefinition(PrimaryEvent);
-			coordinator.registerEventDefinition(SecondaryEvent);
-			coordinator.addEventConsumer(PrimaryEvent, PrimaryEventConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// Emit the primary event
-			const provider = coordinator.getProvider();
-			provider!.emit('primary.event', { userId: 123 }, { correlationId: 'corr-123' });
-
-			// Wait for async handlers to complete
-			await new Promise((resolve) => setTimeout(resolve, 50));
-
-			// Verify both events were emitted
-			expect(emittedEvents).toHaveLength(2);
-
-			const primaryEvent = emittedEvents[0]!;
-			const secondaryEvent = emittedEvents[1]!;
-
-			// Primary event
-			expect(primaryEvent.event).toBe('primary.event');
-			expect(primaryEvent.payload).toEqual({ userId: 123 });
-
-			// Chained secondary event
-			expect(secondaryEvent.event).toBe('secondary.event');
-			expect(secondaryEvent.payload).toEqual({ message: 'User 123 processed' });
-
-			// Verify causation chain: secondary event's causationId should be the primary event's ID
-			const secondaryMeta = secondaryEvent.meta as { correlationId?: string; causationId?: string };
-			expect(secondaryMeta.correlationId).toBe('corr-123'); // Same correlation for tracing
-			// causationId should be set (it's the primary event's eventId)
-			expect(secondaryMeta.causationId).toBeDefined();
-
-			await coordinator.stop();
-		});
-
-		it('should support waiting for chained event result', async () => {
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			// Event that returns a result
-			const ProcessEvent = Event.define({
-				name: 'process.event',
-				data: Type.Object({ input: Type.String() }),
-				result: Type.Object({ output: Type.String() })
-			});
-
-			// Chained event that also returns a result
-			const ValidateEvent = Event.define({
-				name: 'validate.event',
-				data: Type.Object({ value: Type.String() }),
-				result: Type.Object({ valid: Type.Boolean() })
-			});
-
-			let chainedResult: { valid: boolean } | null = null;
-
-			class ProcessConsumer implements IEventConsumer<
-				(typeof ProcessEvent)['_data'],
-				(typeof ProcessEvent)['_result']
-			> {
-				onEvent = async (ctx: EventContext<(typeof ProcessEvent)['_data']>) => {
-					// Emit chained event and wait for result
-					const handle = ctx.emit<{ valid: boolean }>('validate.event', { value: ctx.data.input });
-					chainedResult = await handle.wait();
-					return { output: `Processed: ${ctx.data.input}, valid: ${chainedResult.valid}` };
-				};
-			}
-
-			class ValidateConsumer implements IEventConsumer<
-				(typeof ValidateEvent)['_data'],
-				(typeof ValidateEvent)['_result']
-			> {
-				onEvent = async (ctx: EventContext<(typeof ValidateEvent)['_data']>) => {
-					return { valid: ctx.data.value.length > 0 };
-				};
-			}
-
-			const coordinator = new EventCoordinator(container, logger, () => realProvider);
-
-			coordinator.registerEventDefinition(ProcessEvent);
-			coordinator.registerEventDefinition(ValidateEvent);
-			coordinator.addEventConsumer(ProcessEvent, ProcessConsumer, []);
-			coordinator.addEventConsumer(ValidateEvent, ValidateConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			// Emit the process event
-			const provider = coordinator.getProvider();
-			const result = await provider!.emit<{ output: string }>('process.event', { input: 'test' });
-
-			// Verify the chain executed correctly
-			expect(chainedResult).not.toBeNull();
-			expect(chainedResult!.valid).toBe(true);
-			expect(result).toEqual({ output: 'Processed: test, valid: true' });
-
-			await coordinator.stop();
-		});
-
-		it('should auto-derive idempotencyKey from chained event definition key function', async () => {
-			const emitOptions: Array<{ event: string; options?: unknown }> = [];
-
-			const { InProcessEventProvider } = await import('@orijs/events');
-			const realProvider = new InProcessEventProvider();
-
-			const spyProvider: EventProvider = {
-				start: () => realProvider.start(),
-				stop: () => realProvider.stop(),
-				emit: (eventName, payload, meta, options) => {
-					emitOptions.push({ event: eventName, options });
-					return realProvider.emit(eventName, payload, meta ?? {}, options);
-				},
-				subscribe: (eventName, handler) => {
-					return realProvider.subscribe(eventName, handler);
-				},
-				cancel: (eventName, key) => realProvider.cancel(eventName, key)
-			};
-
-			// Primary event
-			const TriggerEvent = Event.define({
-				name: 'trigger.event',
-				data: Type.Object({ alertId: Type.String() }),
-				result: Type.Void()
-			});
-
-			// Chained event with key function
-			const DelayedEvent = Event.define({
-				name: 'delayed.event',
-				data: Type.Object({ alertId: Type.String() }),
-				result: Type.Void(),
-				key: (data: { alertId: string }) => `esc-${data.alertId}`
-			});
-
-			class TriggerConsumer implements IEventConsumer<(typeof TriggerEvent)['_data'], void> {
-				onEvent = async (ctx: EventContext<(typeof TriggerEvent)['_data']>) => {
-					// Emit chained event — key should be auto-derived from DelayedEvent.key
-					ctx.emit('delayed.event', { alertId: ctx.data.alertId }, { delay: 5000, enqueueOnly: true });
-				};
-			}
-
-			const coordinator = new EventCoordinator(container, logger, () => spyProvider);
-			coordinator.registerEventDefinition(TriggerEvent);
-			coordinator.registerEventDefinition(DelayedEvent);
-			coordinator.addEventConsumer(TriggerEvent, TriggerConsumer, []);
-			coordinator.registerConsumers();
-
-			await coordinator.start();
-
-			const provider = coordinator.getProvider();
-			provider!.emit('trigger.event', { alertId: 'alert-42' }, { correlationId: 'corr-1' });
-
-			await new Promise((resolve) => setTimeout(resolve, 50));
-
-			// The chained emit should have auto-derived the idempotency key
-			const chainedEmit = emitOptions.find((e) => e.event === 'delayed.event');
-			expect(chainedEmit).toBeDefined();
-			const opts = chainedEmit!.options as {
-				delay?: number;
-				idempotencyKey?: string;
-				expectsResult?: boolean;
-			};
-			expect(opts.delay).toBe(5000);
-			expect(opts.idempotencyKey).toBe('esc-alert-42');
-			expect(opts.expectsResult).toBe(false);
-
-			await coordinator.stop();
-		});
-	});
-
-	describe('cancel', () => {
-		it('should delegate cancel to the provider', async () => {
-			let cancelledEvent = '';
-			let cancelledKey = '';
-
-			const mockProvider: EventProvider = {
-				start: async () => {},
-				stop: async () => {},
-				emit: () => ({}) as EventSub<any>,
-				subscribe: () => {},
-				cancel: async (eventName, key) => {
-					cancelledEvent = eventName;
-					cancelledKey = key;
-					return true;
-				}
-			};
-
-			const coordinator = new EventCoordinator(container, logger, () => mockProvider);
-			coordinator.registerEventDefinition(TestEvent);
-			coordinator.registerConsumers();
-
-			const result = await coordinator.cancel('test.event', 'my-key');
-
-			expect(result).toBe(true);
-			expect(cancelledEvent).toBe('test.event');
-			expect(cancelledKey).toBe('my-key');
-		});
-
-		it('should return false when no provider is configured', async () => {
-			const coordinator = new EventCoordinator(container, logger);
-			// Don't register anything — no provider will be created
-
-			const result = await coordinator.cancel('test.event', 'my-key');
-			expect(result).toBe(false);
-		});
-	});
+import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { EventCoordinator } from "../src/event-coordinator.ts";
+import { Container } from "../src/container.ts";
+import { Logger } from "@orijs/logging";
+import { Event } from "../src/types/event-definition.ts";
+import { Type } from "@orijs/validation";
+import type { IEventConsumer, EventContext } from "../src/types/consumer.ts";
+import type {
+  EventProvider,
+  EventSubscription as EventSub,
+} from "@orijs/events";
+
+describe("EventCoordinator", () => {
+  let container: Container;
+  let logger: Logger;
+
+  beforeEach(() => {
+    container = new Container();
+    logger = new Logger("test");
+  });
+
+  // Test event definition
+  const TestEvent = Event.define({
+    name: "test.event",
+    data: Type.Object({ message: Type.String() }),
+    result: Type.Object({ received: Type.Boolean() }),
+  });
+
+  // Test consumer class
+  class TestEventConsumer implements IEventConsumer<
+    (typeof TestEvent)["_data"],
+    (typeof TestEvent)["_result"]
+  > {
+    onEvent = async (_ctx: EventContext<(typeof TestEvent)["_data"]>) => {
+      return { received: true };
+    };
+  }
+
+  // Helper to create a minimal mock provider
+  const createMockProvider = (
+    _overrides: Partial<EventProvider> = {},
+  ): EventProvider =>
+    ({
+      start: async () => {},
+      stop: async () => {},
+      emit: () => ({}) as EventSub<any>,
+      subscribe: () => {},
+      cancel: async () => false,
+    }) as unknown as EventProvider;
+
+  describe("Provider Factory Injection", () => {
+    it("should use injected provider factory when registering consumers", () => {
+      let factoryCalled = false;
+      const mockProvider = createMockProvider();
+
+      const customFactory = () => {
+        factoryCalled = true;
+        return mockProvider;
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        customFactory,
+      );
+
+      // Register an event definition with consumer
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+
+      // Factory is called during registerConsumers
+      coordinator.registerConsumers();
+
+      expect(factoryCalled).toBe(true);
+    });
+
+    it("should NOT use factory when explicit provider is set", () => {
+      let factoryCalled = false;
+      const explicitProvider = createMockProvider();
+
+      const customFactory = () => {
+        factoryCalled = true;
+        return createMockProvider();
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        customFactory,
+      );
+
+      // Set provider explicitly BEFORE registering consumers
+      coordinator.setProvider(explicitProvider);
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      expect(factoryCalled).toBe(false);
+      expect(coordinator.getProvider()).toBe(explicitProvider);
+    });
+
+    it("should use default InProcessEventProvider when no factory is injected", async () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      expect(coordinator.isConfigured()).toBe(true);
+      expect(coordinator.getProvider()).not.toBeNull();
+
+      await coordinator.start();
+      await coordinator.stop();
+    });
+  });
+
+  describe("Provider Lifecycle Error Handling", () => {
+    it("should propagate provider.start() errors", async () => {
+      // Create mock provider directly without helper to ensure override works
+      const mockProvider: EventProvider = {
+        start: async () => {
+          throw new Error("Provider start failed");
+        },
+        stop: async () => {},
+        emit: () => ({}) as EventSub<any>,
+        subscribe: () => {},
+        cancel: async () => false,
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider,
+      );
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      await expect(coordinator.start()).rejects.toThrow(
+        "Provider start failed",
+      );
+    });
+
+    it("should propagate provider.stop() errors", async () => {
+      let started = false;
+      // Create mock provider directly without helper to ensure override works
+      const mockProvider: EventProvider = {
+        start: async () => {
+          started = true;
+        },
+        stop: async () => {
+          throw new Error("Provider stop failed");
+        },
+        emit: () => ({}) as EventSub<any>,
+        subscribe: () => {},
+        cancel: async () => false,
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider,
+      );
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+      expect(started).toBe(true);
+
+      await expect(coordinator.stop()).rejects.toThrow("Provider stop failed");
+    });
+
+    it("should handle start() gracefully when no event system is configured", async () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      // Should not throw - just no-op
+      await coordinator.start();
+      expect(coordinator.isConfigured()).toBe(false);
+    });
+
+    it("should handle stop() gracefully when no event system is configured", async () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      // Should not throw - just no-op
+      await coordinator.stop();
+      expect(coordinator.isConfigured()).toBe(false);
+    });
+  });
+
+  describe("Event Definition Registration", () => {
+    it("should register event definition", () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      coordinator.registerEventDefinition(TestEvent);
+
+      expect(coordinator.getEventDefinition("test.event")).toBeDefined();
+      expect(coordinator.getEventDefinition("test.event")?.name).toBe(
+        "test.event",
+      );
+    });
+
+    it("should throw on duplicate event registration", () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      coordinator.registerEventDefinition(TestEvent);
+
+      expect(() => {
+        coordinator.registerEventDefinition(TestEvent);
+      }).toThrow(/duplicate/i);
+    });
+
+    it("should return undefined for unregistered event", () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      expect(coordinator.getEventDefinition("non-existent")).toBeUndefined();
+    });
+  });
+
+  describe("Consumer Registration", () => {
+    it("should instantiate consumer via DI during registerConsumers()", () => {
+      const coordinator = new EventCoordinator(container, logger);
+
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      expect(coordinator.isConfigured()).toBe(true);
+    });
+
+    it("should return registered event names", () => {
+      const SecondEvent = Event.define({
+        name: "second.event",
+        data: Type.Object({ id: Type.Number() }),
+        result: Type.Void(),
+      });
+
+      const coordinator = new EventCoordinator(container, logger);
+
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.registerEventDefinition(SecondEvent);
+
+      const names = coordinator.getRegisteredEventNames();
+      expect(names).toContain("test.event");
+      expect(names).toContain("second.event");
+      expect(names).toHaveLength(2);
+    });
+  });
+
+  describe("Worker Registration (CRITICAL - Subscribe Calls)", () => {
+    // CRITICAL INVARIANT: Emitter-only apps must NOT call subscribe()
+    // If BullMQ registers a worker for an app with no consumer, jobs will
+    // be sent to that instance and silently fail/timeout since no handler exists.
+
+    it("should NOT call subscribe for definition-only registration (emitter-only app)", async () => {
+      let subscribeCount = 0;
+      const subscribedEvents: string[] = [];
+
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          subscribeCount++;
+          subscribedEvents.push(eventName);
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+
+      // Register ONLY the event definition - NO consumer
+      // This simulates an emitter-only app that just publishes events
+      coordinator.registerEventDefinition(TestEvent);
+
+      // Call registerConsumers even though we have no consumers
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // CRITICAL: subscribe should NOT have been called
+      // An emitter-only app should NOT register as a worker
+      expect(subscribeCount).toBe(0);
+      expect(subscribedEvents).toEqual([]);
+
+      await coordinator.stop();
+    });
+
+    it("should call subscribe ONLY for events with registered consumers", async () => {
+      let subscribeCount = 0;
+      const subscribedEvents: string[] = [];
+
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          subscribeCount++;
+          subscribedEvents.push(eventName);
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      // Define a second event that will have a consumer
+      const ConsumerEvent = Event.define({
+        name: "consumer.event",
+        data: Type.Object({ data: Type.String() }),
+        result: Type.Void(),
+      });
+
+      class ConsumerEventHandler implements IEventConsumer<
+        (typeof ConsumerEvent)["_data"],
+        void
+      > {
+        onEvent = async (
+          _ctx: EventContext<(typeof ConsumerEvent)["_data"]>,
+        ) => {};
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+
+      // Register TestEvent definition ONLY (emitter-only for this event)
+      coordinator.registerEventDefinition(TestEvent);
+
+      // Register ConsumerEvent WITH a consumer (worker for this event)
+      coordinator.registerEventDefinition(ConsumerEvent);
+      coordinator.addEventConsumer(ConsumerEvent, ConsumerEventHandler, []);
+
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // subscribe should be called ONLY for ConsumerEvent
+      expect(subscribeCount).toBe(1);
+      expect(subscribedEvents).toEqual(["consumer.event"]);
+      // TestEvent should NOT appear - it's emitter-only
+      expect(subscribedEvents).not.toContain("test.event");
+
+      await coordinator.stop();
+    });
+
+    it("should allow emitting events without being subscribed (emitter-only pattern)", async () => {
+      let subscribeCount = 0;
+      const emittedEvents: Array<{ event: string; payload: unknown }> = [];
+
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          emittedEvents.push({ event: eventName, payload });
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          subscribeCount++;
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+
+      // Register definition only - emitter-only app
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // Emit event even though we're not subscribed
+      const provider = coordinator.getProvider();
+      provider!.emit("test.event", { message: "hello from emitter" });
+
+      // Verify we emitted but didn't subscribe
+      expect(emittedEvents).toHaveLength(1);
+      expect(emittedEvents[0]).toEqual({
+        event: "test.event",
+        payload: { message: "hello from emitter" },
+      });
+      expect(subscribeCount).toBe(0);
+
+      await coordinator.stop();
+    });
+  });
+
+  describe("TTL Configuration Bridge", () => {
+    it("should call configureEvent for TTL events", () => {
+      const configuredEvents: Array<{
+        name: string;
+        config: { ttl?: number };
+      }> = [];
+
+      const mockProvider: EventProvider & {
+        configureEvent: (name: string, config: { ttl?: number }) => void;
+      } = {
+        start: async () => {},
+        stop: async () => {},
+        emit: () => ({}) as EventSub<any>,
+        subscribe: () => {},
+        cancel: async () => false,
+        configureEvent: (name, config) => {
+          configuredEvents.push({ name, config });
+        },
+      };
+
+      const TtlEvent = Event.define({
+        name: "ttl.event",
+        data: Type.Object({ v: Type.Number() }),
+        result: Type.Void(),
+        ttl: 120_000,
+      });
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider as EventProvider,
+      );
+      coordinator.setProvider(mockProvider as EventProvider);
+      coordinator.registerEventDefinition(TtlEvent);
+      coordinator.registerConsumers();
+
+      expect(configuredEvents).toHaveLength(1);
+      expect(configuredEvents[0]).toEqual({
+        name: "ttl.event",
+        config: { ttl: 120_000 },
+      });
+    });
+
+    it("should skip configureEvent for non-TTL events", () => {
+      const configuredEvents: Array<{
+        name: string;
+        config: { ttl?: number };
+      }> = [];
+
+      const mockProvider: EventProvider & {
+        configureEvent: (name: string, config: { ttl?: number }) => void;
+      } = {
+        start: async () => {},
+        stop: async () => {},
+        emit: () => ({}) as EventSub<any>,
+        subscribe: () => {},
+        cancel: async () => false,
+        configureEvent: (name, config) => {
+          configuredEvents.push({ name, config });
+        },
+      };
+
+      const NoTtlEvent = Event.define({
+        name: "no.ttl",
+        data: Type.Object({ id: Type.String() }),
+        result: Type.Void(),
+      });
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider as EventProvider,
+      );
+      coordinator.setProvider(mockProvider as EventProvider);
+      coordinator.registerEventDefinition(NoTtlEvent);
+      coordinator.registerConsumers();
+
+      expect(configuredEvents).toHaveLength(0);
+    });
+
+    it("should work when provider lacks configureEvent", () => {
+      const mockProvider = createMockProvider();
+
+      const TtlEvent = Event.define({
+        name: "ttl.event",
+        data: Type.Object({ v: Type.Number() }),
+        result: Type.Void(),
+        ttl: 60_000,
+      });
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider,
+      );
+      coordinator.setProvider(mockProvider);
+      coordinator.registerEventDefinition(TtlEvent);
+
+      // Should not throw even though provider has no configureEvent
+      expect(() => coordinator.registerConsumers()).not.toThrow();
+    });
+  });
+
+  describe("Consumer-less Event Warning", () => {
+    it("should log warning for consumer-less events when provider has active consumers (mixed mode)", async () => {
+      const warnSpy = mock((..._args: unknown[]) => {});
+      const spyLogger = new Logger("test");
+      spyLogger.warn = warnSpy as any;
+
+      const mockProvider = createMockProvider();
+
+      const EmitterOnlyEvent = Event.define({
+        name: "emitter.only",
+        data: Type.Object({ id: Type.String() }),
+        result: Type.Void(),
+      });
+
+      const coordinator = new EventCoordinator(
+        container,
+        spyLogger,
+        () => mockProvider,
+      );
+      coordinator.setProvider(mockProvider);
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerEventDefinition(EmitterOnlyEvent);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      expect(warnSpy).toHaveBeenCalled();
+      const warnMessage = String(warnSpy.mock.calls[0]?.[0] ?? "");
+      expect(warnMessage).toContain("emitter.only");
+      expect(warnMessage).toContain("without consumers");
+
+      await coordinator.stop();
+    });
+
+    it("should not warn for emitter-only provider with zero consumers", async () => {
+      const warnSpy = mock((..._args: unknown[]) => {});
+      const spyLogger = new Logger("test");
+      spyLogger.warn = warnSpy as any;
+
+      const mockProvider = createMockProvider();
+
+      const EmitterOnlyEvent = Event.define({
+        name: "emitter.only",
+        data: Type.Object({ id: Type.String() }),
+        result: Type.Void(),
+      });
+
+      const coordinator = new EventCoordinator(
+        container,
+        spyLogger,
+        () => mockProvider,
+      );
+      coordinator.setProvider(mockProvider);
+      coordinator.registerEventDefinition(EmitterOnlyEvent);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
+        String(call[0] ?? "").includes("without consumers"),
+      );
+      expect(warnCalls).toHaveLength(0);
+
+      await coordinator.stop();
+    });
+
+    it("should not warn when all events have consumers", async () => {
+      const warnSpy = mock((..._args: unknown[]) => {});
+      const spyLogger = new Logger("test");
+      spyLogger.warn = warnSpy as any;
+
+      const mockProvider = createMockProvider();
+
+      const coordinator = new EventCoordinator(
+        container,
+        spyLogger,
+        () => mockProvider,
+      );
+      coordinator.setProvider(mockProvider);
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // warn should not have been called for consumer-less events
+      const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
+        String(call[0] ?? "").includes("without consumers"),
+      );
+      expect(warnCalls).toHaveLength(0);
+
+      await coordinator.stop();
+    });
+  });
+
+  describe("Mock Provider for Testing", () => {
+    it("should allow tracking emit calls with mock provider", async () => {
+      const emittedEvents: Array<{ event: string; payload: unknown }> = [];
+      let subscribeCount = 0;
+
+      // Create a spy provider that wraps InProcessEventProvider
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          emittedEvents.push({ event: eventName, payload });
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          subscribeCount++;
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      const UserCreatedEvent = Event.define({
+        name: "user.created",
+        data: Type.Object({ userId: Type.Number() }),
+        result: Type.Void(),
+      });
+
+      let receivedPayload: unknown = null;
+
+      class UserCreatedConsumer implements IEventConsumer<
+        (typeof UserCreatedEvent)["_data"],
+        void
+      > {
+        onEvent = async (
+          ctx: EventContext<(typeof UserCreatedEvent)["_data"]>,
+        ) => {
+          receivedPayload = ctx.data;
+        };
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+
+      coordinator.registerEventDefinition(UserCreatedEvent);
+      coordinator.addEventConsumer(UserCreatedEvent, UserCreatedConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      const provider = coordinator.getProvider();
+      provider!.emit("user.created", { userId: 123 });
+
+      // Wait for async handler to complete
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Verify spy captured the event
+      expect(emittedEvents).toHaveLength(1);
+      expect(emittedEvents[0]).toEqual({
+        event: "user.created",
+        payload: { userId: 123 },
+      });
+
+      // Verify subscription was registered
+      expect(subscribeCount).toBe(1);
+
+      // Verify handler received payload
+      expect(receivedPayload).toEqual({ userId: 123 });
+
+      await coordinator.stop();
+    });
+  });
+
+  describe("Validation Error Logging", () => {
+    it("should log error when payload validation fails", async () => {
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const errorSpy = mock((..._args: unknown[]) => {});
+      const spyLogger = new Logger("test");
+      spyLogger.error = errorSpy as any;
+
+      const StrictEvent = Event.define({
+        name: "strict.event",
+        data: Type.Object({ required: Type.String() }),
+        result: Type.Object({ ok: Type.Boolean() }),
+      });
+
+      class StrictConsumer implements IEventConsumer<
+        (typeof StrictEvent)["_data"],
+        (typeof StrictEvent)["_result"]
+      > {
+        onEvent = async () => ({ ok: true });
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        spyLogger,
+        () => realProvider,
+      );
+      coordinator.registerEventDefinition(StrictEvent);
+      coordinator.addEventConsumer(StrictEvent, StrictConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // Emit with invalid payload (missing required field)
+      const provider = coordinator.getProvider()!;
+      try {
+        await provider.emit("strict.event", { wrong: "field" }).toPromise();
+      } catch {
+        // Expected to throw
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(errorSpy).toHaveBeenCalled();
+      const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? "");
+      expect(errorMessage).toContain("payload validation failed");
+      expect(errorMessage).toContain("strict.event");
+
+      await coordinator.stop();
+    });
+
+    it("should log error when response validation fails", async () => {
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const errorSpy = mock((..._args: unknown[]) => {});
+      const spyLogger = new Logger("test");
+      spyLogger.error = errorSpy as any;
+
+      const ResponseEvent = Event.define({
+        name: "response.event",
+        data: Type.Object({ input: Type.String() }),
+        result: Type.Object({ count: Type.Number() }),
+      });
+
+      // Consumer returns wrong response type
+      class BadResponseConsumer implements IEventConsumer<
+        (typeof ResponseEvent)["_data"],
+        (typeof ResponseEvent)["_result"]
+      > {
+        onEvent = async () => ({ count: "not-a-number" }) as any;
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        spyLogger,
+        () => realProvider,
+      );
+      coordinator.registerEventDefinition(ResponseEvent);
+      coordinator.addEventConsumer(ResponseEvent, BadResponseConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      const provider = coordinator.getProvider()!;
+      try {
+        await provider.emit("response.event", { input: "test" }).toPromise();
+      } catch {
+        // Expected to throw
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(errorSpy).toHaveBeenCalled();
+      const errorMessage = String(errorSpy.mock.calls[0]?.[0] ?? "");
+      expect(errorMessage).toContain("response validation failed");
+      expect(errorMessage).toContain("response.event");
+
+      await coordinator.stop();
+    });
+  });
+
+  describe("Event Chaining (ctx.emit)", () => {
+    it("should allow emitting chained events from within a consumer", async () => {
+      const emittedEvents: Array<{
+        event: string;
+        payload: unknown;
+        meta?: unknown;
+        options?: unknown;
+      }> = [];
+
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          emittedEvents.push({ event: eventName, payload, meta, options });
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      // Primary event that will emit a chained event
+      const PrimaryEvent = Event.define({
+        name: "primary.event",
+        data: Type.Object({ userId: Type.Number() }),
+        result: Type.Void(),
+      });
+
+      // Secondary event to be emitted from within the primary consumer
+      const SecondaryEvent = Event.define({
+        name: "secondary.event",
+        data: Type.Object({ message: Type.String() }),
+        result: Type.Void(),
+      });
+
+      class PrimaryEventConsumer implements IEventConsumer<
+        (typeof PrimaryEvent)["_data"],
+        void
+      > {
+        onEvent = async (ctx: EventContext<(typeof PrimaryEvent)["_data"]>) => {
+          // Emit chained event using ctx.emit (fire-and-forget)
+          ctx.emit("secondary.event", {
+            message: `User ${ctx.data.userId} processed`,
+          });
+        };
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+
+      coordinator.registerEventDefinition(PrimaryEvent);
+      coordinator.registerEventDefinition(SecondaryEvent);
+      coordinator.addEventConsumer(PrimaryEvent, PrimaryEventConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // Emit the primary event
+      const provider = coordinator.getProvider();
+      provider!.emit(
+        "primary.event",
+        { userId: 123 },
+        { correlationId: "corr-123" },
+      );
+
+      // Wait for async handlers to complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify both events were emitted
+      expect(emittedEvents).toHaveLength(2);
+
+      const primaryEvent = emittedEvents[0]!;
+      const secondaryEvent = emittedEvents[1]!;
+
+      // Primary event
+      expect(primaryEvent.event).toBe("primary.event");
+      expect(primaryEvent.payload).toEqual({ userId: 123 });
+
+      // Chained secondary event
+      expect(secondaryEvent.event).toBe("secondary.event");
+      expect(secondaryEvent.payload).toEqual({ message: "User 123 processed" });
+
+      // Verify causation chain: secondary event's causationId should be the primary event's ID
+      const secondaryMeta = secondaryEvent.meta as {
+        correlationId?: string;
+        causationId?: string;
+      };
+      expect(secondaryMeta.correlationId).toBe("corr-123"); // Same correlation for tracing
+      // causationId should be set (it's the primary event's eventId)
+      expect(secondaryMeta.causationId).toBeDefined();
+
+      await coordinator.stop();
+    });
+
+    it("should support waiting for chained event result", async () => {
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      // Event that returns a result
+      const ProcessEvent = Event.define({
+        name: "process.event",
+        data: Type.Object({ input: Type.String() }),
+        result: Type.Object({ output: Type.String() }),
+      });
+
+      // Chained event that also returns a result
+      const ValidateEvent = Event.define({
+        name: "validate.event",
+        data: Type.Object({ value: Type.String() }),
+        result: Type.Object({ valid: Type.Boolean() }),
+      });
+
+      let chainedResult: { valid: boolean } | null = null;
+
+      class ProcessConsumer implements IEventConsumer<
+        (typeof ProcessEvent)["_data"],
+        (typeof ProcessEvent)["_result"]
+      > {
+        onEvent = async (ctx: EventContext<(typeof ProcessEvent)["_data"]>) => {
+          // Emit chained event and wait for result
+          const handle = ctx.emit<{ valid: boolean }>("validate.event", {
+            value: ctx.data.input,
+          });
+          chainedResult = await handle.wait();
+          return {
+            output: `Processed: ${ctx.data.input}, valid: ${chainedResult.valid}`,
+          };
+        };
+      }
+
+      class ValidateConsumer implements IEventConsumer<
+        (typeof ValidateEvent)["_data"],
+        (typeof ValidateEvent)["_result"]
+      > {
+        onEvent = async (
+          ctx: EventContext<(typeof ValidateEvent)["_data"]>,
+        ) => {
+          return { valid: ctx.data.value.length > 0 };
+        };
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => realProvider,
+      );
+
+      coordinator.registerEventDefinition(ProcessEvent);
+      coordinator.registerEventDefinition(ValidateEvent);
+      coordinator.addEventConsumer(ProcessEvent, ProcessConsumer, []);
+      coordinator.addEventConsumer(ValidateEvent, ValidateConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      // Emit the process event
+      const provider = coordinator.getProvider();
+      const result = await provider!.emit<{ output: string }>("process.event", {
+        input: "test",
+      });
+
+      // Verify the chain executed correctly
+      expect(chainedResult).not.toBeNull();
+      expect(chainedResult!.valid).toBe(true);
+      expect(result).toEqual({ output: "Processed: test, valid: true" });
+
+      await coordinator.stop();
+    });
+
+    it("should auto-derive idempotencyKey from chained event definition key function", async () => {
+      const emitOptions: Array<{ event: string; options?: unknown }> = [];
+
+      const { InProcessEventProvider } = await import("@orijs/events");
+      const realProvider = new InProcessEventProvider();
+
+      const spyProvider: EventProvider = {
+        start: () => realProvider.start(),
+        stop: () => realProvider.stop(),
+        emit: (eventName, payload, meta, options) => {
+          emitOptions.push({ event: eventName, options });
+          return realProvider.emit(eventName, payload, meta ?? {}, options);
+        },
+        subscribe: (eventName, handler) => {
+          return realProvider.subscribe(eventName, handler);
+        },
+        cancel: (eventName, key) => realProvider.cancel(eventName, key),
+      };
+
+      // Primary event
+      const TriggerEvent = Event.define({
+        name: "trigger.event",
+        data: Type.Object({ alertId: Type.String() }),
+        result: Type.Void(),
+      });
+
+      // Chained event with key function
+      const DelayedEvent = Event.define({
+        name: "delayed.event",
+        data: Type.Object({ alertId: Type.String() }),
+        result: Type.Void(),
+        key: (data: { alertId: string }) => `esc-${data.alertId}`,
+      });
+
+      class TriggerConsumer implements IEventConsumer<
+        (typeof TriggerEvent)["_data"],
+        void
+      > {
+        onEvent = async (ctx: EventContext<(typeof TriggerEvent)["_data"]>) => {
+          // Emit chained event — key should be auto-derived from DelayedEvent.key
+          ctx.emit(
+            "delayed.event",
+            { alertId: ctx.data.alertId },
+            { delay: 5000, enqueueOnly: true },
+          );
+        };
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => spyProvider,
+      );
+      coordinator.registerEventDefinition(TriggerEvent);
+      coordinator.registerEventDefinition(DelayedEvent);
+      coordinator.addEventConsumer(TriggerEvent, TriggerConsumer, []);
+      coordinator.registerConsumers();
+
+      await coordinator.start();
+
+      const provider = coordinator.getProvider();
+      provider!.emit(
+        "trigger.event",
+        { alertId: "alert-42" },
+        { correlationId: "corr-1" },
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // The chained emit should have auto-derived the idempotency key
+      const chainedEmit = emitOptions.find((e) => e.event === "delayed.event");
+      expect(chainedEmit).toBeDefined();
+      const opts = chainedEmit!.options as {
+        delay?: number;
+        idempotencyKey?: string;
+        expectsResult?: boolean;
+      };
+      expect(opts.delay).toBe(5000);
+      expect(opts.idempotencyKey).toBe("esc-alert-42");
+      expect(opts.expectsResult).toBe(false);
+
+      await coordinator.stop();
+    });
+  });
+
+  describe("cancel", () => {
+    it("should delegate cancel to the provider", async () => {
+      let cancelledEvent = "";
+      let cancelledKey = "";
+
+      const mockProvider: EventProvider = {
+        start: async () => {},
+        stop: async () => {},
+        emit: () => ({}) as EventSub<any>,
+        subscribe: () => {},
+        cancel: async (eventName, key) => {
+          cancelledEvent = eventName;
+          cancelledKey = key;
+          return true;
+        },
+      };
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => mockProvider,
+      );
+      coordinator.registerEventDefinition(TestEvent);
+      coordinator.registerConsumers();
+
+      const result = await coordinator.cancel("test.event", "my-key");
+
+      expect(result).toBe(true);
+      expect(cancelledEvent).toBe("test.event");
+      expect(cancelledKey).toBe("my-key");
+    });
+
+    it("should return false when no provider is configured", async () => {
+      const coordinator = new EventCoordinator(container, logger);
+      // Don't register anything — no provider will be created
+
+      const result = await coordinator.cancel("test.event", "my-key");
+      expect(result).toBe(false);
+    });
+  });
 });

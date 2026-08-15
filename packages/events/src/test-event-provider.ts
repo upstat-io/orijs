@@ -13,48 +13,48 @@
  */
 
 import {
-	EVENT_MESSAGE_VERSION,
-	type EventProvider,
-	type EventHandlerFn,
-	type EmitOptions,
-	type EventMessage
-} from './event-provider.types';
-import { Logger, type PropagationMeta } from '@orijs/logging';
-import type { EventSubscription } from './event-subscription';
-import { createSubscription } from './event-subscription';
-import { HandlerRegistry, type IHandlerRegistry } from './handler-registry';
+  EVENT_MESSAGE_VERSION,
+  type EventProvider,
+  type EventHandlerFn,
+  type EmitOptions,
+  type EventMessage,
+} from "./event-provider.types";
+import { Logger, type PropagationMeta } from "@orijs/logging";
+import type { EventSubscription } from "./event-subscription";
+import { createSubscription } from "./event-subscription";
+import { HandlerRegistry, type IHandlerRegistry } from "./handler-registry";
 import {
-	EventDeliveryEngine,
-	createChainedEmitFactory,
-	type IEventDelivery,
-	type EventDeliveryLogger
-} from './event-delivery';
+  EventDeliveryEngine,
+  createChainedEmitFactory,
+  type IEventDelivery,
+  type EventDeliveryLogger,
+} from "./event-delivery";
 
 /**
  * Configuration for TestEventProvider.
  */
 export interface TestEventProviderConfig {
-	/**
-	 * Default processing delay in milliseconds.
-	 * Simulates the time it takes for a queue to process an event.
-	 * @default 10
-	 */
-	readonly processingDelay?: number;
+  /**
+   * Default processing delay in milliseconds.
+   * Simulates the time it takes for a queue to process an event.
+   * @default 10
+   */
+  readonly processingDelay?: number;
 
-	/**
-	 * Custom handler registry (for testing).
-	 */
-	readonly registry?: IHandlerRegistry;
+  /**
+   * Custom handler registry (for testing).
+   */
+  readonly registry?: IHandlerRegistry;
 
-	/**
-	 * Custom delivery engine (for testing).
-	 */
-	readonly delivery?: IEventDelivery;
+  /**
+   * Custom delivery engine (for testing).
+   */
+  readonly delivery?: IEventDelivery;
 
-	/**
-	 * Custom logger (for testing).
-	 */
-	readonly log?: EventDeliveryLogger;
+  /**
+   * Custom logger (for testing).
+   */
+  readonly log?: EventDeliveryLogger;
 }
 
 /**
@@ -86,194 +86,203 @@ export interface TestEventProviderConfig {
  * ```
  */
 export class TestEventProvider implements EventProvider {
-	private readonly registry: IHandlerRegistry;
-	private readonly delivery: IEventDelivery;
-	private readonly pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
-	/** Tracks pending delayed events by key for cancellation. */
-	private readonly pendingDelayedByKey = new Map<string, ReturnType<typeof setTimeout>>();
-	private readonly processingDelay: number;
-	private started = false;
+  private readonly registry: IHandlerRegistry;
+  private readonly delivery: IEventDelivery;
+  private readonly pendingTimeouts: Set<ReturnType<typeof setTimeout>> =
+    new Set();
+  /** Tracks pending delayed events by key for cancellation. */
+  private readonly pendingDelayedByKey = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly processingDelay: number;
+  private started = false;
 
-	/**
-	 * Creates a new TestEventProvider.
-	 *
-	 * @param config - Configuration options
-	 */
-	public constructor(config: TestEventProviderConfig = {}) {
-		this.processingDelay = config.processingDelay ?? 10;
-		this.registry = config.registry ?? new HandlerRegistry();
+  /**
+   * Creates a new TestEventProvider.
+   *
+   * @param config - Configuration options
+   */
+  public constructor(config: TestEventProviderConfig = {}) {
+    this.processingDelay = config.processingDelay ?? 10;
+    this.registry = config.registry ?? new HandlerRegistry();
 
-		// Create delivery engine with injected or default components
-		const log = config.log ?? new Logger('TestEventSystem');
-		this.delivery =
-			config.delivery ??
-			new EventDeliveryEngine({
-				registry: this.registry,
-				log,
-				createChainedEmit: createChainedEmitFactory(this.emit.bind(this))
-			});
-	}
+    // Create delivery engine with injected or default components
+    const log = config.log ?? new Logger("TestEventSystem");
+    this.delivery =
+      config.delivery ??
+      new EventDeliveryEngine({
+        registry: this.registry,
+        log,
+        createChainedEmit: createChainedEmitFactory(this.emit.bind(this)),
+      });
+  }
 
-	/**
-	 * Emits an event to subscribers with timer-based async delivery.
-	 *
-	 * Unlike InProcessEventProvider, this ALWAYS uses setTimeout
-	 * to ensure async patterns are properly tested.
-	 *
-	 * @template TReturn - Expected return type from handler
-	 * @param eventName - The event name
-	 * @param payload - The event payload
-	 * @param meta - Propagation metadata
-	 * @param options - Emit options (delay, causationId)
-	 * @returns EventSubscription for tracking result/errors
-	 */
-	public emit<TReturn = void>(
-		eventName: string,
-		payload: unknown,
-		meta: PropagationMeta,
-		options?: EmitOptions
-	): EventSubscription<TReturn> {
-		const subscription = createSubscription<TReturn>();
-		const message = this.createMessage(
-			eventName,
-			payload,
-			meta,
-			subscription.correlationId,
-			options?.causationId
-		);
+  /**
+   * Emits an event to subscribers with timer-based async delivery.
+   *
+   * Unlike InProcessEventProvider, this ALWAYS uses setTimeout
+   * to ensure async patterns are properly tested.
+   *
+   * @template TReturn - Expected return type from handler
+   * @param eventName - The event name
+   * @param payload - The event payload
+   * @param meta - Propagation metadata
+   * @param options - Emit options (delay, causationId)
+   * @returns EventSubscription for tracking result/errors
+   */
+  public emit<TReturn = void>(
+    eventName: string,
+    payload: unknown,
+    meta: PropagationMeta,
+    options?: EmitOptions,
+  ): EventSubscription<TReturn> {
+    const subscription = createSubscription<TReturn>();
+    const message = this.createMessage(
+      eventName,
+      payload,
+      meta,
+      subscription.correlationId,
+      options?.causationId,
+    );
 
-		// Calculate total delay: emit delay + processing delay
-		const emitDelay = options?.delay && options.delay > 0 ? options.delay : 0;
-		const totalDelay = emitDelay + this.processingDelay;
+    // Calculate total delay: emit delay + processing delay
+    const emitDelay = options?.delay && options.delay > 0 ? options.delay : 0;
+    const totalDelay = emitDelay + this.processingDelay;
 
-		// Always use setTimeout - never synchronous
-		this.scheduleDelivery(message, subscription, totalDelay, options?.idempotencyKey);
+    // Always use setTimeout - never synchronous
+    this.scheduleDelivery(
+      message,
+      subscription,
+      totalDelay,
+      options?.idempotencyKey,
+    );
 
-		return subscription;
-	}
+    return subscription;
+  }
 
-	/**
-	 * Subscribes a handler to an event.
-	 *
-	 * @template TPayload - Expected payload type
-	 * @template TReturn - Handler return type
-	 * @param eventName - The event name to subscribe to
-	 * @param handler - Handler function
-	 */
-	public subscribe<TPayload = unknown, TReturn = void>(
-		eventName: string,
-		handler: EventHandlerFn<TPayload, TReturn>
-	): void {
-		this.registry.subscribe(eventName, handler);
-	}
+  /**
+   * Subscribes a handler to an event.
+   *
+   * @template TPayload - Expected payload type
+   * @template TReturn - Handler return type
+   * @param eventName - The event name to subscribe to
+   * @param handler - Handler function
+   */
+  public subscribe<TPayload = unknown, TReturn = void>(
+    eventName: string,
+    handler: EventHandlerFn<TPayload, TReturn>,
+  ): void {
+    this.registry.subscribe(eventName, handler);
+  }
 
-	/**
-	 * Starts the provider.
-	 */
-	public async start(): Promise<void> {
-		this.started = true;
-	}
+  /**
+   * Starts the provider.
+   */
+  public async start(): Promise<void> {
+    this.started = true;
+  }
 
-	/**
-	 * Stops the provider and clears pending timeouts.
-	 */
-	public async stop(): Promise<void> {
-		for (const timeout of this.pendingTimeouts) {
-			clearTimeout(timeout);
-		}
-		this.pendingTimeouts.clear();
-		this.pendingDelayedByKey.clear();
-		this.started = false;
-	}
+  /**
+   * Stops the provider and clears pending timeouts.
+   */
+  public async stop(): Promise<void> {
+    for (const timeout of this.pendingTimeouts) {
+      clearTimeout(timeout);
+    }
+    this.pendingTimeouts.clear();
+    this.pendingDelayedByKey.clear();
+    this.started = false;
+  }
 
-	/**
-	 * Cancels a pending delayed event by its key.
-	 *
-	 * @param _eventName - The event name (unused for test provider, key is globally unique)
-	 * @param key - The idempotency key identifying the pending event
-	 * @returns true if the event was found and cancelled, false otherwise
-	 */
-	public async cancel(_eventName: string, key: string): Promise<boolean> {
-		const timeout = this.pendingDelayedByKey.get(key);
-		if (!timeout) {
-			return false;
-		}
-		clearTimeout(timeout);
-		this.pendingDelayedByKey.delete(key);
-		this.pendingTimeouts.delete(timeout);
-		return true;
-	}
+  /**
+   * Cancels a pending delayed event by its key.
+   *
+   * @param _eventName - The event name (unused for test provider, key is globally unique)
+   * @param key - The idempotency key identifying the pending event
+   * @returns true if the event was found and cancelled, false otherwise
+   */
+  public async cancel(_eventName: string, key: string): Promise<boolean> {
+    const timeout = this.pendingDelayedByKey.get(key);
+    if (!timeout) {
+      return false;
+    }
+    clearTimeout(timeout);
+    this.pendingDelayedByKey.delete(key);
+    this.pendingTimeouts.delete(timeout);
+    return true;
+  }
 
-	/**
-	 * Returns whether the provider has been started.
-	 */
-	public isStarted(): boolean {
-		return this.started;
-	}
+  /**
+   * Returns whether the provider has been started.
+   */
+  public isStarted(): boolean {
+    return this.started;
+  }
 
-	/**
-	 * Returns the count of registered handlers for an event.
-	 */
-	public getHandlerCount(eventName: string): number {
-		return this.registry.getHandlerCount(eventName);
-	}
+  /**
+   * Returns the count of registered handlers for an event.
+   */
+  public getHandlerCount(eventName: string): number {
+    return this.registry.getHandlerCount(eventName);
+  }
 
-	/**
-	 * Returns the configured processing delay in milliseconds.
-	 */
-	public getProcessingDelay(): number {
-		return this.processingDelay;
-	}
+  /**
+   * Returns the configured processing delay in milliseconds.
+   */
+  public getProcessingDelay(): number {
+    return this.processingDelay;
+  }
 
-	/**
-	 * Returns the count of pending event deliveries.
-	 * Useful for tests to verify events are in flight.
-	 */
-	public getPendingCount(): number {
-		return this.pendingTimeouts.size;
-	}
+  /**
+   * Returns the count of pending event deliveries.
+   * Useful for tests to verify events are in flight.
+   */
+  public getPendingCount(): number {
+    return this.pendingTimeouts.size;
+  }
 
-	/**
-	 * Creates an EventMessage from emit parameters.
-	 */
-	private createMessage(
-		eventName: string,
-		payload: unknown,
-		meta: PropagationMeta,
-		correlationId: string,
-		causationId?: string
-	): EventMessage {
-		return {
-			version: EVENT_MESSAGE_VERSION,
-			eventId: crypto.randomUUID(),
-			eventName,
-			payload,
-			meta,
-			correlationId,
-			causationId,
-			timestamp: Date.now()
-		};
-	}
+  /**
+   * Creates an EventMessage from emit parameters.
+   */
+  private createMessage(
+    eventName: string,
+    payload: unknown,
+    meta: PropagationMeta,
+    correlationId: string,
+    causationId?: string,
+  ): EventMessage {
+    return {
+      version: EVENT_MESSAGE_VERSION,
+      eventId: crypto.randomUUID(),
+      eventName,
+      payload,
+      meta,
+      correlationId,
+      causationId,
+      timestamp: Date.now(),
+    };
+  }
 
-	/**
-	 * Schedules delayed delivery of an event.
-	 */
-	private scheduleDelivery<TReturn>(
-		message: EventMessage,
-		subscription: EventSubscription<TReturn>,
-		delay: number,
-		key?: string
-	): void {
-		const timeout = setTimeout(() => {
-			this.pendingTimeouts.delete(timeout);
-			if (key) {
-				this.pendingDelayedByKey.delete(key);
-			}
-			this.delivery.deliver(message, subscription);
-		}, delay);
-		this.pendingTimeouts.add(timeout);
-		if (key) {
-			this.pendingDelayedByKey.set(key, timeout);
-		}
-	}
+  /**
+   * Schedules delayed delivery of an event.
+   */
+  private scheduleDelivery<TReturn>(
+    message: EventMessage,
+    subscription: EventSubscription<TReturn>,
+    delay: number,
+    key?: string,
+  ): void {
+    const timeout = setTimeout(() => {
+      this.pendingTimeouts.delete(timeout);
+      if (key) {
+        this.pendingDelayedByKey.delete(key);
+      }
+      this.delivery.deliver(message, subscription);
+    }, delay);
+    this.pendingTimeouts.add(timeout);
+    if (key) {
+      this.pendingDelayedByKey.set(key, timeout);
+    }
+  }
 }

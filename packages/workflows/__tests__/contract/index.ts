@@ -18,8 +18,8 @@
  */
 
 export {
-	workflowProviderContractTests,
-	type ContractTestConfig,
-	type ProviderConfig
-} from './workflow-provider.contract';
-export * from './workflows/index';
+  workflowProviderContractTests,
+  type ContractTestConfig,
+  type ProviderConfig,
+} from "./workflow-provider.contract";
+export * from "./workflows/index";

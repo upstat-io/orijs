@@ -45,7 +45,7 @@
  * @see {@link MessageData} - Utility type to extract data type
  */
 
-import type { TSchema, Static, Schema } from '@orijs/validation';
+import type { TSchema, Static, Schema } from "@orijs/validation";
 
 /**
  * Configuration for defining a socket message.
@@ -53,10 +53,10 @@ import type { TSchema, Static, Schema } from '@orijs/validation';
  * @template TData - TypeBox schema for the message data
  */
 export interface SocketMessageConfig<TData extends TSchema> {
-	/** Unique message name. Use dot notation: 'entity.action' (e.g., 'incident.created') */
-	readonly name: string;
-	/** TypeBox schema for the message data */
-	readonly data: TData;
+  /** Unique message name. Use dot notation: 'entity.action' (e.g., 'incident.created') */
+  readonly name: string;
+  /** TypeBox schema for the message data */
+  readonly data: TData;
 }
 
 /**
@@ -74,23 +74,23 @@ export interface SocketMessageConfig<TData extends TSchema> {
  * ```
  */
 export interface SocketMessageDefinition<TData> {
-	/** Unique message name */
-	readonly name: string;
-	/** Schema for runtime validation (TypeBox, Standard Schema, or custom validator) */
-	readonly dataSchema: Schema<TData>;
-	/**
-	 * Type carrier for data type extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract the data type.
-	 *
-	 * **DO NOT** access this field in runtime code - use the utility type instead:
-	 * ```typescript
-	 * type MyData = MessageData<typeof MyMessage>; // Correct
-	 * const data = MyMessage._data; // WRONG - always undefined!
-	 * ```
-	 */
-	readonly _data: TData;
+  /** Unique message name */
+  readonly name: string;
+  /** Schema for runtime validation (TypeBox, Standard Schema, or custom validator) */
+  readonly dataSchema: Schema<TData>;
+  /**
+   * Type carrier for data type extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract the data type.
+   *
+   * **DO NOT** access this field in runtime code - use the utility type instead:
+   * ```typescript
+   * type MyData = MessageData<typeof MyMessage>; // Correct
+   * const data = MyMessage._data; // WRONG - always undefined!
+   * ```
+   */
+  readonly _data: TData;
 }
 
 /**
@@ -115,24 +115,26 @@ export interface SocketMessageDefinition<TData> {
  * ```
  */
 export const SocketMessage = {
-	/**
-	 * Define a new socket message with TypeBox schema for data.
-	 *
-	 * ## Why Static<T>?
-	 *
-	 * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
-	 * TypeScript cannot infer the corresponding type from a runtime value alone.
-	 * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
-	 * that a schema validates. This enables compile-time type safety from runtime schemas.
-	 *
-	 * @param config - Message configuration with name and data schema
-	 * @returns SocketMessageDefinition with type carrier for compile-time type extraction
-	 */
-	define<TData extends TSchema>(config: SocketMessageConfig<TData>): SocketMessageDefinition<Static<TData>> {
-		return Object.freeze({
-			name: config.name,
-			dataSchema: config.data,
-			_data: undefined as unknown as Static<TData>
-		});
-	}
+  /**
+   * Define a new socket message with TypeBox schema for data.
+   *
+   * ## Why Static<T>?
+   *
+   * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
+   * TypeScript cannot infer the corresponding type from a runtime value alone.
+   * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
+   * that a schema validates. This enables compile-time type safety from runtime schemas.
+   *
+   * @param config - Message configuration with name and data schema
+   * @returns SocketMessageDefinition with type carrier for compile-time type extraction
+   */
+  define<TData extends TSchema>(
+    config: SocketMessageConfig<TData>,
+  ): SocketMessageDefinition<Static<TData>> {
+    return Object.freeze({
+      name: config.name,
+      dataSchema: config.data,
+      _data: undefined as unknown as Static<TData>,
+    });
+  },
 };

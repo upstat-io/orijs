@@ -7,26 +7,26 @@
  * 2. Identifier function: mock('tablename')
  */
 
-import type { BunSqlFunction } from '../../src/ori-sql';
+import type { BunSqlFunction } from "../../src/ori-sql";
 
 /**
  * Marker object returned by mock('identifier') calls.
  * Allows tests to verify which identifiers were used.
  */
 export interface IdentifierMarker {
-	__isIdentifier: true;
-	name: string;
+  __isIdentifier: true;
+  name: string;
 }
 
 export interface MockSqlLastCall {
-	strings: readonly string[];
-	values: unknown[];
+  strings: readonly string[];
+  values: unknown[];
 }
 
 export interface MockSql extends BunSqlFunction {
-	lastCall: MockSqlLastCall | null;
-	/** Returns true if value is an identifier marker from mock('identifier') */
-	isIdentifierMarker(value: unknown): value is IdentifierMarker;
+  lastCall: MockSqlLastCall | null;
+  /** Returns true if value is an identifier marker from mock('identifier') */
+  isIdentifierMarker(value: unknown): value is IdentifierMarker;
 }
 
 /**
@@ -46,30 +46,36 @@ export interface MockSql extends BunSqlFunction {
  * ```
  */
 export function createMockSql(): MockSql {
-	const mock = function (stringsOrIdentifier: TemplateStringsArray | string, ...values: unknown[]) {
-		// Identifier mode: mock('identifier') returns a marker object
-		if (typeof stringsOrIdentifier === 'string') {
-			return { __isIdentifier: true, name: stringsOrIdentifier } as IdentifierMarker;
-		}
+  const mock = function (
+    stringsOrIdentifier: TemplateStringsArray | string,
+    ...values: unknown[]
+  ) {
+    // Identifier mode: mock('identifier') returns a marker object
+    if (typeof stringsOrIdentifier === "string") {
+      return {
+        __isIdentifier: true,
+        name: stringsOrIdentifier,
+      } as IdentifierMarker;
+    }
 
-		// Template mode: mock`...` captures the call and returns Promise like Bun SQL
-		mock.lastCall = {
-			strings: [...stringsOrIdentifier],
-			values: [...values]
-		};
-		// Return a Promise that resolves to empty array, matching Bun SQL's return type
-		return Promise.resolve([]) as unknown;
-	} as MockSql;
+    // Template mode: mock`...` captures the call and returns Promise like Bun SQL
+    mock.lastCall = {
+      strings: [...stringsOrIdentifier],
+      values: [...values],
+    };
+    // Return a Promise that resolves to empty array, matching Bun SQL's return type
+    return Promise.resolve([]) as unknown;
+  } as MockSql;
 
-	mock.lastCall = null;
-	mock.isIdentifierMarker = (value: unknown): value is IdentifierMarker => {
-		return (
-			typeof value === 'object' &&
-			value !== null &&
-			'__isIdentifier' in value &&
-			(value as IdentifierMarker).__isIdentifier === true
-		);
-	};
+  mock.lastCall = null;
+  mock.isIdentifierMarker = (value: unknown): value is IdentifierMarker => {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "__isIdentifier" in value &&
+      (value as IdentifierMarker).__isIdentifier === true
+    );
+  };
 
-	return mock;
+  return mock;
 }

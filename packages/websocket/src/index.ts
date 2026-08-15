@@ -11,37 +11,55 @@
 
 // Types
 export type {
-	BunServer,
-	SocketData,
-	WebSocketConnection,
-	WebSocketUpgradeOptions,
-	WebSocketHandlers,
-	SocketEmitter,
-	SocketLifecycle,
-	WebSocketProvider,
-	WebSocketProviderOptions,
-	SocketEmitterConstructor,
-	SocketCoordinatorOptions,
-	SocketMessageLike
-} from './types';
+  BunServer,
+  SocketData,
+  WebSocketConnection,
+  WebSocketUpgradeOptions,
+  WebSocketHandlers,
+  SocketEmitter,
+  SocketLifecycle,
+  WebSocketProvider,
+  WebSocketProviderOptions,
+  SocketEmitterConstructor,
+  SocketCoordinatorOptions,
+  SocketMessageLike,
+} from "./types";
 
 // Tokens
-export { WebSocketProviderToken } from './types';
+export { WebSocketProviderToken } from "./types";
 
 // Classes
-export { SocketCoordinator } from './socket-coordinator';
-export { InProcWsProvider, createInProcWsProvider } from './in-proc-provider';
+export { SocketCoordinator } from "./socket-coordinator";
+export { InProcWsProvider, createInProcWsProvider } from "./in-proc-provider";
 
 // Message Registry (opinionated message handling)
-export { MessageRegistry, createMessageRegistry } from './message-registry';
-export type { ServerMessageDefinition, MessageHandler, HandleResult } from './message-registry';
+export { MessageRegistry, createMessageRegistry } from "./message-registry";
+export type {
+  ServerMessageDefinition,
+  MessageHandler,
+  HandleResult,
+} from "./message-registry";
 
 // Control Messages (built-in server-side message definitions)
-export { ServerMessage, JoinRoom, LeaveRoom, Heartbeat } from './control-messages';
-export type { JoinRoomData, LeaveRoomData, HeartbeatData } from './control-messages';
+export {
+  ServerMessage,
+  JoinRoom,
+  LeaveRoom,
+  Heartbeat,
+} from "./control-messages";
+export type {
+  JoinRoomData,
+  LeaveRoomData,
+  HeartbeatData,
+} from "./control-messages";
 
 // Validation (shared across providers)
-export { validateTopic, validateSocketId, MAX_TOPIC_LENGTH, UUID_V4_REGEX } from './validation';
+export {
+  validateTopic,
+  validateSocketId,
+  MAX_TOPIC_LENGTH,
+  UUID_V4_REGEX,
+} from "./validation";
 
 // Re-export options type
-export type { InProcWsProviderOptions } from './in-proc-provider';
+export type { InProcWsProviderOptions } from "./in-proc-provider";

@@ -94,16 +94,16 @@
  * ```
  */
 
-import type { Duration, CacheConfig, DefaultTTL } from './types';
-import type { BuiltEntityRegistry, EntityDef } from './entity-registry.types';
-import { parseDuration } from './duration';
-import { Logger } from '@orijs/logging';
+import type { Duration, CacheConfig, DefaultTTL } from "./types";
+import type { BuiltEntityRegistry, EntityDef } from "./entity-registry.types";
+import { parseDuration } from "./duration";
+import { Logger } from "@orijs/logging";
 
 // Lazy init to pick up configured transports
 let logger: Logger | null = null;
 function getLogger(): Logger {
-	if (!logger) logger = new Logger('CacheBuilder');
-	return logger;
+  if (!logger) logger = new Logger("CacheBuilder");
+  return logger;
 }
 
 // --- ERRORS ---
@@ -116,10 +116,10 @@ function getLogger(): Logger {
  * Named subclass so tests can discriminate via `instanceof CacheBuilderError`.
  */
 export class CacheBuilderError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'CacheBuilderError';
-	}
+  constructor(message: string) {
+    super(message);
+    this.name = "CacheBuilderError";
+  }
 }
 
 // --- UTILITIES ---
@@ -128,7 +128,7 @@ export class CacheBuilderError extends Error {
  * Extract entity name from EntityInput (string or EntityDef object)
  */
 function extractEntityName<T extends string>(entity: T | EntityDef<T>): T {
-	return typeof entity === 'string' ? entity : entity.name;
+  return typeof entity === "string" ? entity : entity.name;
 }
 
 // --- BUILDER INTERFACES ---
@@ -136,121 +136,134 @@ function extractEntityName<T extends string>(entity: T | EntityDef<T>): T {
 /**
  * Input type for .for() - accepts entity name string or EntityDef object
  */
-export type EntityInput<TEntityNames extends string> = TEntityNames | EntityDef<TEntityNames>;
+export type EntityInput<TEntityNames extends string> =
+  TEntityNames | EntityDef<TEntityNames>;
 
 /**
  * Factory returned by createCacheBuilder
  */
 export interface CacheBuilderFactory<TEntityNames extends string> {
-	/**
-	 * Start defining a cache for an entity
-	 *
-	 * @param entity - Entity name or EntityDef object (type-checked against registry)
-	 * @returns Builder for setting TTL and other options
-	 *
-	 * @example
-	 * // With string name
-	 * Cache.for('Product').ttl('5m').build();
-	 *
-	 * // With EntityDef object
-	 * Cache.for(Entities.Product).ttl('5m').build();
-	 */
-	for<TParams extends object>(
-		entity: EntityInput<TEntityNames>
-	): CacheBuilderForEntity<TEntityNames, TParams>;
+  /**
+   * Start defining a cache for an entity
+   *
+   * @param entity - Entity name or EntityDef object (type-checked against registry)
+   * @returns Builder for setting TTL and other options
+   *
+   * @example
+   * // With string name
+   * Cache.for('Product').ttl('5m').build();
+   *
+   * // With EntityDef object
+   * Cache.for(Entities.Product).ttl('5m').build();
+   */
+  for<TParams extends object>(
+    entity: EntityInput<TEntityNames>,
+  ): CacheBuilderForEntity<TEntityNames, TParams>;
 }
 
 /**
  * Builder state after .for() - requires .ttl() before .build()
  */
-export interface CacheBuilderForEntity<TEntityNames extends string, TParams extends object> {
-	/**
-	 * Set time-to-live (required)
-	 *
-	 * By default, only accepts pre-defined TTL values (DefaultTTL).
-	 * To use custom TTL values, provide your own type:
-	 *
-	 * @example
-	 * ```typescript
-	 * // Default - only allows DefaultTTL values
-	 * Cache.for(Entities.Product).ttl('5m').build();  // OK
-	 * Cache.for(Entities.Product).ttl('32m').build(); // Type error
-	 *
-	 * // Custom - define your own allowed values
-	 * type MyTTL = '2m' | '32m' | '2h';
-	 * Cache.for(Entities.Product).ttl<MyTTL>('32m').build(); // OK
-	 *
-	 * // Numeric seconds always work
-	 * Cache.for(Entities.Product).ttl(300).build(); // OK
-	 * ```
-	 *
-	 * @param duration - Seconds or duration string from allowed set
-	 */
-	ttl<T extends string = DefaultTTL>(duration: T | number): CacheBuilderWithTtl<TEntityNames, TParams>;
+export interface CacheBuilderForEntity<
+  TEntityNames extends string,
+  TParams extends object,
+> {
+  /**
+   * Set time-to-live (required)
+   *
+   * By default, only accepts pre-defined TTL values (DefaultTTL).
+   * To use custom TTL values, provide your own type:
+   *
+   * @example
+   * ```typescript
+   * // Default - only allows DefaultTTL values
+   * Cache.for(Entities.Product).ttl('5m').build();  // OK
+   * Cache.for(Entities.Product).ttl('32m').build(); // Type error
+   *
+   * // Custom - define your own allowed values
+   * type MyTTL = '2m' | '32m' | '2h';
+   * Cache.for(Entities.Product).ttl<MyTTL>('32m').build(); // OK
+   *
+   * // Numeric seconds always work
+   * Cache.for(Entities.Product).ttl(300).build(); // OK
+   * ```
+   *
+   * @param duration - Seconds or duration string from allowed set
+   */
+  ttl<T extends string = DefaultTTL>(
+    duration: T | number,
+  ): CacheBuilderWithTtl<TEntityNames, TParams>;
 }
 
 /**
  * Builder state after .ttl() - can now .build() or add optional settings
  */
-export interface CacheBuilderWithTtl<TEntityNames extends string, TParams extends object> {
-	/**
-	 * Set grace period for stale-while-revalidate (optional)
-	 *
-	 * @param duration - Seconds or human-readable string
-	 */
-	grace(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams>;
+export interface CacheBuilderWithTtl<
+  TEntityNames extends string,
+  TParams extends object,
+> {
+  /**
+   * Set grace period for stale-while-revalidate (optional)
+   *
+   * @param duration - Seconds or human-readable string
+   */
+  grace(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Add dependency on another entity (auto-lookup params from registry)
-	 *
-	 * @param entity - Entity name or EntityDef to depend on
-	 */
-	dependsOn(entity: EntityInput<TEntityNames>): CacheBuilderWithTtl<TEntityNames, TParams>;
+  /**
+   * Add dependency on another entity (auto-lookup params from registry)
+   *
+   * @param entity - Entity name or EntityDef to depend on
+   */
+  dependsOn(
+    entity: EntityInput<TEntityNames>,
+  ): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Add dependency on another entity with explicit params override
-	 *
-	 * @param entity - Entity name or EntityDef to depend on
-	 * @param params - Param keys to use for this dependency
-	 */
-	dependsOn(
-		entity: EntityInput<TEntityNames>,
-		params: readonly (keyof TParams)[]
-	): CacheBuilderWithTtl<TEntityNames, TParams>;
+  /**
+   * Add dependency on another entity with explicit params override
+   *
+   * @param entity - Entity name or EntityDef to depend on
+   * @param params - Param keys to use for this dependency
+   */
+  dependsOn(
+    entity: EntityInput<TEntityNames>,
+    params: readonly (keyof TParams)[],
+  ): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Cache null/undefined results (default: false)
-	 *
-	 * @param value - Whether to cache null (default: true when called)
-	 */
-	cacheNull(value?: boolean): CacheBuilderWithTtl<TEntityNames, TParams>;
+  /**
+   * Cache null/undefined results (default: false)
+   *
+   * @param value - Whether to cache null (default: true when called)
+   */
+  cacheNull(value?: boolean): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Set timeout for data fetching on cache miss
-	 *
-	 * If fetching takes longer than this, a CacheTimeoutError is thrown.
-	 * Default: 1 second. Override for slow data sources.
-	 *
-	 * @param duration - Timeout in seconds or human-readable string (e.g., '10s', '30s')
-	 *
-	 * @example
-	 * Cache.for(Entities.User).ttl('5m').timeout('10s').build();
-	 */
-	timeout(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams>;
+  /**
+   * Set timeout for data fetching on cache miss
+   *
+   * If fetching takes longer than this, a CacheTimeoutError is thrown.
+   * Default: 1 second. Override for slow data sources.
+   *
+   * @param duration - Timeout in seconds or human-readable string (e.g., '10s', '30s')
+   *
+   * @example
+   * Cache.for(Entities.User).ttl('5m').timeout('10s').build();
+   */
+  timeout(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Set tags for cross-scope invalidation
-	 *
-	 * @param tagsFn - Function that takes params and returns tag strings
-	 */
-	tags(tagsFn: (params: TParams) => string[]): CacheBuilderWithTtl<TEntityNames, TParams>;
+  /**
+   * Set tags for cross-scope invalidation
+   *
+   * @param tagsFn - Function that takes params and returns tag strings
+   */
+  tags(
+    tagsFn: (params: TParams) => string[],
+  ): CacheBuilderWithTtl<TEntityNames, TParams>;
 
-	/**
-	 * Build the cache configuration
-	 *
-	 * Returns an immutable (frozen) CacheConfig with all auto-derived values.
-	 */
-	build(): Readonly<CacheConfig<TParams>>;
+  /**
+   * Build the cache configuration
+   *
+   * Returns an immutable (frozen) CacheConfig with all auto-derived values.
+   */
+  build(): Readonly<CacheConfig<TParams>>;
 }
 
 // --- BUILDER IMPLEMENTATION ---
@@ -259,198 +272,237 @@ export interface CacheBuilderWithTtl<TEntityNames extends string, TParams extend
  * Internal builder implementation
  */
 class CacheBuilderInternal<TEntityNames extends string, TParams extends object>
-	implements CacheBuilderForEntity<TEntityNames, TParams>, CacheBuilderWithTtl<TEntityNames, TParams>
+  implements
+    CacheBuilderForEntity<TEntityNames, TParams>,
+    CacheBuilderWithTtl<TEntityNames, TParams>
 {
-	private readonly registry: BuiltEntityRegistry<TEntityNames>;
-	private readonly entityName: TEntityNames;
-	private ttlSeconds?: number;
-	private graceSeconds: number = 0;
-	private additionalDeps: Map<TEntityNames, readonly (keyof TParams)[]> = new Map();
-	private shouldCacheNull: boolean = false;
-	private timeoutMs?: number;
-	private tagsFn?: (params: TParams) => string[];
+  private readonly registry: BuiltEntityRegistry<TEntityNames>;
+  private readonly entityName: TEntityNames;
+  private ttlSeconds?: number;
+  private graceSeconds: number = 0;
+  private additionalDeps: Map<TEntityNames, readonly (keyof TParams)[]> =
+    new Map();
+  private shouldCacheNull: boolean = false;
+  private timeoutMs?: number;
+  private tagsFn?: (params: TParams) => string[];
 
-	public constructor(registry: BuiltEntityRegistry<TEntityNames>, entityName: TEntityNames) {
-		this.registry = registry;
-		this.entityName = entityName;
-	}
+  public constructor(
+    registry: BuiltEntityRegistry<TEntityNames>,
+    entityName: TEntityNames,
+  ) {
+    this.registry = registry;
+    this.entityName = entityName;
+  }
 
-	public ttl<T extends string = DefaultTTL>(
-		duration: T | number
-	): CacheBuilderWithTtl<TEntityNames, TParams> {
-		// Type constraint at compile time; parseDuration handles all valid Duration patterns at runtime
-		this.ttlSeconds = parseDuration(duration as Duration);
-		return this;
-	}
+  public ttl<T extends string = DefaultTTL>(
+    duration: T | number,
+  ): CacheBuilderWithTtl<TEntityNames, TParams> {
+    // Type constraint at compile time; parseDuration handles all valid Duration patterns at runtime
+    this.ttlSeconds = parseDuration(duration as Duration);
+    return this;
+  }
 
-	public grace(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams> {
-		this.graceSeconds = parseDuration(duration);
-		return this;
-	}
+  public grace(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams> {
+    this.graceSeconds = parseDuration(duration);
+    return this;
+  }
 
-	public dependsOn(
-		entity: EntityInput<TEntityNames>,
-		params?: readonly (keyof TParams)[]
-	): CacheBuilderWithTtl<TEntityNames, TParams> {
-		const depEntityName = extractEntityName(entity);
+  public dependsOn(
+    entity: EntityInput<TEntityNames>,
+    params?: readonly (keyof TParams)[],
+  ): CacheBuilderWithTtl<TEntityNames, TParams> {
+    const depEntityName = extractEntityName(entity);
 
-		// Self-dependency guard: an entity cannot depend on itself.
-		if (depEntityName === this.entityName) {
-			throw new CacheBuilderError(
-				`Self-dependency: '${this.entityName}'.dependsOn('${depEntityName}') would create a cycle. Remove the redundant self-reference.`
-			);
-		}
+    // Self-dependency guard: an entity cannot depend on itself.
+    if (depEntityName === this.entityName) {
+      throw new CacheBuilderError(
+        `Self-dependency: '${this.entityName}'.dependsOn('${depEntityName}') would create a cycle. Remove the redundant self-reference.`,
+      );
+    }
 
-		const depEntity = this.registry.getEntity(depEntityName);
-		const dependentEntity = this.registry.getEntity(this.entityName);
+    const depEntity = this.registry.getEntity(depEntityName);
+    const dependentEntity = this.registry.getEntity(this.entityName);
 
-		// Cross-scope guard: cascade cannot bridge upward across the scope hierarchy.
-		// When the source's scope is HIGHER than the dependent's (e.g., Project dependent
-		// → Account source), the cascade walker's set-time and invalidate-time meta-keys
-		// cannot match because the dependent's params don't carry the source's scope key.
-		// Tag-based invalidation is the correct cross-scope cascade pattern.
-		const scopeNames = this.registry.getScopeNames() as readonly string[];
-		const sourceScopeIndex = scopeNames.indexOf(depEntity.scope);
-		const dependentScopeIndex = scopeNames.indexOf(dependentEntity.scope);
-		if (sourceScopeIndex !== -1 && dependentScopeIndex !== -1 && sourceScopeIndex > dependentScopeIndex) {
-			throw new CacheBuilderError(
-				`Cross-scope dependsOn: '${this.entityName}' (scope='${dependentEntity.scope}') cannot depend on '${depEntityName}' (scope='${depEntity.scope}') — cascade cannot bridge upward across the scope hierarchy (dependent's scope is shallower than source's). Use .tags() instead. See cache/invalidation.md §Tag-Based Invalidation.`
-			);
-		}
+    // Cross-scope guard: cascade cannot bridge upward across the scope hierarchy.
+    // When the source's scope is HIGHER than the dependent's (e.g., Project dependent
+    // → Account source), the cascade walker's set-time and invalidate-time meta-keys
+    // cannot match because the dependent's params don't carry the source's scope key.
+    // Tag-based invalidation is the correct cross-scope cascade pattern.
+    const scopeNames = this.registry.getScopeNames() as readonly string[];
+    const sourceScopeIndex = scopeNames.indexOf(depEntity.scope);
+    const dependentScopeIndex = scopeNames.indexOf(dependentEntity.scope);
+    if (
+      sourceScopeIndex !== -1 &&
+      dependentScopeIndex !== -1 &&
+      sourceScopeIndex > dependentScopeIndex
+    ) {
+      throw new CacheBuilderError(
+        `Cross-scope dependsOn: '${this.entityName}' (scope='${dependentEntity.scope}') cannot depend on '${depEntityName}' (scope='${depEntity.scope}') — cascade cannot bridge upward across the scope hierarchy (dependent's scope is shallower than source's). Use .tags() instead. See cache/invalidation.md §Tag-Based Invalidation.`,
+      );
+    }
 
-		if (params !== undefined) {
-			// Explicit params override. Validate every key is a member of BOTH the dependent's
-			// params AND the source's params. Cascade meta-keys must match at set-time AND
-			// invalidate-time; a key absent from EITHER side will silently drop and break the
-			// cascade (the failure mode BUG-11-083 documented).
-			// Degenerate empty array `[]` is a valid override declaring no shared keys; cascade
-			// requires tags for that case.
-			const dependentParamSet = new Set<string>(dependentEntity.params as readonly string[]);
-			const sourceParamSet = new Set<string>(depEntity.params as readonly string[]);
-			const invalidForDependent = (params as readonly string[]).filter((k) => !dependentParamSet.has(k));
-			if (invalidForDependent.length > 0) {
-				throw new CacheBuilderError(
-					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForDependent.map((k) => `'${k}'`).join(', ')} are not in the dependent entity's params [${(dependentEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Pass only keys the dependent entity actually has.`
-				);
-			}
-			const invalidForSource = (params as readonly string[]).filter((k) => !sourceParamSet.has(k));
-			if (invalidForSource.length > 0) {
-				throw new CacheBuilderError(
-					`Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForSource.map((k) => `'${k}'`).join(', ')} are not in the source entity's params [${(depEntity.params as readonly string[]).map((k) => `'${k}'`).join(', ')}]. Cascade meta-keys would diverge between set-time and invalidate-time (BUG-11-083 failure mode). Pass only keys present in BOTH dependent and source.`
-				);
-			}
-			this.additionalDeps.set(depEntityName, params);
-		} else {
-			// Auto-narrow: intersect source's full params with dependent's actual params.
-			// The unbounded source-params list was the silent-cascade-break cause —
-			// setEntry would generate a partial-key meta entry while invalidate generates
-			// the full-key meta entry, and the two never matched. See BUG-11-083.
-			const dependentParamSet = new Set<string>(dependentEntity.params as readonly string[]);
-			const narrowedParams = (depEntity.params as readonly string[]).filter((p) =>
-				dependentParamSet.has(p)
-			);
-			this.additionalDeps.set(depEntityName, narrowedParams as unknown as readonly (keyof TParams)[]);
-		}
-		return this;
-	}
+    if (params !== undefined) {
+      // Explicit params override. Validate every key is a member of BOTH the dependent's
+      // params AND the source's params. Cascade meta-keys must match at set-time AND
+      // invalidate-time; a key absent from EITHER side will silently drop and break the
+      // cascade (the failure mode BUG-11-083 documented).
+      // Degenerate empty array `[]` is a valid override declaring no shared keys; cascade
+      // requires tags for that case.
+      const dependentParamSet = new Set<string>(
+        dependentEntity.params as readonly string[],
+      );
+      const sourceParamSet = new Set<string>(
+        depEntity.params as readonly string[],
+      );
+      const invalidForDependent = (params as readonly string[]).filter(
+        (k) => !dependentParamSet.has(k),
+      );
+      if (invalidForDependent.length > 0) {
+        throw new CacheBuilderError(
+          `Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForDependent.map((k) => `'${k}'`).join(", ")} are not in the dependent entity's params [${(dependentEntity.params as readonly string[]).map((k) => `'${k}'`).join(", ")}]. Pass only keys the dependent entity actually has.`,
+        );
+      }
+      const invalidForSource = (params as readonly string[]).filter(
+        (k) => !sourceParamSet.has(k),
+      );
+      if (invalidForSource.length > 0) {
+        throw new CacheBuilderError(
+          `Invalid explicit params on '${this.entityName}'.dependsOn('${depEntityName}', [...]): keys ${invalidForSource.map((k) => `'${k}'`).join(", ")} are not in the source entity's params [${(depEntity.params as readonly string[]).map((k) => `'${k}'`).join(", ")}]. Cascade meta-keys would diverge between set-time and invalidate-time (BUG-11-083 failure mode). Pass only keys present in BOTH dependent and source.`,
+        );
+      }
+      this.additionalDeps.set(depEntityName, params);
+    } else {
+      // Auto-narrow: intersect source's full params with dependent's actual params.
+      // The unbounded source-params list was the silent-cascade-break cause —
+      // setEntry would generate a partial-key meta entry while invalidate generates
+      // the full-key meta entry, and the two never matched. See BUG-11-083.
+      const dependentParamSet = new Set<string>(
+        dependentEntity.params as readonly string[],
+      );
+      const narrowedParams = (depEntity.params as readonly string[]).filter(
+        (p) => dependentParamSet.has(p),
+      );
+      this.additionalDeps.set(
+        depEntityName,
+        narrowedParams as unknown as readonly (keyof TParams)[],
+      );
+    }
+    return this;
+  }
 
-	public cacheNull(value: boolean = true): CacheBuilderWithTtl<TEntityNames, TParams> {
-		this.shouldCacheNull = value;
-		return this;
-	}
+  public cacheNull(
+    value: boolean = true,
+  ): CacheBuilderWithTtl<TEntityNames, TParams> {
+    this.shouldCacheNull = value;
+    return this;
+  }
 
-	public timeout(duration: Duration): CacheBuilderWithTtl<TEntityNames, TParams> {
-		this.timeoutMs = parseDuration(duration) * 1000; // Convert to milliseconds
-		return this;
-	}
+  public timeout(
+    duration: Duration,
+  ): CacheBuilderWithTtl<TEntityNames, TParams> {
+    this.timeoutMs = parseDuration(duration) * 1000; // Convert to milliseconds
+    return this;
+  }
 
-	public tags(tagsFn: (params: TParams) => string[]): CacheBuilderWithTtl<TEntityNames, TParams> {
-		this.tagsFn = tagsFn;
-		return this;
-	}
+  public tags(
+    tagsFn: (params: TParams) => string[],
+  ): CacheBuilderWithTtl<TEntityNames, TParams> {
+    this.tagsFn = tagsFn;
+    return this;
+  }
 
-	public build(): Readonly<CacheConfig<TParams>> {
-		if (this.ttlSeconds === undefined) {
-			throw new Error(`ttl() is required before build() for entity '${this.entityName}'`);
-		}
+  public build(): Readonly<CacheConfig<TParams>> {
+    if (this.ttlSeconds === undefined) {
+      throw new Error(
+        `ttl() is required before build() for entity '${this.entityName}'`,
+      );
+    }
 
-		// Get entity definition from registry
-		const entity = this.registry.getEntity(this.entityName);
+    // Get entity definition from registry
+    const entity = this.registry.getEntity(this.entityName);
 
-		// Auto-derive scope and params
-		const scope = entity.scope;
-		const params = entity.params as readonly (keyof TParams)[];
+    // Auto-derive scope and params
+    const scope = entity.scope;
+    const params = entity.params as readonly (keyof TParams)[];
 
-		// Auto-derive metaParams from scope params
-		const scopeDef = this.registry.getScope(scope);
-		const metaParams = scopeDef.params as readonly (keyof TParams)[];
+    // Auto-derive metaParams from scope params
+    const scopeDef = this.registry.getScope(scope);
+    const metaParams = scopeDef.params as readonly (keyof TParams)[];
 
-		// Build dependsOn map: hierarchy deps + additional deps
-		const dependsOn = this.buildDependsOn(scope);
+    // Build dependsOn map: hierarchy deps + additional deps
+    const dependsOn = this.buildDependsOn(scope);
 
-		// Log cache configuration
-		const deps = Object.keys(dependsOn);
-		const depsStr = deps.length > 0 ? deps.join(', ') : 'none';
-		getLogger().info(`Cache Loaded: ${this.entityName} -> [${depsStr}]`);
+    // Log cache configuration
+    const deps = Object.keys(dependsOn);
+    const depsStr = deps.length > 0 ? deps.join(", ") : "none";
+    getLogger().info(`Cache Loaded: ${this.entityName} -> [${depsStr}]`);
 
-		return Object.freeze({
-			entity: this.entityName,
-			scope,
-			ttl: this.ttlSeconds,
-			grace: this.graceSeconds,
-			params: Object.freeze([...params]) as readonly (keyof TParams)[],
-			metaParams: Object.freeze([...metaParams]) as readonly (keyof TParams)[],
-			dependsOn: Object.freeze(dependsOn) as Readonly<Partial<Record<string, readonly (keyof TParams)[]>>>,
-			cacheNull: this.shouldCacheNull,
-			...(this.timeoutMs !== undefined ? { timeout: this.timeoutMs } : {}),
-			...(this.tagsFn !== undefined ? { tags: this.tagsFn } : {})
-		});
-	}
+    return Object.freeze({
+      entity: this.entityName,
+      scope,
+      ttl: this.ttlSeconds,
+      grace: this.graceSeconds,
+      params: Object.freeze([...params]) as readonly (keyof TParams)[],
+      metaParams: Object.freeze([...metaParams]) as readonly (keyof TParams)[],
+      dependsOn: Object.freeze(dependsOn) as Readonly<
+        Partial<Record<string, readonly (keyof TParams)[]>>
+      >,
+      cacheNull: this.shouldCacheNull,
+      ...(this.timeoutMs !== undefined ? { timeout: this.timeoutMs } : {}),
+      ...(this.tagsFn !== undefined ? { tags: this.tagsFn } : {}),
+    });
+  }
 
-	/**
-	 * Build dependsOn map with hierarchy dependencies + additional deps
-	 *
-	 * Hierarchy deps include all scope-level entities up to and including the entity's scope,
-	 * except for the entity itself (e.g., Product depends on Account and Project, but not Product).
-	 */
-	private buildDependsOn(entityScope: string): Partial<Record<string, readonly (keyof TParams)[]>> {
-		const result: Partial<Record<string, readonly (keyof TParams)[]>> = {};
+  /**
+   * Build dependsOn map with hierarchy dependencies + additional deps
+   *
+   * Hierarchy deps include all scope-level entities up to and including the entity's scope,
+   * except for the entity itself (e.g., Product depends on Account and Project, but not Product).
+   */
+  private buildDependsOn(
+    entityScope: string,
+  ): Partial<Record<string, readonly (keyof TParams)[]>> {
+    const result: Partial<Record<string, readonly (keyof TParams)[]>> = {};
 
-		// Add hierarchy dependencies (scope entities up to and including entity's scope)
-		const scopeNames = this.registry.getScopeNames();
-		const entityScopeIndex = scopeNames.indexOf(entityScope);
+    // Add hierarchy dependencies (scope entities up to and including entity's scope)
+    const scopeNames = this.registry.getScopeNames();
+    const entityScopeIndex = scopeNames.indexOf(entityScope);
 
-		// For each scope up to and including the entity's scope
-		for (let i = 0; i <= entityScopeIndex; i++) {
-			const scopeName = scopeNames[i]!;
-			const scopeDef = this.registry.getScope(scopeName);
+    // For each scope up to and including the entity's scope
+    for (let i = 0; i <= entityScopeIndex; i++) {
+      const scopeName = scopeNames[i]!;
+      const scopeDef = this.registry.getScope(scopeName);
 
-			// Look for an entity that matches this scope name (e.g., 'Account' for 'account' scope)
-			// Convention: capitalize first letter of scope name
-			const potentialEntityName = scopeName.charAt(0).toUpperCase() + scopeName.slice(1);
+      // Look for an entity that matches this scope name (e.g., 'Account' for 'account' scope)
+      // Convention: capitalize first letter of scope name
+      const potentialEntityName =
+        scopeName.charAt(0).toUpperCase() + scopeName.slice(1);
 
-			// Skip if this is the same entity we're building the cache for
-			if (potentialEntityName === this.entityName) {
-				continue;
-			}
+      // Skip if this is the same entity we're building the cache for
+      if (potentialEntityName === this.entityName) {
+        continue;
+      }
 
-			// Check if this entity exists in the registry
-			if (this.registry.hasEntity(potentialEntityName)) {
-				const scopeEntity = this.registry.getEntity(potentialEntityName as TEntityNames);
-				if (scopeEntity.scope === scopeName) {
-					// Add hierarchy dependency with scope's params
-					result[potentialEntityName] = scopeDef.params as readonly (keyof TParams)[];
-				}
-			}
-		}
+      // Check if this entity exists in the registry
+      if (this.registry.hasEntity(potentialEntityName)) {
+        const scopeEntity = this.registry.getEntity(
+          potentialEntityName as TEntityNames,
+        );
+        if (scopeEntity.scope === scopeName) {
+          // Add hierarchy dependency with scope's params
+          result[potentialEntityName] =
+            scopeDef.params as readonly (keyof TParams)[];
+        }
+      }
+    }
 
-		// Add additional dependencies from .dependsOn() calls
-		for (const [depEntityName, depParams] of this.additionalDeps) {
-			result[depEntityName] = depParams;
-		}
+    // Add additional dependencies from .dependsOn() calls
+    for (const [depEntityName, depParams] of this.additionalDeps) {
+      result[depEntityName] = depParams;
+    }
 
-		return result;
-	}
+    return result;
+  }
 }
 
 // --- PUBLIC FACTORY ---
@@ -485,16 +537,19 @@ class CacheBuilderInternal<TEntityNames extends string, TParams extends object>
  *   .build();
  */
 export function createCacheBuilder<TEntityNames extends string>(
-	registry: BuiltEntityRegistry<TEntityNames>
+  registry: BuiltEntityRegistry<TEntityNames>,
 ): CacheBuilderFactory<TEntityNames> {
-	return {
-		for<TParams extends object>(
-			entity: EntityInput<TEntityNames>
-		): CacheBuilderForEntity<TEntityNames, TParams> {
-			const entityName = extractEntityName(entity);
-			// Validate entity exists (will throw if not found)
-			registry.getEntity(entityName);
-			return new CacheBuilderInternal<TEntityNames, TParams>(registry, entityName);
-		}
-	};
+  return {
+    for<TParams extends object>(
+      entity: EntityInput<TEntityNames>,
+    ): CacheBuilderForEntity<TEntityNames, TParams> {
+      const entityName = extractEntityName(entity);
+      // Validate entity exists (will throw if not found)
+      registry.getEntity(entityName);
+      return new CacheBuilderInternal<TEntityNames, TParams>(
+        registry,
+        entityName,
+      );
+    },
+  };
 }

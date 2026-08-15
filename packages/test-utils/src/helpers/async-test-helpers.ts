@@ -32,23 +32,23 @@
  * Options for the waitFor helper.
  */
 export interface WaitForOptions {
-	/**
-	 * Maximum time to wait in milliseconds before throwing.
-	 * @default 5000
-	 */
-	readonly timeout?: number;
+  /**
+   * Maximum time to wait in milliseconds before throwing.
+   * @default 5000
+   */
+  readonly timeout?: number;
 
-	/**
-	 * Interval between condition checks in milliseconds.
-	 * @default 50
-	 */
-	readonly interval?: number;
+  /**
+   * Interval between condition checks in milliseconds.
+   * @default 50
+   */
+  readonly interval?: number;
 
-	/**
-	 * Custom error message when timeout is reached.
-	 * If not provided, a default message with the timeout value is used.
-	 */
-	readonly message?: string;
+  /**
+   * Custom error message when timeout is reached.
+   * If not provided, a default message with the timeout value is used.
+   */
+  readonly message?: string;
 }
 
 /**
@@ -79,18 +79,21 @@ export interface WaitForOptions {
  *   { timeout: 10000, message: 'Database connection timeout' }
  * );
  */
-export async function waitFor(condition: () => boolean, options: WaitForOptions = {}): Promise<void> {
-	const { timeout = 5000, interval = 50, message } = options;
-	const start = Date.now();
+export async function waitFor(
+  condition: () => boolean,
+  options: WaitForOptions = {},
+): Promise<void> {
+  const { timeout = 5000, interval = 50, message } = options;
+  const start = Date.now();
 
-	while (!condition()) {
-		const elapsed = Date.now() - start;
-		if (elapsed > timeout) {
-			const errorMessage = message ?? `waitFor timeout after ${timeout}ms`;
-			throw new Error(errorMessage);
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval));
-	}
+  while (!condition()) {
+    const elapsed = Date.now() - start;
+    if (elapsed > timeout) {
+      const errorMessage = message ?? `waitFor timeout after ${timeout}ms`;
+      throw new Error(errorMessage);
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
 }
 
 /**
@@ -115,20 +118,20 @@ export async function waitFor(condition: () => boolean, options: WaitForOptions 
  * );
  */
 export async function waitForAsync(
-	condition: () => Promise<boolean>,
-	options: WaitForOptions = {}
+  condition: () => Promise<boolean>,
+  options: WaitForOptions = {},
 ): Promise<void> {
-	const { timeout = 5000, interval = 50, message } = options;
-	const start = Date.now();
+  const { timeout = 5000, interval = 50, message } = options;
+  const start = Date.now();
 
-	while (!(await condition())) {
-		const elapsed = Date.now() - start;
-		if (elapsed > timeout) {
-			const errorMessage = message ?? `waitForAsync timeout after ${timeout}ms`;
-			throw new Error(errorMessage);
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval));
-	}
+  while (!(await condition())) {
+    const elapsed = Date.now() - start;
+    if (elapsed > timeout) {
+      const errorMessage = message ?? `waitForAsync timeout after ${timeout}ms`;
+      throw new Error(errorMessage);
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
 }
 
 /**
@@ -160,23 +163,26 @@ export async function waitForAsync(
  * );
  */
 export async function withTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
-	message = 'Operation timed out'
+  promise: Promise<T>,
+  timeoutMs: number,
+  message = "Operation timed out",
 ): Promise<T> {
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
-	const timeoutPromise = new Promise<never>((_, reject) => {
-		timeoutHandle = setTimeout(() => reject(new Error(`${message} (after ${timeoutMs}ms)`)), timeoutMs);
-	});
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`${message} (after ${timeoutMs}ms)`)),
+      timeoutMs,
+    );
+  });
 
-	try {
-		return await Promise.race([promise, timeoutPromise]);
-	} finally {
-		if (timeoutHandle) {
-			clearTimeout(timeoutHandle);
-		}
-	}
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 /**
@@ -198,5 +204,5 @@ export async function withTimeout<T>(
  * });
  */
 export function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

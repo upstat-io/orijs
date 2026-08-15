@@ -1,4 +1,4 @@
-import type { ConfigProvider } from './types';
+import type { ConfigProvider } from "./types";
 
 /**
  * Configuration provider that reads from environment variables.
@@ -26,38 +26,40 @@ import type { ConfigProvider } from './types';
  * ```
  */
 export class EnvConfigProvider implements ConfigProvider {
-	/**
-	 * Gets an environment variable value.
-	 * @param key - The environment variable name
-	 * @returns The value, or undefined if not set
-	 */
-	async get(key: string): Promise<string | undefined> {
-		return Bun.env[key];
-	}
+  /**
+   * Gets an environment variable value.
+   * @param key - The environment variable name
+   * @returns The value, or undefined if not set
+   */
+  async get(key: string): Promise<string | undefined> {
+    return Bun.env[key];
+  }
 
-	/**
-	 * Gets a required environment variable.
-	 * @param key - The environment variable name
-	 * @throws Error if the variable is not set or empty
-	 */
-	async getRequired(key: string): Promise<string> {
-		const value = Bun.env[key];
-		if (value === undefined || value === '') {
-			throw new Error(`Required config '${key}' is not set. Add it to your .env file or environment.`);
-		}
-		return value;
-	}
+  /**
+   * Gets a required environment variable.
+   * @param key - The environment variable name
+   * @throws Error if the variable is not set or empty
+   */
+  async getRequired(key: string): Promise<string> {
+    const value = Bun.env[key];
+    if (value === undefined || value === "") {
+      throw new Error(
+        `Required config '${key}' is not set. Add it to your .env file or environment.`,
+      );
+    }
+    return value;
+  }
 
-	/**
-	 * Loads multiple environment variables at once.
-	 * @param keys - The keys to load
-	 * @returns Key-value pairs for the requested keys
-	 */
-	async loadKeys(keys: string[]): Promise<Record<string, string | undefined>> {
-		const result: Record<string, string | undefined> = {};
-		for (const key of keys) {
-			result[key] = Bun.env[key];
-		}
-		return result;
-	}
+  /**
+   * Loads multiple environment variables at once.
+   * @param keys - The keys to load
+   * @returns Key-value pairs for the requested keys
+   */
+  async loadKeys(keys: string[]): Promise<Record<string, string | undefined>> {
+    const result: Record<string, string | undefined> = {};
+    for (const key of keys) {
+      result[key] = Bun.env[key];
+    }
+    return result;
+  }
 }

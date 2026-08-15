@@ -23,7 +23,7 @@
  * @module workflows/workflow.types
  */
 
-import type { WorkflowContext } from './workflow-context';
+import type { WorkflowContext } from "./workflow-context";
 
 // --- WORKFLOW DEFINITION TYPE ---
 
@@ -43,10 +43,10 @@ import type { WorkflowContext } from './workflow-context';
  * ```
  */
 export interface WorkflowDefinitionLike<TData = unknown, TResult = unknown> {
-	readonly name: string;
-	readonly stepGroups: readonly StepGroup[];
-	readonly _data: TData;
-	readonly _result: TResult;
+  readonly name: string;
+  readonly stepGroups: readonly StepGroup[];
+  readonly _data: TData;
+  readonly _result: TResult;
 }
 
 // --- EXECUTOR INTERFACE (Business Code) ---
@@ -81,52 +81,52 @@ export interface WorkflowDefinitionLike<TData = unknown, TResult = unknown> {
  * All options are optional; omit for default behavior.
  */
 export interface WorkflowExecuteOptions {
-	/**
-	 * Custom workflow ID. Re-executing with the same id is a no-op (idempotency).
-	 * Providers may map this to their native deduplication key (e.g., BullMQ jobId).
-	 */
-	readonly id?: string;
-	/**
-	 * Priority level. Lower numbers = higher priority.
-	 * @default 0
-	 */
-	readonly priority?: number;
-	/**
-	 * Delay in milliseconds before the workflow starts executing.
-	 * @default 0
-	 */
-	readonly delay?: number;
-	/**
-	 * Workflow timeout override in milliseconds. Pass 0 to disable timeout.
-	 * BullMQ provider adds stall interval to the effective timeout.
-	 */
-	readonly timeout?: number;
+  /**
+   * Custom workflow ID. Re-executing with the same id is a no-op (idempotency).
+   * Providers may map this to their native deduplication key (e.g., BullMQ jobId).
+   */
+  readonly id?: string;
+  /**
+   * Priority level. Lower numbers = higher priority.
+   * @default 0
+   */
+  readonly priority?: number;
+  /**
+   * Delay in milliseconds before the workflow starts executing.
+   * @default 0
+   */
+  readonly delay?: number;
+  /**
+   * Workflow timeout override in milliseconds. Pass 0 to disable timeout.
+   * BullMQ provider adds stall interval to the effective timeout.
+   */
+  readonly timeout?: number;
 }
 
 export interface WorkflowExecutor {
-	/**
-	 * Execute a workflow with input data.
-	 *
-	 * @template TData - Input data type for the workflow
-	 * @template TResult - Result type from onComplete
-	 * @param workflow - The workflow definition to execute
-	 * @param data - Input data for the workflow
-	 * @param options - Optional execution options (id, priority, delay)
-	 * @returns FlowHandle for status checking and result retrieval
-	 */
-	execute<TData, TResult>(
-		workflow: WorkflowDefinitionLike<TData, TResult>,
-		data: TData,
-		options?: WorkflowExecuteOptions
-	): Promise<FlowHandle<TResult>>;
+  /**
+   * Execute a workflow with input data.
+   *
+   * @template TData - Input data type for the workflow
+   * @template TResult - Result type from onComplete
+   * @param workflow - The workflow definition to execute
+   * @param data - Input data for the workflow
+   * @param options - Optional execution options (id, priority, delay)
+   * @returns FlowHandle for status checking and result retrieval
+   */
+  execute<TData, TResult>(
+    workflow: WorkflowDefinitionLike<TData, TResult>,
+    data: TData,
+    options?: WorkflowExecuteOptions,
+  ): Promise<FlowHandle<TResult>>;
 
-	/**
-	 * Get status of a running workflow.
-	 *
-	 * @param flowId - The unique flow ID
-	 * @returns Current flow status
-	 */
-	getStatus(flowId: string): Promise<FlowStatus>;
+  /**
+   * Get status of a running workflow.
+   *
+   * @param flowId - The unique flow ID
+   * @returns Current flow status
+   */
+  getStatus(flowId: string): Promise<FlowStatus>;
 }
 
 // --- LIFECYCLE INTERFACE (Framework) ---
@@ -161,59 +161,66 @@ export interface WorkflowExecutor {
  * ```
  */
 export interface WorkflowLifecycle<TOptions = unknown> {
-	/**
-	 * Register a definition-based consumer with the provider.
-	 *
-	 * This is the new API for registering workflow consumers using WorkflowDefinition
-	 * and a handler callback. The handler is invoked when jobs arrive.
-	 *
-	 * When stepGroups is provided and non-empty, the provider will:
-	 * 1. Register step handlers from stepHandlers
-	 * 2. Create child jobs/tasks for each step
-	 * 3. Execute steps in order (sequential/parallel)
-	 * 4. Call the handler (onComplete) only after all steps complete
-	 *
-	 * When stepGroups is empty or not provided, the handler is called directly.
-	 *
-	 * @param workflowName - Name of the workflow (from definition.name)
-	 * @param handler - Callback to invoke when workflow completes (after steps if any).
-	 *                  Receives workflow data, propagation meta, and accumulated step results.
-	 * @param stepGroups - Optional step groups defining step structure (from definition.stepGroups)
-	 * @param stepHandlers - Optional step handlers from consumer.steps (execute + rollback)
-	 * @param onError - Optional error handler called when a step fails
-	 * @param options - Optional provider-specific options
-	 */
-	registerDefinitionConsumer?(
-		workflowName: string,
-		handler: (data: unknown, meta?: unknown, stepResults?: Record<string, unknown>) => Promise<unknown>,
-		stepGroups?: readonly StepGroup[],
-		stepHandlers?: Record<string, { execute: StepHandler; rollback?: RollbackHandler }>,
-		onError?: (
-			data: unknown,
-			meta?: unknown,
-			error?: Error,
-			stepResults?: Record<string, unknown>
-		) => Promise<void>,
-		options?: TOptions
-	): void;
+  /**
+   * Register a definition-based consumer with the provider.
+   *
+   * This is the new API for registering workflow consumers using WorkflowDefinition
+   * and a handler callback. The handler is invoked when jobs arrive.
+   *
+   * When stepGroups is provided and non-empty, the provider will:
+   * 1. Register step handlers from stepHandlers
+   * 2. Create child jobs/tasks for each step
+   * 3. Execute steps in order (sequential/parallel)
+   * 4. Call the handler (onComplete) only after all steps complete
+   *
+   * When stepGroups is empty or not provided, the handler is called directly.
+   *
+   * @param workflowName - Name of the workflow (from definition.name)
+   * @param handler - Callback to invoke when workflow completes (after steps if any).
+   *                  Receives workflow data, propagation meta, and accumulated step results.
+   * @param stepGroups - Optional step groups defining step structure (from definition.stepGroups)
+   * @param stepHandlers - Optional step handlers from consumer.steps (execute + rollback)
+   * @param onError - Optional error handler called when a step fails
+   * @param options - Optional provider-specific options
+   */
+  registerDefinitionConsumer?(
+    workflowName: string,
+    handler: (
+      data: unknown,
+      meta?: unknown,
+      stepResults?: Record<string, unknown>,
+    ) => Promise<unknown>,
+    stepGroups?: readonly StepGroup[],
+    stepHandlers?: Record<
+      string,
+      { execute: StepHandler; rollback?: RollbackHandler }
+    >,
+    onError?: (
+      data: unknown,
+      meta?: unknown,
+      error?: Error,
+      stepResults?: Record<string, unknown>,
+    ) => Promise<void>,
+    options?: TOptions,
+  ): void;
 
-	/**
-	 * Register a workflow definition for emitting only (no local consumer).
-	 * Used to track which workflows this instance can emit to.
-	 *
-	 * @param workflowName - Name of the workflow (from definition.name)
-	 */
-	registerEmitterWorkflow?(workflowName: string): void;
+  /**
+   * Register a workflow definition for emitting only (no local consumer).
+   * Used to track which workflows this instance can emit to.
+   *
+   * @param workflowName - Name of the workflow (from definition.name)
+   */
+  registerEmitterWorkflow?(workflowName: string): void;
 
-	/**
-	 * Start the workflow provider (connect to transport).
-	 */
-	start(): Promise<void>;
+  /**
+   * Start the workflow provider (connect to transport).
+   */
+  start(): Promise<void>;
 
-	/**
-	 * Stop the workflow provider (disconnect from transport).
-	 */
-	stop(): Promise<void>;
+  /**
+   * Stop the workflow provider (disconnect from transport).
+   */
+  stop(): Promise<void>;
 }
 
 // --- PROVIDER INTERFACE (Full Implementation) ---
@@ -233,7 +240,8 @@ export interface WorkflowLifecycle<TOptions = unknown> {
  * provider.registerDefinitionConsumer('my-workflow', handler, stepGroups, stepHandlers, { concurrency: 5 });
  * ```
  */
-export interface WorkflowProvider<TOptions = unknown> extends WorkflowExecutor, WorkflowLifecycle<TOptions> {}
+export interface WorkflowProvider<TOptions = unknown>
+  extends WorkflowExecutor, WorkflowLifecycle<TOptions> {}
 
 // --- FLOW HANDLE & STATUS ---
 
@@ -247,14 +255,14 @@ export interface WorkflowProvider<TOptions = unknown> extends WorkflowExecutor, 
  * @template TResult - The result type from onComplete
  */
 export interface FlowHandle<TResult = unknown> {
-	/** Unique flow ID */
-	readonly id: string;
+  /** Unique flow ID */
+  readonly id: string;
 
-	/** Get current status */
-	status(): Promise<FlowStatus>;
+  /** Get current status */
+  status(): Promise<FlowStatus>;
 
-	/** Wait for completion and get result */
-	result(): Promise<TResult>;
+  /** Wait for completion and get result */
+  result(): Promise<TResult>;
 }
 
 /**
@@ -265,10 +273,10 @@ export interface FlowHandle<TResult = unknown> {
  * handler decides whether to continue or fail.
  */
 export type FlowStatus =
-	| 'pending' // Created but not started
-	| 'running' // Currently executing steps
-	| 'completed' // All steps complete (or handled)
-	| 'failed'; // Workflow failed (after onError handling)
+  | "pending" // Created but not started
+  | "running" // Currently executing steps
+  | "completed" // All steps complete (or handled)
+  | "failed"; // Workflow failed (after onError handling)
 
 // --- STEP TYPES ---
 
@@ -279,7 +287,7 @@ export type FlowStatus =
  * @template TResult - Step result type
  */
 export type StepHandler<TData = unknown, TResult = unknown> = (
-	ctx: WorkflowContext<TData>
+  ctx: WorkflowContext<TData>,
 ) => Promise<TResult> | TResult;
 
 /**
@@ -311,7 +319,9 @@ export type StepHandler<TData = unknown, TResult = unknown> = (
  *
  * @template TData - Workflow input data type
  */
-export type RollbackHandler<TData = unknown> = (ctx: WorkflowContext<TData>) => Promise<void> | void;
+export type RollbackHandler<TData = unknown> = (
+  ctx: WorkflowContext<TData>,
+) => Promise<void> | void;
 
 /**
  * Step options for the object form of step().
@@ -325,10 +335,10 @@ export type RollbackHandler<TData = unknown> = (ctx: WorkflowContext<TData>) => 
  * @template TResult - Step result type
  */
 export interface StepOptions<TData = unknown, TResult = unknown> {
-	/** The main step handler to execute */
-	execute: StepHandler<TData, TResult>;
-	/** Optional rollback handler called if a later step fails */
-	rollback?: RollbackHandler<TData>;
+  /** The main step handler to execute */
+  execute: StepHandler<TData, TResult>;
+  /** Optional rollback handler called if a later step fails */
+  rollback?: RollbackHandler<TData>;
 }
 
 /**
@@ -338,8 +348,8 @@ export interface StepOptions<TData = unknown, TResult = unknown> {
  * Handlers are provided separately to registerDefinitionConsumer().
  */
 export interface StepDefinitionBase {
-	/** Step name (unique within workflow) */
-	readonly name: string;
+  /** Step name (unique within workflow) */
+  readonly name: string;
 }
 
 // --- STEP GROUP ---
@@ -351,8 +361,8 @@ export interface StepDefinitionBase {
  * Handlers are provided separately to registerDefinitionConsumer().
  */
 export interface StepGroup {
-	readonly type: 'sequential' | 'parallel';
-	readonly definitions: readonly StepDefinitionBase[];
+  readonly type: "sequential" | "parallel";
+  readonly definitions: readonly StepDefinitionBase[];
 }
 
 // --- EXECUTION CONTEXT (Internal) ---
@@ -367,18 +377,18 @@ export interface StepGroup {
  * @internal
  */
 export interface StepExecutionContext<TData = unknown> {
-	/** Unique flow ID */
-	readonly flowId: string;
-	/** Name of the workflow being executed */
-	readonly workflowName: string;
-	/** Input data for the workflow */
-	readonly data: TData;
-	/** Accumulated results from completed steps */
-	readonly results: Record<string, unknown>;
-	/** Propagation metadata for distributed tracing */
-	readonly meta: import('@orijs/logging').PropagationMeta;
-	/** Logger instance with workflow context */
-	readonly log: import('@orijs/logging').Logger;
+  /** Unique flow ID */
+  readonly flowId: string;
+  /** Name of the workflow being executed */
+  readonly workflowName: string;
+  /** Input data for the workflow */
+  readonly data: TData;
+  /** Accumulated results from completed steps */
+  readonly results: Record<string, unknown>;
+  /** Propagation metadata for distributed tracing */
+  readonly meta: import("@orijs/logging").PropagationMeta;
+  /** Logger instance with workflow context */
+  readonly log: import("@orijs/logging").Logger;
 }
 
 /**
@@ -390,10 +400,13 @@ export interface StepExecutionContext<TData = unknown> {
  * @internal
  */
 export interface StepExecutionState {
-	/** Accumulated results from completed steps (mutated as steps complete) */
-	results: Record<string, unknown>;
-	/** Steps that completed with rollback handlers (for failure recovery) */
-	completedStepsWithRollback: Array<{ name: string; rollback: RollbackHandler }>;
+  /** Accumulated results from completed steps (mutated as steps complete) */
+  results: Record<string, unknown>;
+  /** Steps that completed with rollback handlers (for failure recovery) */
+  completedStepsWithRollback: Array<{
+    name: string;
+    rollback: RollbackHandler;
+  }>;
 }
 
 // --- ERROR TYPES ---
@@ -416,70 +429,86 @@ export interface StepExecutionState {
  * ```
  */
 export class WorkflowStepError extends Error {
-	public readonly stepName: string;
-	public override readonly cause: Error;
+  public readonly stepName: string;
+  public override readonly cause: Error;
 
-	public constructor(stepName: string, originalError: Error) {
-		super(`Step '${stepName}' failed: ${originalError.message}`);
-		this.name = 'WorkflowStepError';
-		this.stepName = stepName;
-		this.cause = originalError;
+  public constructor(stepName: string, originalError: Error) {
+    super(`Step '${stepName}' failed: ${originalError.message}`);
+    this.name = "WorkflowStepError";
+    this.stepName = stepName;
+    this.cause = originalError;
 
-		// Preserve original stack trace for debugging
-		if (originalError.stack) {
-			this.stack = `${this.stack}\n\nCaused by: ${originalError.stack}`;
-		}
-	}
+    // Preserve original stack trace for debugging
+    if (originalError.stack) {
+      this.stack = `${this.stack}\n\nCaused by: ${originalError.stack}`;
+    }
+  }
 }
 
 /** Preserves the primary workflow failure and every rollback failure by identity. */
 export class WorkflowRollbackError extends AggregateError {
-	public readonly primaryError: Error;
-	public readonly rollbackErrors: readonly Error[];
+  public readonly primaryError: Error;
+  public readonly rollbackErrors: readonly Error[];
 
-	public constructor(primaryError: Error, rollbackErrors: readonly Error[]) {
-		super([primaryError, ...rollbackErrors], encodeWorkflowFailure(primaryError, rollbackErrors), {
-			cause: primaryError
-		});
-		this.name = 'WorkflowRollbackError';
-		this.primaryError = primaryError;
-		this.rollbackErrors = rollbackErrors;
-	}
+  public constructor(primaryError: Error, rollbackErrors: readonly Error[]) {
+    super(
+      [primaryError, ...rollbackErrors],
+      encodeWorkflowFailure(primaryError, rollbackErrors),
+      {
+        cause: primaryError,
+      },
+    );
+    this.name = "WorkflowRollbackError";
+    this.primaryError = primaryError;
+    this.rollbackErrors = rollbackErrors;
+  }
 }
 
-const WORKFLOW_FAILURE_PREFIX = 'ORIJSError:';
+const WORKFLOW_FAILURE_PREFIX = "ORIJSError:";
 
-function errorRecord(error: Error): { name: string; message: string; stepName?: string } {
-	return {
-		name: error.name,
-		message: error.message,
-		...(error instanceof WorkflowStepError && { stepName: error.stepName })
-	};
+function errorRecord(error: Error): {
+  name: string;
+  message: string;
+  stepName?: string;
+} {
+  return {
+    name: error.name,
+    message: error.message,
+    ...(error instanceof WorkflowStepError && { stepName: error.stepName }),
+  };
 }
 
-function encodeWorkflowFailure(primaryError: Error, rollbackErrors: readonly Error[]): string {
-	return `${WORKFLOW_FAILURE_PREFIX}${JSON.stringify({
-		primary: errorRecord(primaryError),
-		rollbacks: rollbackErrors.map(errorRecord)
-	})}`;
+function encodeWorkflowFailure(
+  primaryError: Error,
+  rollbackErrors: readonly Error[],
+): string {
+  return `${WORKFLOW_FAILURE_PREFIX}${JSON.stringify({
+    primary: errorRecord(primaryError),
+    rollbacks: rollbackErrors.map(errorRecord),
+  })}`;
 }
 
 /** Reconstructs structured workflow failure details received through a queue transport. */
 export function decodeWorkflowFailure(failedReason: string): Error {
-	if (!failedReason.startsWith(WORKFLOW_FAILURE_PREFIX)) return new Error(failedReason);
-	try {
-		const value = JSON.parse(failedReason.slice(WORKFLOW_FAILURE_PREFIX.length)) as {
-			primary: { name: string; message: string; stepName?: string };
-			rollbacks: Array<{ name: string; message: string }>;
-		};
-		const original = new Error(value.primary.message);
-		original.name = value.primary.name;
-		const primary = value.primary.stepName
-			? new WorkflowStepError(value.primary.stepName, original)
-			: original;
-		const rollbacks = value.rollbacks.map((item) => Object.assign(new Error(item.message), { name: item.name }));
-		return new WorkflowRollbackError(primary, rollbacks);
-	} catch {
-		return new Error(failedReason);
-	}
+  if (!failedReason.startsWith(WORKFLOW_FAILURE_PREFIX))
+    return new Error(failedReason);
+  try {
+    const value = JSON.parse(
+      failedReason.slice(WORKFLOW_FAILURE_PREFIX.length),
+    ) as {
+      primary: { name: string; message: string; stepName?: string };
+      rollbacks: Array<{ name: string; message: string }>;
+    };
+    const original = new Error(value.primary.message);
+    original.name = value.primary.name;
+    const primary = value.primary.stepName
+      ? new WorkflowStepError(value.primary.stepName, original)
+      : original;
+    const rollbacks = value.rollbacks.map((item) =>
+      Object.assign(new Error(item.message), { name: item.name }),
+    );
+    return new WorkflowRollbackError(primary, rollbacks);
+  } catch {
+    return new Error(failedReason);
+  }
 }

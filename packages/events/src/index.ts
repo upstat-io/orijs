@@ -37,66 +37,83 @@
  */
 
 // Registry
-export { EventRegistry } from './event-registry';
-export type { EventRegistryBuilder, BuiltEventRegistry } from './event-registry.types';
+export { EventRegistry } from "./event-registry";
+export type {
+  EventRegistryBuilder,
+  BuiltEventRegistry,
+} from "./event-registry.types";
 
 // Provider interfaces
-export { EVENT_MESSAGE_VERSION } from './event-provider.types';
+export { EVENT_MESSAGE_VERSION } from "./event-provider.types";
 export type {
-	EventEmitter,
-	EventLifecycle,
-	EventProvider,
-	EventHandlerFn,
-	EventMessage,
-	EmitOptions,
-	PerEventConfig
-} from './event-provider.types';
+  EventEmitter,
+  EventLifecycle,
+  EventProvider,
+  EventHandlerFn,
+  EventMessage,
+  EmitOptions,
+  PerEventConfig,
+} from "./event-provider.types";
 
 // Subscription
-export { EventSubscription, createSubscription } from './event-subscription';
-export type { SubscribeCallback, ErrorCallback } from './event-subscription';
+export { EventSubscription, createSubscription } from "./event-subscription";
+export type { SubscribeCallback, ErrorCallback } from "./event-subscription";
 
 // Context
-export { createEventContext, createChainedMeta } from './event-context';
-export type { EventContext, EventEmitFn, CreateEventContextOptions } from './event-context';
+export { createEventContext, createChainedMeta } from "./event-context";
+export type {
+  EventContext,
+  EventEmitFn,
+  CreateEventContextOptions,
+} from "./event-context";
 
 // Composable components
-export { HandlerRegistry } from './handler-registry';
+export { HandlerRegistry } from "./handler-registry";
 export type {
-	IHandlerRegistry,
-	HandlerRegistration as RegistryHandlerRegistration
-} from './handler-registry';
+  IHandlerRegistry,
+  HandlerRegistration as RegistryHandlerRegistration,
+} from "./handler-registry";
 
-export { EventDeliveryEngine, createChainedEmitFactory } from './event-delivery';
+export {
+  EventDeliveryEngine,
+  createChainedEmitFactory,
+} from "./event-delivery";
 export type {
-	IEventDelivery,
-	EventDeliveryConfig,
-	EventDeliveryLogger,
-	ChainedEmitFn,
-	CreateChainedEmitFn
-} from './event-delivery';
+  IEventDelivery,
+  EventDeliveryConfig,
+  EventDeliveryLogger,
+  ChainedEmitFn,
+  CreateChainedEmitFn,
+} from "./event-delivery";
 
 // In-process provider
-export { InProcessEventProvider } from './in-process-orchestrator';
-export type { InProcessEventProviderOptions } from './in-process-orchestrator';
+export { InProcessEventProvider } from "./in-process-orchestrator";
+export type { InProcessEventProviderOptions } from "./in-process-orchestrator";
 
 // Test provider (for unit tests with async simulation)
-export { TestEventProvider } from './test-event-provider';
-export type { TestEventProviderConfig } from './test-event-provider';
+export { TestEventProvider } from "./test-event-provider";
+export type { TestEventProviderConfig } from "./test-event-provider";
 
 // Handler builder
-export { EventHandlerBuilder } from './event-handler-builder';
+export { EventHandlerBuilder } from "./event-handler-builder";
 export type {
-	EventBuilder,
-	EventHandler,
-	EventHandlerClass,
-	HandlerRegistration
-} from './event-handler-builder';
+  EventBuilder,
+  EventHandler,
+  EventHandlerClass,
+  HandlerRegistration,
+} from "./event-handler-builder";
 
 // Event system factory
-export { createEventSystem, createPropagationMeta } from './events';
-export type { EventSystem, TypedEmitFn, CreateEventSystemOptions } from './events';
+export { createEventSystem, createPropagationMeta } from "./events";
+export type {
+  EventSystem,
+  TypedEmitFn,
+  CreateEventSystemOptions,
+} from "./events";
 
 // Idempotency Helper
-export { EventIdempotency } from './event-idempotency';
-export type { IdempotencyResult, EventIdempotencyOptions } from './event-idempotency';
+export { EventIdempotency } from "./event-idempotency";
+export type {
+  IdempotencyResult,
+  EventIdempotencyOptions,
+} from "./event-idempotency";

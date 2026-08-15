@@ -17,7 +17,7 @@
  * ```
  */
 export interface ParamValidator {
-	validate(value: string): boolean;
+  validate(value: string): boolean;
 }
 
 /** Constructor type for ParamValidator classes. */
@@ -33,11 +33,12 @@ export type ParamValidatorClass = new () => ParamValidator;
  * ```
  */
 export class UuidParam implements ParamValidator {
-	private static readonly PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  private static readonly PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-	validate(value: string): boolean {
-		return UuidParam.PATTERN.test(value);
-	}
+  validate(value: string): boolean {
+    return UuidParam.PATTERN.test(value);
+  }
 }
 
 /**
@@ -50,9 +51,9 @@ export class UuidParam implements ParamValidator {
  * ```
  */
 export class StringParam implements ParamValidator {
-	validate(value: string): boolean {
-		return value.length > 0;
-	}
+  validate(value: string): boolean {
+    return value.length > 0;
+  }
 }
 
 /**
@@ -65,9 +66,9 @@ export class StringParam implements ParamValidator {
  * ```
  */
 export class NumberParam implements ParamValidator {
-	private static readonly PATTERN = /^[0-9]+$/;
+  private static readonly PATTERN = /^[0-9]+$/;
 
-	validate(value: string): boolean {
-		return NumberParam.PATTERN.test(value);
-	}
+  validate(value: string): boolean {
+    return NumberParam.PATTERN.test(value);
+  }
 }

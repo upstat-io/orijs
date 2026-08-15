@@ -78,8 +78,8 @@
  * @see {@link WorkflowConsumer} - Utility type for implementing workflow consumers
  */
 
-import type { TSchema, Static } from '@orijs/validation';
-import type { Logger } from '@orijs/logging';
+import type { TSchema, Static } from "@orijs/validation";
+import type { Logger } from "@orijs/logging";
 
 // ============================================================================
 // Step Definition Types
@@ -90,8 +90,8 @@ import type { Logger } from '@orijs/logging';
  * Internal type - not exported.
  */
 interface StepDefinitionRaw<TName extends string, TOutput extends TSchema> {
-	readonly name: TName;
-	readonly outputSchema: TOutput;
+  readonly name: TName;
+  readonly outputSchema: TOutput;
 }
 
 /**
@@ -103,16 +103,19 @@ interface StepDefinitionRaw<TName extends string, TOutput extends TSchema> {
  * @template TName - The step name (string literal type for type safety)
  * @template TOutput - The step output type (extracted from TypeBox schema)
  */
-export interface StepDefinition<TName extends string = string, TOutput = unknown> {
-	/** Step name - must match a handler in the consumer */
-	readonly name: TName;
-	/** TypeBox schema for runtime validation of step output */
-	readonly outputSchema: TSchema;
-	/**
-	 * Type carrier for step output type.
-	 * ALWAYS undefined at runtime - used for type extraction only.
-	 */
-	readonly _output: TOutput;
+export interface StepDefinition<
+  TName extends string = string,
+  TOutput = unknown,
+> {
+  /** Step name - must match a handler in the consumer */
+  readonly name: TName;
+  /** TypeBox schema for runtime validation of step output */
+  readonly outputSchema: TSchema;
+  /**
+   * Type carrier for step output type.
+   * ALWAYS undefined at runtime - used for type extraction only.
+   */
+  readonly _output: TOutput;
 }
 
 /**
@@ -124,14 +127,14 @@ export interface StepDefinition<TName extends string = string, TOutput = unknown
  * - Parallel: all steps in definitions array execute concurrently
  */
 export interface StepGroup {
-	/** Execution mode: sequential (one at a time) or parallel (concurrent) */
-	readonly type: 'sequential' | 'parallel';
-	/**
-	 * Step definitions in this group.
-	 * - Sequential: single step per group (definitions has one element)
-	 * - Parallel: multiple steps (all execute concurrently)
-	 */
-	readonly definitions: readonly StepDefinition[];
+  /** Execution mode: sequential (one at a time) or parallel (concurrent) */
+  readonly type: "sequential" | "parallel";
+  /**
+   * Step definitions in this group.
+   * - Sequential: single step per group (definitions has one element)
+   * - Parallel: multiple steps (all execute concurrently)
+   */
+  readonly definitions: readonly StepDefinition[];
 }
 
 /**
@@ -151,106 +154,129 @@ export interface StepGroup {
  *   )
  * ```
  */
-export class StepBuilder<TSteps extends Record<string, unknown> = Record<never, never>> {
-	private readonly stepGroups: StepGroup[] = [];
+export class StepBuilder<
+  TSteps extends Record<string, unknown> = Record<never, never>,
+> {
+  private readonly stepGroups: StepGroup[] = [];
 
-	/**
-	 * Creates a step definition.
-	 *
-	 * Does not add the step to the builder - pass the result to
-	 * sequential() or parallel() to add it.
-	 *
-	 * @param name - Unique step name (must match handler in consumer)
-	 * @param outputSchema - TypeBox schema for step output
-	 * @returns Step definition to pass to sequential/parallel
-	 */
-	step<TName extends string, TOutput extends TSchema>(
-		name: TName,
-		outputSchema: TOutput
-	): StepDefinitionRaw<TName, TOutput> {
-		return { name, outputSchema };
-	}
+  /**
+   * Creates a step definition.
+   *
+   * Does not add the step to the builder - pass the result to
+   * sequential() or parallel() to add it.
+   *
+   * @param name - Unique step name (must match handler in consumer)
+   * @param outputSchema - TypeBox schema for step output
+   * @returns Step definition to pass to sequential/parallel
+   */
+  step<TName extends string, TOutput extends TSchema>(
+    name: TName,
+    outputSchema: TOutput,
+  ): StepDefinitionRaw<TName, TOutput> {
+    return { name, outputSchema };
+  }
 
-	/**
-	 * Adds a sequential step.
-	 *
-	 * Sequential steps execute in order, one after another.
-	 * Each step can access results of previous steps via ctx.results.
-	 *
-	 * @param stepDef - Step definition from s.step()
-	 * @returns Builder with updated step types for chaining
-	 */
-	sequential<TName extends string, TOutput extends TSchema>(
-		stepDef: StepDefinitionRaw<TName, TOutput>
-	): StepBuilder<TSteps & Record<TName, Static<TOutput>>> {
-		const processedStep: StepDefinition<TName, Static<TOutput>> = {
-			name: stepDef.name,
-			outputSchema: stepDef.outputSchema,
-			_output: undefined as unknown as Static<TOutput>
-		};
-		// Sequential group has one step in definitions array
-		this.stepGroups.push({ type: 'sequential', definitions: [processedStep as StepDefinition] });
-		return this as unknown as StepBuilder<TSteps & Record<TName, Static<TOutput>>>;
-	}
+  /**
+   * Adds a sequential step.
+   *
+   * Sequential steps execute in order, one after another.
+   * Each step can access results of previous steps via ctx.results.
+   *
+   * @param stepDef - Step definition from s.step()
+   * @returns Builder with updated step types for chaining
+   */
+  sequential<TName extends string, TOutput extends TSchema>(
+    stepDef: StepDefinitionRaw<TName, TOutput>,
+  ): StepBuilder<TSteps & Record<TName, Static<TOutput>>> {
+    const processedStep: StepDefinition<TName, Static<TOutput>> = {
+      name: stepDef.name,
+      outputSchema: stepDef.outputSchema,
+      _output: undefined as unknown as Static<TOutput>,
+    };
+    // Sequential group has one step in definitions array
+    this.stepGroups.push({
+      type: "sequential",
+      definitions: [processedStep as StepDefinition],
+    });
+    return this as unknown as StepBuilder<
+      TSteps & Record<TName, Static<TOutput>>
+    >;
+  }
 
-	/**
-	 * Adds parallel steps.
-	 *
-	 * Parallel steps execute concurrently. All must complete before
-	 * subsequent sequential steps can run.
-	 *
-	 * @param stepDefs - Step definitions from s.step() (spread)
-	 * @returns Builder with updated step types for chaining
-	 */
-	parallel<
-		T1 extends string,
-		O1 extends TSchema,
-		T2 extends string,
-		O2 extends TSchema,
-		T3 extends string = never,
-		O3 extends TSchema = TSchema,
-		T4 extends string = never,
-		O4 extends TSchema = TSchema
-	>(
-		step1: StepDefinitionRaw<T1, O1>,
-		step2: StepDefinitionRaw<T2, O2>,
-		step3?: StepDefinitionRaw<T3, O3>,
-		step4?: StepDefinitionRaw<T4, O4>
-	): StepBuilder<
-		TSteps &
-			Record<T1, Static<O1>> &
-			Record<T2, Static<O2>> &
-			([T3] extends [never] ? object : Record<T3, Static<O3>>) &
-			([T4] extends [never] ? object : Record<T4, Static<O4>>)
-	> {
-		const definitions: StepDefinition[] = [
-			{ name: step1.name, outputSchema: step1.outputSchema, _output: undefined },
-			{ name: step2.name, outputSchema: step2.outputSchema, _output: undefined }
-		];
-		if (step3) {
-			definitions.push({ name: step3.name, outputSchema: step3.outputSchema, _output: undefined });
-		}
-		if (step4) {
-			definitions.push({ name: step4.name, outputSchema: step4.outputSchema, _output: undefined });
-		}
-		// Parallel group has multiple steps in definitions array
-		this.stepGroups.push({ type: 'parallel', definitions });
-		return this as unknown as StepBuilder<
-			TSteps &
-				Record<T1, Static<O1>> &
-				Record<T2, Static<O2>> &
-				([T3] extends [never] ? object : Record<T3, Static<O3>>) &
-				([T4] extends [never] ? object : Record<T4, Static<O4>>)
-		>;
-	}
+  /**
+   * Adds parallel steps.
+   *
+   * Parallel steps execute concurrently. All must complete before
+   * subsequent sequential steps can run.
+   *
+   * @param stepDefs - Step definitions from s.step() (spread)
+   * @returns Builder with updated step types for chaining
+   */
+  parallel<
+    T1 extends string,
+    O1 extends TSchema,
+    T2 extends string,
+    O2 extends TSchema,
+    T3 extends string = never,
+    O3 extends TSchema = TSchema,
+    T4 extends string = never,
+    O4 extends TSchema = TSchema,
+  >(
+    step1: StepDefinitionRaw<T1, O1>,
+    step2: StepDefinitionRaw<T2, O2>,
+    step3?: StepDefinitionRaw<T3, O3>,
+    step4?: StepDefinitionRaw<T4, O4>,
+  ): StepBuilder<
+    TSteps &
+      Record<T1, Static<O1>> &
+      Record<T2, Static<O2>> &
+      ([T3] extends [never] ? object : Record<T3, Static<O3>>) &
+      ([T4] extends [never] ? object : Record<T4, Static<O4>>)
+  > {
+    const definitions: StepDefinition[] = [
+      {
+        name: step1.name,
+        outputSchema: step1.outputSchema,
+        _output: undefined,
+      },
+      {
+        name: step2.name,
+        outputSchema: step2.outputSchema,
+        _output: undefined,
+      },
+    ];
+    if (step3) {
+      definitions.push({
+        name: step3.name,
+        outputSchema: step3.outputSchema,
+        _output: undefined,
+      });
+    }
+    if (step4) {
+      definitions.push({
+        name: step4.name,
+        outputSchema: step4.outputSchema,
+        _output: undefined,
+      });
+    }
+    // Parallel group has multiple steps in definitions array
+    this.stepGroups.push({ type: "parallel", definitions });
+    return this as unknown as StepBuilder<
+      TSteps &
+        Record<T1, Static<O1>> &
+        Record<T2, Static<O2>> &
+        ([T3] extends [never] ? object : Record<T3, Static<O3>>) &
+        ([T4] extends [never] ? object : Record<T4, Static<O4>>)
+    >;
+  }
 
-	/**
-	 * Internal: Returns the accumulated step groups.
-	 * Called by WorkflowDefinition.steps() to build the definition.
-	 */
-	_getStepGroups(): readonly StepGroup[] {
-		return Object.freeze([...this.stepGroups]);
-	}
+  /**
+   * Internal: Returns the accumulated step groups.
+   * Called by WorkflowDefinition.steps() to build the definition.
+   */
+  _getStepGroups(): readonly StepGroup[] {
+    return Object.freeze([...this.stepGroups]);
+  }
 }
 
 /**
@@ -259,13 +285,16 @@ export class StepBuilder<TSteps extends Record<string, unknown> = Record<never, 
  * @template TData - TypeBox schema for the input data
  * @template TResult - TypeBox schema for the result
  */
-export interface WorkflowConfig<TData extends TSchema, TResult extends TSchema> {
-	/** Unique workflow name. Use kebab-case: 'action-noun' (e.g., 'send-email') */
-	readonly name: string;
-	/** TypeBox schema for the workflow input data */
-	readonly data: TData;
-	/** TypeBox schema for the workflow result */
-	readonly result: TResult;
+export interface WorkflowConfig<
+  TData extends TSchema,
+  TResult extends TSchema,
+> {
+  /** Unique workflow name. Use kebab-case: 'action-noun' (e.g., 'send-email') */
+  readonly name: string;
+  /** TypeBox schema for the workflow input data */
+  readonly data: TData;
+  /** TypeBox schema for the workflow result */
+  readonly result: TResult;
 }
 
 /**
@@ -285,54 +314,58 @@ export interface WorkflowConfig<TData extends TSchema, TResult extends TSchema> 
  * type ResultType = typeof MyWorkflow['_result']; // Extracts result type
  * ```
  */
-export interface WorkflowDefinition<TData = unknown, TResult = unknown, TSteps = Record<never, never>> {
-	/** Unique workflow name */
-	readonly name: string;
-	/** TypeBox schema for runtime validation of input data */
-	readonly dataSchema: TSchema;
-	/** TypeBox schema for runtime validation of results */
-	readonly resultSchema: TSchema;
-	/**
-	 * Step groups defining the workflow step structure.
-	 * Empty array if workflow has no steps.
-	 */
-	readonly stepGroups: readonly StepGroup[];
-	/**
-	 * Type carrier for data type extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract the data type.
-	 *
-	 * **DO NOT** access this field in runtime code - use the utility types instead:
-	 * ```typescript
-	 * type MyData = Data<typeof MyWorkflow>; // Correct
-	 * const data = MyWorkflow._data; // WRONG - always undefined!
-	 * ```
-	 */
-	readonly _data: TData;
-	/**
-	 * Type carrier for result type extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract the result type.
-	 *
-	 * **DO NOT** access this field in runtime code - use the utility types instead:
-	 * ```typescript
-	 * type MyResult = Result<typeof MyWorkflow>; // Correct
-	 * const result = MyWorkflow._result; // WRONG - always undefined!
-	 * ```
-	 */
-	readonly _result: TResult;
-	/**
-	 * Type carrier for step types extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract step output types.
-	 *
-	 * For workflows with steps, this is Record<stepName, outputType>.
-	 * For workflows without steps, this is Record<never, never>.
-	 */
-	readonly _steps: TSteps;
+export interface WorkflowDefinition<
+  TData = unknown,
+  TResult = unknown,
+  TSteps = Record<never, never>,
+> {
+  /** Unique workflow name */
+  readonly name: string;
+  /** TypeBox schema for runtime validation of input data */
+  readonly dataSchema: TSchema;
+  /** TypeBox schema for runtime validation of results */
+  readonly resultSchema: TSchema;
+  /**
+   * Step groups defining the workflow step structure.
+   * Empty array if workflow has no steps.
+   */
+  readonly stepGroups: readonly StepGroup[];
+  /**
+   * Type carrier for data type extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract the data type.
+   *
+   * **DO NOT** access this field in runtime code - use the utility types instead:
+   * ```typescript
+   * type MyData = Data<typeof MyWorkflow>; // Correct
+   * const data = MyWorkflow._data; // WRONG - always undefined!
+   * ```
+   */
+  readonly _data: TData;
+  /**
+   * Type carrier for result type extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract the result type.
+   *
+   * **DO NOT** access this field in runtime code - use the utility types instead:
+   * ```typescript
+   * type MyResult = Result<typeof MyWorkflow>; // Correct
+   * const result = MyWorkflow._result; // WRONG - always undefined!
+   * ```
+   */
+  readonly _result: TResult;
+  /**
+   * Type carrier for step types extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract step output types.
+   *
+   * For workflows with steps, this is Record<stepName, outputType>.
+   * For workflows without steps, this is Record<never, never>.
+   */
+  readonly _steps: TSteps;
 }
 
 /**
@@ -344,36 +377,35 @@ export interface WorkflowDefinition<TData = unknown, TResult = unknown, TSteps =
  * @template TData - The input data type
  * @template TResult - The result type
  */
-export interface WorkflowDefinitionBuilder<TData, TResult> extends WorkflowDefinition<
-	TData,
-	TResult,
-	Record<never, never>
-> {
-	/**
-	 * Adds steps to the workflow definition.
-	 *
-	 * Steps define the structure of work to be done. The emitter uses this
-	 * to create BullMQ flows with step children, and the consumer provides
-	 * handlers for each step.
-	 *
-	 * @param buildSteps - Callback that receives StepBuilder and returns configured builder
-	 * @returns Frozen workflow definition with steps
-	 *
-	 * @example
-	 * ```typescript
-	 * const ProcessOrder = Workflow.define({
-	 *   name: 'process-order',
-	 *   data: Type.Object({ orderId: Type.String() }),
-	 *   result: Type.Object({ processedAt: Type.Number() })
-	 * }).steps(s => s
-	 *   .sequential(s.step('validate', Type.Object({ valid: Type.Boolean() })))
-	 *   .sequential(s.step('process', Type.Object({ processId: Type.String() })))
-	 * );
-	 * ```
-	 */
-	steps<TSteps extends Record<string, unknown>>(
-		buildSteps: (s: StepBuilder) => StepBuilder<TSteps>
-	): WorkflowDefinition<TData, TResult, TSteps>;
+export interface WorkflowDefinitionBuilder<
+  TData,
+  TResult,
+> extends WorkflowDefinition<TData, TResult, Record<never, never>> {
+  /**
+   * Adds steps to the workflow definition.
+   *
+   * Steps define the structure of work to be done. The emitter uses this
+   * to create BullMQ flows with step children, and the consumer provides
+   * handlers for each step.
+   *
+   * @param buildSteps - Callback that receives StepBuilder and returns configured builder
+   * @returns Frozen workflow definition with steps
+   *
+   * @example
+   * ```typescript
+   * const ProcessOrder = Workflow.define({
+   *   name: 'process-order',
+   *   data: Type.Object({ orderId: Type.String() }),
+   *   result: Type.Object({ processedAt: Type.Number() })
+   * }).steps(s => s
+   *   .sequential(s.step('validate', Type.Object({ valid: Type.Boolean() })))
+   *   .sequential(s.step('process', Type.Object({ processId: Type.String() })))
+   * );
+   * ```
+   */
+  steps<TSteps extends Record<string, unknown>>(
+    buildSteps: (s: StepBuilder) => StepBuilder<TSteps>,
+  ): WorkflowDefinition<TData, TResult, TSteps>;
 }
 
 /**
@@ -427,26 +459,26 @@ export interface WorkflowDefinitionBuilder<TData, TResult> extends WorkflowDefin
  * ```
  */
 export interface StepContext<
-	TData = unknown,
-	TResults = Record<string, unknown>
+  TData = unknown,
+  TResults = Record<string, unknown>,
 > {
-	/** Unique flow ID for this workflow execution */
-	readonly flowId: string;
-	/** The workflow input data */
-	readonly data: TData;
-	/**
-	 * Accumulated results from completed steps.
-	 * Each step can access previous step results via this property.
-	 */
-	readonly results: TResults;
-	/** Logger with propagated context (correlationId, traceId, etc.) */
-	readonly log: Logger;
-	/** Metadata for context propagation */
-	readonly meta: Record<string, unknown>;
-	/** Current step name being executed */
-	readonly stepName: string;
-	/** Optional provider instance identifier */
-	readonly providerId?: string;
+  /** Unique flow ID for this workflow execution */
+  readonly flowId: string;
+  /** The workflow input data */
+  readonly data: TData;
+  /**
+   * Accumulated results from completed steps.
+   * Each step can access previous step results via this property.
+   */
+  readonly results: TResults;
+  /** Logger with propagated context (correlationId, traceId, etc.) */
+  readonly log: Logger;
+  /** Metadata for context propagation */
+  readonly meta: Record<string, unknown>;
+  /** Current step name being executed */
+  readonly stepName: string;
+  /** Optional provider instance identifier */
+  readonly providerId?: string;
 }
 
 /**
@@ -476,30 +508,30 @@ export interface StepContext<
  * ```
  */
 export interface WorkflowContext<TData, TSteps = Record<string, unknown>> {
-	/** Unique flow ID for this workflow execution */
-	readonly flowId: string;
-	/** The workflow input data */
-	readonly data: TData;
-	/**
-	 * Accumulated results from completed steps.
-	 * Each step can access previous step results via this property.
-	 */
-	readonly results: TSteps;
-	/** Logger with propagated context (correlationId, traceId, etc.) */
-	readonly log: Logger;
-	/** Metadata for context propagation */
-	readonly meta: Record<string, unknown>;
-	/**
-	 * Correlation ID for distributed tracing.
-	 * Links this workflow execution to the originating request or event chain.
-	 * If not propagated from caller, a new ID is generated.
-	 */
-	readonly correlationId: string;
-	/**
-	 * Optional provider instance identifier.
-	 * Identifies which provider instance is executing the current step.
-	 */
-	readonly providerId?: string;
+  /** Unique flow ID for this workflow execution */
+  readonly flowId: string;
+  /** The workflow input data */
+  readonly data: TData;
+  /**
+   * Accumulated results from completed steps.
+   * Each step can access previous step results via this property.
+   */
+  readonly results: TSteps;
+  /** Logger with propagated context (correlationId, traceId, etc.) */
+  readonly log: Logger;
+  /** Metadata for context propagation */
+  readonly meta: Record<string, unknown>;
+  /**
+   * Correlation ID for distributed tracing.
+   * Links this workflow execution to the originating request or event chain.
+   * If not propagated from caller, a new ID is generated.
+   */
+  readonly correlationId: string;
+  /**
+   * Optional provider instance identifier.
+   * Identifies which provider instance is executing the current step.
+   */
+  readonly providerId?: string;
 }
 
 /**
@@ -538,60 +570,60 @@ export interface WorkflowContext<TData, TSteps = Record<string, unknown>> {
  * ```
  */
 export const Workflow = {
-	/**
-	 * Define a new workflow with TypeBox schemas for data and result.
-	 *
-	 * Returns a builder that can optionally add steps via .steps() or be used
-	 * directly for simple workflows without steps.
-	 *
-	 * ## Why Static<T>?
-	 *
-	 * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
-	 * TypeScript cannot infer the corresponding type from a runtime value alone.
-	 * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
-	 * that a schema validates. This enables compile-time type safety from runtime schemas.
-	 *
-	 * @param config - Workflow configuration with name, data schema, and result schema
-	 * @returns WorkflowDefinitionBuilder with .steps() method for adding steps
-	 */
-	define<TData extends TSchema, TResult extends TSchema>(
-		config: WorkflowConfig<TData, TResult>
-	): WorkflowDefinitionBuilder<Static<TData>, Static<TResult>> {
-		// Create the base definition properties
-		const baseProps = {
-			name: config.name,
-			dataSchema: config.data,
-			resultSchema: config.result,
-			stepGroups: Object.freeze([]) as readonly StepGroup[],
-			_data: undefined as unknown as Static<TData>,
-			_result: undefined as unknown as Static<TResult>,
-			_steps: undefined as unknown as Record<never, never>
-		};
+  /**
+   * Define a new workflow with TypeBox schemas for data and result.
+   *
+   * Returns a builder that can optionally add steps via .steps() or be used
+   * directly for simple workflows without steps.
+   *
+   * ## Why Static<T>?
+   *
+   * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
+   * TypeScript cannot infer the corresponding type from a runtime value alone.
+   * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
+   * that a schema validates. This enables compile-time type safety from runtime schemas.
+   *
+   * @param config - Workflow configuration with name, data schema, and result schema
+   * @returns WorkflowDefinitionBuilder with .steps() method for adding steps
+   */
+  define<TData extends TSchema, TResult extends TSchema>(
+    config: WorkflowConfig<TData, TResult>,
+  ): WorkflowDefinitionBuilder<Static<TData>, Static<TResult>> {
+    // Create the base definition properties
+    const baseProps = {
+      name: config.name,
+      dataSchema: config.data,
+      resultSchema: config.result,
+      stepGroups: Object.freeze([]) as readonly StepGroup[],
+      _data: undefined as unknown as Static<TData>,
+      _result: undefined as unknown as Static<TResult>,
+      _steps: undefined as unknown as Record<never, never>,
+    };
 
-		// Add the steps() method for fluent building
-		const builder: WorkflowDefinitionBuilder<Static<TData>, Static<TResult>> = {
-			...baseProps,
-			steps<TSteps extends Record<string, unknown>>(
-				buildSteps: (s: StepBuilder) => StepBuilder<TSteps>
-			): WorkflowDefinition<Static<TData>, Static<TResult>, TSteps> {
-				const stepBuilder = new StepBuilder();
-				const configuredBuilder = buildSteps(stepBuilder);
-				const stepGroups = configuredBuilder._getStepGroups();
+    // Add the steps() method for fluent building
+    const builder: WorkflowDefinitionBuilder<Static<TData>, Static<TResult>> = {
+      ...baseProps,
+      steps<TSteps extends Record<string, unknown>>(
+        buildSteps: (s: StepBuilder) => StepBuilder<TSteps>,
+      ): WorkflowDefinition<Static<TData>, Static<TResult>, TSteps> {
+        const stepBuilder = new StepBuilder();
+        const configuredBuilder = buildSteps(stepBuilder);
+        const stepGroups = configuredBuilder._getStepGroups();
 
-				return Object.freeze({
-					name: config.name,
-					dataSchema: config.data,
-					resultSchema: config.result,
-					stepGroups,
-					_data: undefined as unknown as Static<TData>,
-					_result: undefined as unknown as Static<TResult>,
-					_steps: undefined as unknown as TSteps
-				});
-			}
-		};
+        return Object.freeze({
+          name: config.name,
+          dataSchema: config.data,
+          resultSchema: config.result,
+          stepGroups,
+          _data: undefined as unknown as Static<TData>,
+          _result: undefined as unknown as Static<TResult>,
+          _steps: undefined as unknown as TSteps,
+        });
+      },
+    };
 
-		return builder;
-	}
+    return builder;
+  },
 };
 
 /**
@@ -604,18 +636,18 @@ export const Workflow = {
  * @returns True if value is a WorkflowDefinition
  */
 export function isWorkflowDefinition(
-	value: unknown
+  value: unknown,
 ): value is WorkflowDefinition<unknown, unknown, Record<string, unknown>> {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'name' in value &&
-		'dataSchema' in value &&
-		'resultSchema' in value &&
-		'stepGroups' in value &&
-		typeof (value as WorkflowDefinition<unknown, unknown>).name === 'string' &&
-		Array.isArray((value as WorkflowDefinition<unknown, unknown>).stepGroups)
-	);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    "dataSchema" in value &&
+    "resultSchema" in value &&
+    "stepGroups" in value &&
+    typeof (value as WorkflowDefinition<unknown, unknown>).name === "string" &&
+    Array.isArray((value as WorkflowDefinition<unknown, unknown>).stepGroups)
+  );
 }
 
 /**
@@ -624,6 +656,8 @@ export function isWorkflowDefinition(
  * @param definition - The workflow definition to check
  * @returns True if the workflow has one or more steps defined
  */
-export function hasSteps(definition: WorkflowDefinition<unknown, unknown, Record<string, unknown>>): boolean {
-	return definition.stepGroups.length > 0;
+export function hasSteps(
+  definition: WorkflowDefinition<unknown, unknown, Record<string, unknown>>,
+): boolean {
+  return definition.stepGroups.length > 0;
 }

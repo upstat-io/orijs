@@ -24,16 +24,16 @@
  */
 
 import type {
-	FieldDef,
-	FieldType,
-	StringFieldBuilder,
-	NumberFieldBuilder,
-	BooleanFieldBuilder,
-	DateFieldBuilder,
-	ArrayFieldBuilder,
-	AnyFieldBuilder,
-	FieldColumnBuilder
-} from './types';
+  FieldDef,
+  FieldType,
+  StringFieldBuilder,
+  NumberFieldBuilder,
+  BooleanFieldBuilder,
+  DateFieldBuilder,
+  ArrayFieldBuilder,
+  AnyFieldBuilder,
+  FieldColumnBuilder,
+} from "./types";
 
 // --- Internal Builder Implementation ---
 
@@ -42,34 +42,46 @@ import type {
  * Returns new instances for immutability.
  */
 class FieldBuilderInternal<T> {
-	public readonly _def: FieldDef<T>;
+  public readonly _def: FieldDef<T>;
 
-	public constructor(type: FieldType, column: string, optional: boolean = false, defaultValue?: T) {
-		this._def =
-			defaultValue !== undefined ? { column, type, optional, defaultValue } : { column, type, optional };
-	}
+  public constructor(
+    type: FieldType,
+    column: string,
+    optional: boolean = false,
+    defaultValue?: T,
+  ) {
+    this._def =
+      defaultValue !== undefined
+        ? { column, type, optional, defaultValue }
+        : { column, type, optional };
+  }
 
-	public optional(): FieldBuilderInternal<T | undefined> {
-		return new FieldBuilderInternal(
-			this._def.type,
-			this._def.column,
-			true,
-			this._def.defaultValue as T | undefined
-		);
-	}
+  public optional(): FieldBuilderInternal<T | undefined> {
+    return new FieldBuilderInternal(
+      this._def.type,
+      this._def.column,
+      true,
+      this._def.defaultValue as T | undefined,
+    );
+  }
 
-	public nullable(): FieldBuilderInternal<T | null> {
-		return new FieldBuilderInternal<T | null>(
-			this._def.type,
-			this._def.column,
-			this._def.optional,
-			this._def.defaultValue as T | null
-		);
-	}
+  public nullable(): FieldBuilderInternal<T | null> {
+    return new FieldBuilderInternal<T | null>(
+      this._def.type,
+      this._def.column,
+      this._def.optional,
+      this._def.defaultValue as T | null,
+    );
+  }
 
-	public default(value: T): FieldBuilderInternal<T> {
-		return new FieldBuilderInternal(this._def.type, this._def.column, this._def.optional, value);
-	}
+  public default(value: T): FieldBuilderInternal<T> {
+    return new FieldBuilderInternal(
+      this._def.type,
+      this._def.column,
+      this._def.optional,
+      value,
+    );
+  }
 }
 
 // --- Column Builder Implementation ---
@@ -78,31 +90,49 @@ class FieldBuilderInternal<T> {
  * Builder that accepts column name first, then provides type methods.
  */
 class FieldColumnBuilderInternal implements FieldColumnBuilder {
-	public constructor(private readonly column: string) {}
+  public constructor(private readonly column: string) {}
 
-	public string(): StringFieldBuilder {
-		return new FieldBuilderInternal<string>('string', this.column) as StringFieldBuilder;
-	}
+  public string(): StringFieldBuilder {
+    return new FieldBuilderInternal<string>(
+      "string",
+      this.column,
+    ) as StringFieldBuilder;
+  }
 
-	public number(): NumberFieldBuilder {
-		return new FieldBuilderInternal<number>('number', this.column) as NumberFieldBuilder;
-	}
+  public number(): NumberFieldBuilder {
+    return new FieldBuilderInternal<number>(
+      "number",
+      this.column,
+    ) as NumberFieldBuilder;
+  }
 
-	public boolean(): BooleanFieldBuilder {
-		return new FieldBuilderInternal<boolean>('boolean', this.column) as BooleanFieldBuilder;
-	}
+  public boolean(): BooleanFieldBuilder {
+    return new FieldBuilderInternal<boolean>(
+      "boolean",
+      this.column,
+    ) as BooleanFieldBuilder;
+  }
 
-	public date(): DateFieldBuilder {
-		return new FieldBuilderInternal<Date>('date', this.column) as DateFieldBuilder;
-	}
+  public date(): DateFieldBuilder {
+    return new FieldBuilderInternal<Date>(
+      "date",
+      this.column,
+    ) as DateFieldBuilder;
+  }
 
-	public array<T = unknown>(): ArrayFieldBuilder<T[]> {
-		return new FieldBuilderInternal<T[]>('array', this.column) as ArrayFieldBuilder<T[]>;
-	}
+  public array<T = unknown>(): ArrayFieldBuilder<T[]> {
+    return new FieldBuilderInternal<T[]>(
+      "array",
+      this.column,
+    ) as ArrayFieldBuilder<T[]>;
+  }
 
-	public any<T = unknown>(): AnyFieldBuilder<T> {
-		return new FieldBuilderInternal<T>('any', this.column) as AnyFieldBuilder<T>;
-	}
+  public any<T = unknown>(): AnyFieldBuilder<T> {
+    return new FieldBuilderInternal<T>(
+      "any",
+      this.column,
+    ) as AnyFieldBuilder<T>;
+  }
 }
 
 // --- Public API ---
@@ -134,5 +164,5 @@ class FieldColumnBuilderInternal implements FieldColumnBuilder {
  * ```
  */
 export function field(column: string): FieldColumnBuilder {
-	return new FieldColumnBuilderInternal(column);
+  return new FieldColumnBuilderInternal(column);
 }

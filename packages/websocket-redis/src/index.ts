@@ -19,8 +19,8 @@
  */
 
 export {
-	RedisWsProvider,
-	createRedisWsProvider,
-	type RedisWsProviderOptions,
-	type RedisConnectionOptions
-} from './redis-websocket-provider';
+  RedisWsProvider,
+  createRedisWsProvider,
+  type RedisWsProviderOptions,
+  type RedisConnectionOptions,
+} from "./redis-websocket-provider";

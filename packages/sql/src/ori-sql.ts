@@ -12,7 +12,7 @@
  * attempts) are rejected by PostgreSQL with "column does not exist" errors.
  */
 
-import type { OriSqlFactory, SqlIdentifier } from './types';
+import type { OriSqlFactory, SqlIdentifier } from "./types";
 
 /**
  * Bun SQL function type supporting both template and identifier modes.
@@ -24,10 +24,10 @@ import type { OriSqlFactory, SqlIdentifier } from './types';
  * Exported for consumers who need to type their sql parameter.
  */
 export interface BunSqlFunction {
-	/** Tagged template mode - executes SQL query */
-	(strings: TemplateStringsArray, ...values: unknown[]): unknown;
-	/** Identifier mode - creates safe identifier reference for interpolation */
-	(identifier: string): unknown;
+  /** Tagged template mode - executes SQL query */
+  (strings: TemplateStringsArray, ...values: unknown[]): unknown;
+  /** Identifier mode - creates safe identifier reference for interpolation */
+  (identifier: string): unknown;
 }
 
 /**
@@ -47,7 +47,9 @@ export interface BunSqlFunction {
  * ```
  */
 export function isIdentifier(value: unknown): value is SqlIdentifier {
-	return Array.isArray(value) && value.length === 1 && typeof value[0] === 'string';
+  return (
+    Array.isArray(value) && value.length === 1 && typeof value[0] === "string"
+  );
 }
 
 /**
@@ -92,19 +94,22 @@ export function isIdentifier(value: unknown): value is SqlIdentifier {
  * ```
  */
 export function createOriSql(bunSql: BunSqlFunction): OriSqlFactory {
-	return function oriSql<T>(strings: TemplateStringsArray, ...values: unknown[]) {
-		// Convert identifier markers to Bun SQL identifier fragments
-		const convertedValues = values.map((value) => {
-			if (isIdentifier(value)) {
-				// Use Bun's native identifier handling: sql('identifier')
-				// This provides PostgreSQL-level validation and SQL injection protection
-				return bunSql(value[0]);
-			}
-			return value;
-		});
+  return function oriSql<T>(
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) {
+    // Convert identifier markers to Bun SQL identifier fragments
+    const convertedValues = values.map((value) => {
+      if (isIdentifier(value)) {
+        // Use Bun's native identifier handling: sql('identifier')
+        // This provides PostgreSQL-level validation and SQL injection protection
+        return bunSql(value[0]);
+      }
+      return value;
+    });
 
-		// Pass the original template structure to Bun SQL
-		// Bun handles both regular values (parameterized) and identifier fragments
-		return bunSql(strings, ...convertedValues) as Promise<T> & T;
-	} as OriSqlFactory;
+    // Pass the original template structure to Bun SQL
+    // Bun handles both regular values (parameterized) and identifier fragments
+    return bunSql(strings, ...convertedValues) as Promise<T> & T;
+  } as OriSqlFactory;
 }

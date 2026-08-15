@@ -15,9 +15,9 @@
  * ```
  */
 
-import { Type } from '@orijs/validation';
-import type { TSchema, Static, Schema } from '@orijs/validation';
-import type { ServerMessageDefinition } from './message-registry';
+import { Type } from "@orijs/validation";
+import type { TSchema, Static, Schema } from "@orijs/validation";
+import type { ServerMessageDefinition } from "./message-registry";
 
 /**
  * Factory for creating server message definitions with schema validation.
@@ -34,22 +34,25 @@ import type { ServerMessageDefinition } from './message-registry';
  * ```
  */
 export const ServerMessage = {
-	/**
-	 * Define a server-side socket message with TypeBox schema validation.
-	 *
-	 * Uses TypeBox's Static<> utility for proper type inference.
-	 *
-	 * @template T - The TypeBox schema type
-	 * @param config - Message configuration with name and TypeBox schema
-	 * @returns Frozen message definition with inferred data type
-	 */
-	define<T extends TSchema>(config: { name: string; data: T }): ServerMessageDefinition<Static<T>> {
-		return Object.freeze({
-			name: config.name,
-			dataSchema: config.data as Schema<Static<T>>,
-			_data: undefined as unknown as Static<T>
-		});
-	}
+  /**
+   * Define a server-side socket message with TypeBox schema validation.
+   *
+   * Uses TypeBox's Static<> utility for proper type inference.
+   *
+   * @template T - The TypeBox schema type
+   * @param config - Message configuration with name and TypeBox schema
+   * @returns Frozen message definition with inferred data type
+   */
+  define<T extends TSchema>(config: {
+    name: string;
+    data: T;
+  }): ServerMessageDefinition<Static<T>> {
+    return Object.freeze({
+      name: config.name,
+      dataSchema: config.data as Schema<Static<T>>,
+      _data: undefined as unknown as Static<T>,
+    });
+  },
 };
 
 // =============================================================================
@@ -66,10 +69,10 @@ export const ServerMessage = {
  * - Maximum 255 characters
  */
 export const JoinRoom = ServerMessage.define({
-	name: 'room.join',
-	data: Type.Object({
-		room: Type.String({ minLength: 1, maxLength: 255 })
-	})
+  name: "room.join",
+  data: Type.Object({
+    room: Type.String({ minLength: 1, maxLength: 255 }),
+  }),
 });
 
 /**
@@ -78,10 +81,10 @@ export const JoinRoom = ServerMessage.define({
  * Client sends: `{ type: 'room.leave', room: 'account:123' }`
  */
 export const LeaveRoom = ServerMessage.define({
-	name: 'room.leave',
-	data: Type.Object({
-		room: Type.String({ minLength: 1, maxLength: 255 })
-	})
+  name: "room.leave",
+  data: Type.Object({
+    room: Type.String({ minLength: 1, maxLength: 255 }),
+  }),
 });
 
 /**
@@ -95,8 +98,8 @@ export const LeaveRoom = ServerMessage.define({
  * - Server responds: '3' (single character)
  */
 export const Heartbeat = ServerMessage.define({
-	name: 'heartbeat',
-	data: Type.Object({})
+  name: "heartbeat",
+  data: Type.Object({}),
 });
 
 // =============================================================================

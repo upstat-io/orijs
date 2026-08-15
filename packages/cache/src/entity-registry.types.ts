@@ -31,11 +31,11 @@
  * ```
  */
 export interface ScopeDef<
-	TName extends string = string,
-	TParam extends string | undefined = string | undefined
+  TName extends string = string,
+  TParam extends string | undefined = string | undefined,
 > {
-	readonly name: TName;
-	readonly param?: TParam;
+  readonly name: TName;
+  readonly param?: TParam;
 }
 
 /**
@@ -57,26 +57,26 @@ export interface ScopeDef<
  * ```
  */
 export interface EntityDef<
-	TName extends string = string,
-	TScope extends ScopeDef = ScopeDef,
-	TParam extends string | undefined = string | undefined
+  TName extends string = string,
+  TScope extends ScopeDef = ScopeDef,
+  TParam extends string | undefined = string | undefined,
 > {
-	readonly name: TName;
-	readonly scope: TScope;
-	readonly param?: TParam;
-	/**
-	 * Tags to emit when this entity is invalidated.
-	 * Any cache with matching tags will also be invalidated.
-	 *
-	 * @example
-	 * User: {
-	 *   name: 'User',
-	 *   scope: Scope.Account,
-	 *   param: 'fbAuthUid',
-	 *   invalidationTags: (params) => [`user:${params.fbAuthUid}`]
-	 * }
-	 */
-	readonly invalidationTags?: (params: Record<string, unknown>) => string[];
+  readonly name: TName;
+  readonly scope: TScope;
+  readonly param?: TParam;
+  /**
+   * Tags to emit when this entity is invalidated.
+   * Any cache with matching tags will also be invalidated.
+   *
+   * @example
+   * User: {
+   *   name: 'User',
+   *   scope: Scope.Account,
+   *   param: 'fbAuthUid',
+   *   invalidationTags: (params) => [`user:${params.fbAuthUid}`]
+   * }
+   */
+  readonly invalidationTags?: (params: Record<string, unknown>) => string[];
 }
 
 /**
@@ -88,13 +88,13 @@ export type ScopeDefsInput = Record<string, { name: string; param?: string }>;
  * Input type for a record of entity definitions.
  */
 export type EntityDefsInput<TScopes extends ScopeDef = ScopeDef> = Record<
-	string,
-	{
-		name: string;
-		scope: TScopes;
-		param?: string;
-		invalidationTags?: (params: Record<string, unknown>) => string[];
-	}
+  string,
+  {
+    name: string;
+    scope: TScopes;
+    param?: string;
+    invalidationTags?: (params: Record<string, unknown>) => string[];
+  }
 >;
 
 /**
@@ -102,7 +102,10 @@ export type EntityDefsInput<TScopes extends ScopeDef = ScopeDef> = Record<
  * Uses conditional type to properly handle missing param (→ undefined, not unknown).
  */
 export type ScopeDefsOutput<T extends ScopeDefsInput> = {
-	readonly [K in keyof T]: ScopeDef<T[K]['name'], T[K] extends { param: string } ? T[K]['param'] : undefined>;
+  readonly [K in keyof T]: ScopeDef<
+    T[K]["name"],
+    T[K] extends { param: string } ? T[K]["param"] : undefined
+  >;
 };
 
 /**
@@ -110,11 +113,11 @@ export type ScopeDefsOutput<T extends ScopeDefsInput> = {
  * Uses conditional type to properly handle missing param (→ undefined, not unknown).
  */
 export type EntityDefsOutput<T extends EntityDefsInput> = {
-	readonly [K in keyof T]: EntityDef<
-		T[K]['name'],
-		T[K]['scope'],
-		T[K] extends { param: string } ? T[K]['param'] : undefined
-	>;
+  readonly [K in keyof T]: EntityDef<
+    T[K]["name"],
+    T[K]["scope"],
+    T[K] extends { param: string } ? T[K]["param"] : undefined
+  >;
 };
 
 // --- SCOPE DEFINITION ---
@@ -131,14 +134,14 @@ export type EntityDefsOutput<T extends EntityDefsInput> = {
  * { name: 'project', params: ['accountUuid', 'projectUuid'] }
  */
 export interface ScopeDefinition {
-	/** The unique name of this scope */
-	readonly name: string;
+  /** The unique name of this scope */
+  readonly name: string;
 
-	/**
-	 * Parameters required for this scope.
-	 * Includes inherited params from parent scopes.
-	 */
-	readonly params: readonly string[];
+  /**
+   * Parameters required for this scope.
+   * Includes inherited params from parent scopes.
+   */
+  readonly params: readonly string[];
 }
 
 // --- ENTITY DEFINITION ---
@@ -160,20 +163,20 @@ export interface ScopeDefinition {
  * }
  */
 export interface EntityDefinition {
-	/** The unique name of this entity */
-	readonly name: string;
+  /** The unique name of this entity */
+  readonly name: string;
 
-	/** The scope this entity belongs to */
-	readonly scope: string;
+  /** The scope this entity belongs to */
+  readonly scope: string;
 
-	/** Unique keys that identify this entity within its scope */
-	readonly uniqueKeys: readonly string[];
+  /** Unique keys that identify this entity within its scope */
+  readonly uniqueKeys: readonly string[];
 
-	/**
-	 * Full parameters for this entity.
-	 * Computed as: scope params + unique keys
-	 */
-	readonly params: readonly string[];
+  /**
+   * Full parameters for this entity.
+   * Computed as: scope params + unique keys
+   */
+  readonly params: readonly string[];
 }
 
 // --- BUILDER INTERFACE ---
@@ -198,150 +201,153 @@ export interface EntityDefinition {
  * ```
  */
 export interface EntityRegistryBuilder<
-	TEntityNames extends string = never,
-	TScopeNames extends string = never
+  TEntityNames extends string = never,
+  TScopeNames extends string = never,
 > {
-	/**
-	 * Define a new scope with its parameters.
-	 *
-	 * Scopes are hierarchical - each scope inherits all params from
-	 * previously defined scopes. Define scopes in order from root to leaf.
-	 *
-	 * @param name - Unique name for this scope
-	 * @param params - Additional params for this scope (beyond inherited)
-	 * @returns Builder with scope added
-	 * @throws Error if scope name already exists
-	 *
-	 * @example
-	 * .scope('global')                    // No params
-	 * .scope('account', 'accountUuid')    // Adds accountUuid
-	 * .scope('project', 'projectUuid')    // Inherits accountUuid, adds projectUuid
-	 */
-	scope<S extends string>(name: S, ...params: string[]): EntityRegistryBuilder<TEntityNames, TScopeNames | S>;
+  /**
+   * Define a new scope with its parameters.
+   *
+   * Scopes are hierarchical - each scope inherits all params from
+   * previously defined scopes. Define scopes in order from root to leaf.
+   *
+   * @param name - Unique name for this scope
+   * @param params - Additional params for this scope (beyond inherited)
+   * @returns Builder with scope added
+   * @throws Error if scope name already exists
+   *
+   * @example
+   * .scope('global')                    // No params
+   * .scope('account', 'accountUuid')    // Adds accountUuid
+   * .scope('project', 'projectUuid')    // Inherits accountUuid, adds projectUuid
+   */
+  scope<S extends string>(
+    name: S,
+    ...params: string[]
+  ): EntityRegistryBuilder<TEntityNames, TScopeNames | S>;
 
-	/**
-	 * Define a new entity within a scope.
-	 *
-	 * The entity's full params are automatically computed as:
-	 * scope params + unique keys.
-	 *
-	 * @param name - Unique name for this entity
-	 * @param scope - Scope this entity belongs to (must be previously defined)
-	 * @param uniqueKeys - Keys that uniquely identify this entity within scope
-	 * @returns Builder with entity added
-	 * @throws Error if entity name already exists
-	 * @throws Error if scope is not defined
-	 *
-	 * @example
-	 * .entity('Product', 'project', 'productUuid')
-	 * // Product.params = ['accountUuid', 'projectUuid', 'productUuid']
-	 *
-	 * .entity('ProductList', 'project')
-	 * // ProductList.params = ['accountUuid', 'projectUuid']
-	 */
-	entity<N extends string>(
-		name: N,
-		scope: TScopeNames,
-		...uniqueKeys: string[]
-	): EntityRegistryBuilder<TEntityNames | N, TScopeNames>;
+  /**
+   * Define a new entity within a scope.
+   *
+   * The entity's full params are automatically computed as:
+   * scope params + unique keys.
+   *
+   * @param name - Unique name for this entity
+   * @param scope - Scope this entity belongs to (must be previously defined)
+   * @param uniqueKeys - Keys that uniquely identify this entity within scope
+   * @returns Builder with entity added
+   * @throws Error if entity name already exists
+   * @throws Error if scope is not defined
+   *
+   * @example
+   * .entity('Product', 'project', 'productUuid')
+   * // Product.params = ['accountUuid', 'projectUuid', 'productUuid']
+   *
+   * .entity('ProductList', 'project')
+   * // ProductList.params = ['accountUuid', 'projectUuid']
+   */
+  entity<N extends string>(
+    name: N,
+    scope: TScopeNames,
+    ...uniqueKeys: string[]
+  ): EntityRegistryBuilder<TEntityNames | N, TScopeNames>;
 
-	/**
-	 * Apply a composition function to add multiple entities.
-	 *
-	 * Enables modular organization of entity definitions.
-	 * The function receives the current builder and returns a new builder.
-	 *
-	 * @param fn - Function that adds entities and returns the builder
-	 * @returns Builder with entities added by the function
-	 *
-	 * @example
-	 * function addUserEntities<T extends string, S extends string>(
-	 *   reg: EntityRegistryBuilder<T, S>
-	 * ): EntityRegistryBuilder<T | 'User' | 'UserProfile', S> {
-	 *   return reg
-	 *     .entity('User', 'account', 'userUuid')
-	 *     .entity('UserProfile', 'account', 'userUuid');
-	 * }
-	 *
-	 * EntityRegistry.create()
-	 *   .scope('account', 'accountUuid')
-	 *   .use(addUserEntities)
-	 *   .build();
-	 */
-	use<TNewEntities extends string, TNewScopes extends string>(
-		fn: (
-			builder: EntityRegistryBuilder<TEntityNames, TScopeNames>
-		) => EntityRegistryBuilder<TNewEntities, TNewScopes>
-	): EntityRegistryBuilder<TNewEntities, TNewScopes>;
+  /**
+   * Apply a composition function to add multiple entities.
+   *
+   * Enables modular organization of entity definitions.
+   * The function receives the current builder and returns a new builder.
+   *
+   * @param fn - Function that adds entities and returns the builder
+   * @returns Builder with entities added by the function
+   *
+   * @example
+   * function addUserEntities<T extends string, S extends string>(
+   *   reg: EntityRegistryBuilder<T, S>
+   * ): EntityRegistryBuilder<T | 'User' | 'UserProfile', S> {
+   *   return reg
+   *     .entity('User', 'account', 'userUuid')
+   *     .entity('UserProfile', 'account', 'userUuid');
+   * }
+   *
+   * EntityRegistry.create()
+   *   .scope('account', 'accountUuid')
+   *   .use(addUserEntities)
+   *   .build();
+   */
+  use<TNewEntities extends string, TNewScopes extends string>(
+    fn: (
+      builder: EntityRegistryBuilder<TEntityNames, TScopeNames>,
+    ) => EntityRegistryBuilder<TNewEntities, TNewScopes>,
+  ): EntityRegistryBuilder<TNewEntities, TNewScopes>;
 
-	/**
-	 * Register all scopes from a scopes object.
-	 *
-	 * Use with `defineScopes()` for type-safe bulk scope registration.
-	 * Scopes are registered in object key order (define in hierarchy order).
-	 *
-	 * @param scopes - Object of scope definitions from defineScopes()
-	 * @returns Builder with all scopes added
-	 *
-	 * @example
-	 * ```typescript
-	 * const Scope = defineScopes({
-	 *   Global: { name: 'global' },
-	 *   Account: { name: 'account', param: 'accountUuid' },
-	 *   Project: { name: 'project', param: 'projectUuid' },
-	 * });
-	 *
-	 * EntityRegistry.create()
-	 *   .scopes(Scope)
-	 *   .entities(Entities)
-	 *   .build();
-	 * ```
-	 */
-	scopes<T extends Record<string, { name: string; param?: string }>>(
-		scopes: T
-	): EntityRegistryBuilder<TEntityNames, TScopeNames | T[keyof T]['name']>;
+  /**
+   * Register all scopes from a scopes object.
+   *
+   * Use with `defineScopes()` for type-safe bulk scope registration.
+   * Scopes are registered in object key order (define in hierarchy order).
+   *
+   * @param scopes - Object of scope definitions from defineScopes()
+   * @returns Builder with all scopes added
+   *
+   * @example
+   * ```typescript
+   * const Scope = defineScopes({
+   *   Global: { name: 'global' },
+   *   Account: { name: 'account', param: 'accountUuid' },
+   *   Project: { name: 'project', param: 'projectUuid' },
+   * });
+   *
+   * EntityRegistry.create()
+   *   .scopes(Scope)
+   *   .entities(Entities)
+   *   .build();
+   * ```
+   */
+  scopes<T extends Record<string, { name: string; param?: string }>>(
+    scopes: T,
+  ): EntityRegistryBuilder<TEntityNames, TScopeNames | T[keyof T]["name"]>;
 
-	/**
-	 * Register all entities from an entities object.
-	 *
-	 * Use with `defineEntities()` for type-safe bulk entity registration.
-	 *
-	 * @param entities - Object of entity definitions from defineEntities()
-	 * @returns Builder with all entities added
-	 *
-	 * @example
-	 * ```typescript
-	 * const Entities = defineEntities({
-	 *   Product: { name: 'Product', scope: Scope.Project, param: 'productUuid' },
-	 *   User: { name: 'User', scope: Scope.Account, param: 'userUuid' },
-	 * });
-	 *
-	 * EntityRegistry.create()
-	 *   .scopes(Scope)
-	 *   .entities(Entities)
-	 *   .build();
-	 * ```
-	 */
-	entities<
-		T extends Record<
-			string,
-			{
-				name: string;
-				scope: { name: string };
-				param?: string;
-				invalidationTags?: (params: Record<string, unknown>) => string[];
-			}
-		>
-	>(
-		entities: T
-	): EntityRegistryBuilder<TEntityNames | T[keyof T]['name'], TScopeNames>;
+  /**
+   * Register all entities from an entities object.
+   *
+   * Use with `defineEntities()` for type-safe bulk entity registration.
+   *
+   * @param entities - Object of entity definitions from defineEntities()
+   * @returns Builder with all entities added
+   *
+   * @example
+   * ```typescript
+   * const Entities = defineEntities({
+   *   Product: { name: 'Product', scope: Scope.Project, param: 'productUuid' },
+   *   User: { name: 'User', scope: Scope.Account, param: 'userUuid' },
+   * });
+   *
+   * EntityRegistry.create()
+   *   .scopes(Scope)
+   *   .entities(Entities)
+   *   .build();
+   * ```
+   */
+  entities<
+    T extends Record<
+      string,
+      {
+        name: string;
+        scope: { name: string };
+        param?: string;
+        invalidationTags?: (params: Record<string, unknown>) => string[];
+      }
+    >,
+  >(
+    entities: T,
+  ): EntityRegistryBuilder<TEntityNames | T[keyof T]["name"], TScopeNames>;
 
-	/**
-	 * Build the final immutable entity registry.
-	 *
-	 * @returns Frozen registry with lookup methods
-	 */
-	build(): BuiltEntityRegistry<TEntityNames, TScopeNames>;
+  /**
+   * Build the final immutable entity registry.
+   *
+   * @returns Frozen registry with lookup methods
+   */
+  build(): BuiltEntityRegistry<TEntityNames, TScopeNames>;
 }
 
 // --- BUILT REGISTRY INTERFACE ---
@@ -369,52 +375,52 @@ export interface EntityRegistryBuilder<
  * ```
  */
 export interface BuiltEntityRegistry<
-	TEntityNames extends string = string,
-	TScopeNames extends string = string
+  TEntityNames extends string = string,
+  TScopeNames extends string = string,
 > {
-	/** Map of all entity definitions indexed by name (string keys for iteration) */
-	readonly entities: ReadonlyMap<string, EntityDefinition>;
+  /** Map of all entity definitions indexed by name (string keys for iteration) */
+  readonly entities: ReadonlyMap<string, EntityDefinition>;
 
-	/** Map of all scope definitions indexed by name (string keys for iteration) */
-	readonly scopes: ReadonlyMap<string, ScopeDefinition>;
+  /** Map of all scope definitions indexed by name (string keys for iteration) */
+  readonly scopes: ReadonlyMap<string, ScopeDefinition>;
 
-	/**
-	 * Get an entity definition by name.
-	 *
-	 * @param name - Entity name (type-checked against registered entities)
-	 * @returns The entity definition
-	 * @throws Error if entity is not found
-	 */
-	getEntity(name: TEntityNames): EntityDefinition;
+  /**
+   * Get an entity definition by name.
+   *
+   * @param name - Entity name (type-checked against registered entities)
+   * @returns The entity definition
+   * @throws Error if entity is not found
+   */
+  getEntity(name: TEntityNames): EntityDefinition;
 
-	/**
-	 * Check if an entity exists in the registry.
-	 *
-	 * @param name - Entity name to check
-	 * @returns True if the entity exists, false otherwise
-	 */
-	hasEntity(name: string): boolean;
+  /**
+   * Check if an entity exists in the registry.
+   *
+   * @param name - Entity name to check
+   * @returns True if the entity exists, false otherwise
+   */
+  hasEntity(name: string): boolean;
 
-	/**
-	 * Get a scope definition by name.
-	 *
-	 * @param name - Scope name (type-checked against registered scopes)
-	 * @returns The scope definition
-	 * @throws Error if scope is not found
-	 */
-	getScope(name: TScopeNames): ScopeDefinition;
+  /**
+   * Get a scope definition by name.
+   *
+   * @param name - Scope name (type-checked against registered scopes)
+   * @returns The scope definition
+   * @throws Error if scope is not found
+   */
+  getScope(name: TScopeNames): ScopeDefinition;
 
-	/**
-	 * Get all registered entity names.
-	 *
-	 * @returns Array of entity names
-	 */
-	getEntityNames(): readonly TEntityNames[];
+  /**
+   * Get all registered entity names.
+   *
+   * @returns Array of entity names
+   */
+  getEntityNames(): readonly TEntityNames[];
 
-	/**
-	 * Get all registered scope names.
-	 *
-	 * @returns Array of scope names
-	 */
-	getScopeNames(): readonly TScopeNames[];
+  /**
+   * Get all registered scope names.
+   *
+   * @returns Array of scope names
+   */
+  getScopeNames(): readonly TScopeNames[];
 }

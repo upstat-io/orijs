@@ -5,4 +5,7 @@
  */
 
 // Public API
-export { BullMQEventProvider, type BullMQEventProviderOptions } from './bullmq-event-provider';
+export {
+  BullMQEventProvider,
+  type BullMQEventProviderOptions,
+} from "./bullmq-event-provider";

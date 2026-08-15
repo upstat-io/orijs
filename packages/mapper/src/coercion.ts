@@ -14,7 +14,7 @@
  * ```
  */
 
-import { MapperError } from './mapper-error';
+import { MapperError } from "./mapper-error";
 
 /**
  * Coerce a value to a number.
@@ -26,35 +26,51 @@ import { MapperError } from './mapper-error';
  * @returns The coerced number
  * @throws MapperError if value is null, undefined, or results in NaN
  */
-export function coerceNumber(value: unknown, table: string, column: string): number {
-	if (value === null || value === undefined) {
-		throw new MapperError(table, column, 'cannot coerce null/undefined', 'number', value);
-	}
+export function coerceNumber(
+  value: unknown,
+  table: string,
+  column: string,
+): number {
+  if (value === null || value === undefined) {
+    throw new MapperError(
+      table,
+      column,
+      "cannot coerce null/undefined",
+      "number",
+      value,
+    );
+  }
 
-	if (typeof value === 'number') {
-		if (Number.isNaN(value)) {
-			throw new MapperError(table, column, 'value is NaN', 'number', value);
-		}
-		return value;
-	}
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) {
+      throw new MapperError(table, column, "value is NaN", "number", value);
+    }
+    return value;
+  }
 
-	if (typeof value === 'string') {
-		if (value === '') {
-			throw new MapperError(table, column, 'cannot coerce empty string', 'number', value);
-		}
-		const num = Number(value);
-		if (Number.isNaN(num)) {
-			throw new MapperError(table, column, 'coercion failed', 'number', value);
-		}
-		return num;
-	}
+  if (typeof value === "string") {
+    if (value === "") {
+      throw new MapperError(
+        table,
+        column,
+        "cannot coerce empty string",
+        "number",
+        value,
+      );
+    }
+    const num = Number(value);
+    if (Number.isNaN(num)) {
+      throw new MapperError(table, column, "coercion failed", "number", value);
+    }
+    return num;
+  }
 
-	// Try converting other types
-	const num = Number(value);
-	if (Number.isNaN(num)) {
-		throw new MapperError(table, column, 'coercion failed', 'number', value);
-	}
-	return num;
+  // Try converting other types
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    throw new MapperError(table, column, "coercion failed", "number", value);
+  }
+  return num;
 }
 
 /**
@@ -67,43 +83,77 @@ export function coerceNumber(value: unknown, table: string, column: string): num
  * @returns The coerced Date
  * @throws MapperError if value is null, undefined, or results in Invalid Date
  */
-export function coerceDate(value: unknown, table: string, column: string): Date {
-	if (value === null || value === undefined) {
-		throw new MapperError(table, column, 'cannot coerce null/undefined', 'date', value);
-	}
+export function coerceDate(
+  value: unknown,
+  table: string,
+  column: string,
+): Date {
+  if (value === null || value === undefined) {
+    throw new MapperError(
+      table,
+      column,
+      "cannot coerce null/undefined",
+      "date",
+      value,
+    );
+  }
 
-	// Already a Date - return as-is
-	if (value instanceof Date) {
-		if (Number.isNaN(value.getTime())) {
-			throw new MapperError(table, column, 'invalid Date object', 'date', value);
-		}
-		return value;
-	}
+  // Already a Date - return as-is
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new MapperError(
+        table,
+        column,
+        "invalid Date object",
+        "date",
+        value,
+      );
+    }
+    return value;
+  }
 
-	// Empty string is invalid
-	if (value === '') {
-		throw new MapperError(table, column, 'cannot coerce empty string', 'date', value);
-	}
+  // Empty string is invalid
+  if (value === "") {
+    throw new MapperError(
+      table,
+      column,
+      "cannot coerce empty string",
+      "date",
+      value,
+    );
+  }
 
-	// Number (timestamp)
-	if (typeof value === 'number') {
-		const date = new Date(value);
-		if (Number.isNaN(date.getTime())) {
-			throw new MapperError(table, column, 'invalid timestamp', 'date', value);
-		}
-		return date;
-	}
+  // Number (timestamp)
+  if (typeof value === "number") {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new MapperError(table, column, "invalid timestamp", "date", value);
+    }
+    return date;
+  }
 
-	// String (ISO date or other format)
-	if (typeof value === 'string') {
-		const date = new Date(value);
-		if (Number.isNaN(date.getTime())) {
-			throw new MapperError(table, column, 'invalid date string', 'date', value);
-		}
-		return date;
-	}
+  // String (ISO date or other format)
+  if (typeof value === "string") {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new MapperError(
+        table,
+        column,
+        "invalid date string",
+        "date",
+        value,
+      );
+    }
+    return date;
+  }
 
-	throw new MapperError(table, column, 'unsupported type for date coercion', 'date', value);
+  throw new MapperError(
+    table,
+    column,
+    "unsupported type for date coercion",
+    "date",
+    value,
+  );
 }
 
 /**
@@ -115,7 +165,7 @@ export function coerceDate(value: unknown, table: string, column: string): Date 
  * @returns The coerced boolean
  */
 export function coerceBoolean(value: unknown): boolean {
-	return Boolean(value);
+  return Boolean(value);
 }
 
 /**
@@ -138,23 +188,33 @@ export function coerceBoolean(value: unknown): boolean {
  * @returns A regular Array, or the original value if already an Array or not array-like
  */
 export function coerceArray(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value;
-	}
-	if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-		return Array.from(value as unknown as ArrayLike<unknown>);
-	}
-	return value;
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    return Array.from(value as unknown as ArrayLike<unknown>);
+  }
+  return value;
 }
 
-export function coerceString(value: unknown, table: string, column: string): string {
-	if (value === null || value === undefined) {
-		throw new MapperError(table, column, 'cannot coerce null/undefined', 'string', value);
-	}
+export function coerceString(
+  value: unknown,
+  table: string,
+  column: string,
+): string {
+  if (value === null || value === undefined) {
+    throw new MapperError(
+      table,
+      column,
+      "cannot coerce null/undefined",
+      "string",
+      value,
+    );
+  }
 
-	if (typeof value === 'string') {
-		return value;
-	}
+  if (typeof value === "string") {
+    return value;
+  }
 
-	return String(value);
+  return String(value);
 }

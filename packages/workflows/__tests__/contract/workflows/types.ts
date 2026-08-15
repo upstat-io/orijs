@@ -8,8 +8,8 @@
  * Common test data type used across workflow tests.
  */
 export interface TestOrderData {
-	orderId: string;
-	amount: number;
+  orderId: string;
+  amount: number;
 }
 
 /**

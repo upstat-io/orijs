@@ -10,7 +10,7 @@
  * @module workflows/workflow-context
  */
 
-import type { Logger, PropagationMeta } from '@orijs/logging';
+import type { Logger, PropagationMeta } from "@orijs/logging";
 
 /**
  * Context passed to workflow steps.
@@ -36,48 +36,51 @@ import type { Logger, PropagationMeta } from '@orijs/logging';
  * };
  * ```
  */
-export interface WorkflowContext<TData = unknown, TSteps = Record<string, unknown>> {
-	/** Revoked when this execution no longer owns permission to commit effects. */
-	readonly signal: AbortSignal;
-	/** Unique flow ID for this workflow execution */
-	readonly flowId: string;
+export interface WorkflowContext<
+  TData = unknown,
+  TSteps = Record<string, unknown>,
+> {
+  /** Revoked when this execution no longer owns permission to commit effects. */
+  readonly signal: AbortSignal;
+  /** Unique flow ID for this workflow execution */
+  readonly flowId: string;
 
-	/** Input data for the workflow */
-	readonly data: TData;
+  /** Input data for the workflow */
+  readonly data: TData;
 
-	/**
-	 * Accumulated results from completed steps.
-	 *
-	 * Q4 decision: Results accumulate as { stepName: result, ... }
-	 * Each step can access previous step results via this property.
-	 */
-	readonly results: TSteps;
+  /**
+   * Accumulated results from completed steps.
+   *
+   * Q4 decision: Results accumulate as { stepName: result, ... }
+   * Each step can access previous step results via this property.
+   */
+  readonly results: TSteps;
 
-	/** Logger with propagated context (correlationId, traceId, etc.) */
-	readonly log: Logger;
+  /** Logger with propagated context (correlationId, traceId, etc.) */
+  readonly log: Logger;
 
-	/** Metadata for context propagation */
-	readonly meta: PropagationMeta;
+  /** Metadata for context propagation */
+  readonly meta: PropagationMeta;
 
-	/**
-	 * Correlation ID for distributed tracing.
-	 * Links this workflow execution to the originating request or event chain.
-	 * Extracted from meta for convenience.
-	 */
-	readonly correlationId: string;
+  /**
+   * Correlation ID for distributed tracing.
+   * Links this workflow execution to the originating request or event chain.
+   * Extracted from meta for convenience.
+   */
+  readonly correlationId: string;
 
-	/**
-	 * Optional provider instance identifier.
-	 *
-	 * In distributed deployments, this identifies which provider instance
-	 * is executing the current step. Useful for:
-	 * - Distributed tracing and debugging
-	 * - Multi-instance testing verification
-	 * - Observability and metrics
-	 *
-	 * Set via provider options (e.g., `providerId` in provider configuration).
-	 */
-	readonly providerId?: string;
+  /**
+   * Optional provider instance identifier.
+   *
+   * In distributed deployments, this identifies which provider instance
+   * is executing the current step. Useful for:
+   * - Distributed tracing and debugging
+   * - Multi-instance testing verification
+   * - Observability and metrics
+   *
+   * Set via provider options (e.g., `providerId` in provider configuration).
+   */
+  readonly providerId?: string;
 }
 
 /**
@@ -85,35 +88,38 @@ export interface WorkflowContext<TData = unknown, TSteps = Record<string, unknow
  *
  * Immutable - all properties are readonly.
  */
-export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<TData, Record<string, unknown>> {
-	public readonly correlationId: string;
+export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<
+  TData,
+  Record<string, unknown>
+> {
+  public readonly correlationId: string;
 
-	public constructor(
-		public readonly flowId: string,
-		public readonly data: TData,
-		public readonly results: Record<string, unknown>,
-		public readonly log: Logger,
-		public readonly meta: PropagationMeta,
-		public readonly providerId?: string,
-		public readonly signal: AbortSignal = new AbortController().signal
-	) {
-		// Extract correlationId from meta for convenience access
-		this.correlationId = (meta.correlationId as string) ?? flowId;
-	}
+  public constructor(
+    public readonly flowId: string,
+    public readonly data: TData,
+    public readonly results: Record<string, unknown>,
+    public readonly log: Logger,
+    public readonly meta: PropagationMeta,
+    public readonly providerId?: string,
+    public readonly signal: AbortSignal = new AbortController().signal,
+  ) {
+    // Extract correlationId from meta for convenience access
+    this.correlationId = (meta.correlationId as string) ?? flowId;
+  }
 }
 
 /**
  * Options for creating a workflow context.
  */
 export interface WorkflowContextOptions {
-	/** Workflow class name for logging context */
-	workflowName?: string;
-	/** Current step name for logging context */
-	stepName?: string;
-	/** Provider instance identifier for distributed tracing */
-	providerId?: string;
-	/** Execution ownership signal for timeout/cancellation fencing. */
-	signal?: AbortSignal;
+  /** Workflow class name for logging context */
+  workflowName?: string;
+  /** Current step name for logging context */
+  stepName?: string;
+  /** Provider instance identifier for distributed tracing */
+  providerId?: string;
+  /** Execution ownership signal for timeout/cancellation fencing. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -133,41 +139,49 @@ export interface WorkflowContextOptions {
  * @throws Error if any input is invalid
  */
 export function createWorkflowContext<TData>(
-	flowId: string,
-	data: TData,
-	results: Record<string, unknown>,
-	log: Logger,
-	meta: PropagationMeta,
-	options?: WorkflowContextOptions
+  flowId: string,
+  data: TData,
+  results: Record<string, unknown>,
+  log: Logger,
+  meta: PropagationMeta,
+  options?: WorkflowContextOptions,
 ): WorkflowContext<TData> {
-	// Validate inputs at boundary (fail-fast)
-	if (!flowId || typeof flowId !== 'string') {
-		throw new Error('flowId must be a non-empty string');
-	}
-	if (!log) {
-		throw new Error('log (Logger) is required');
-	}
-	if (!results || typeof results !== 'object' || Array.isArray(results)) {
-		throw new Error('results must be an object');
-	}
-	if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
-		throw new Error('meta must be an object');
-	}
+  // Validate inputs at boundary (fail-fast)
+  if (!flowId || typeof flowId !== "string") {
+    throw new Error("flowId must be a non-empty string");
+  }
+  if (!log) {
+    throw new Error("log (Logger) is required");
+  }
+  if (!results || typeof results !== "object" || Array.isArray(results)) {
+    throw new Error("results must be an object");
+  }
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+    throw new Error("meta must be an object");
+  }
 
-	// Automatically add workflow context to logger (internal framework concern)
-	const logContext: Record<string, unknown> = { flowId };
-	if (options?.workflowName) {
-		logContext.workflow = options.workflowName;
-	}
-	if (options?.stepName) {
-		logContext.step = options.stepName;
-	}
-	if (options?.providerId) {
-		logContext.providerId = options.providerId;
-	}
-	const contextualLog = log.with(logContext);
+  // Automatically add workflow context to logger (internal framework concern)
+  const logContext: Record<string, unknown> = { flowId };
+  if (options?.workflowName) {
+    logContext.workflow = options.workflowName;
+  }
+  if (options?.stepName) {
+    logContext.step = options.stepName;
+  }
+  if (options?.providerId) {
+    logContext.providerId = options.providerId;
+  }
+  const contextualLog = log.with(logContext);
 
-	return Object.freeze(
-		new DefaultWorkflowContext(flowId, data, results, contextualLog, meta, options?.providerId, options?.signal)
-	);
+  return Object.freeze(
+    new DefaultWorkflowContext(
+      flowId,
+      data,
+      results,
+      contextualLog,
+      meta,
+      options?.providerId,
+      options?.signal,
+    ),
+  );
 }

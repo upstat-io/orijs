@@ -33,28 +33,28 @@
  * Factory to create oriSql from Bun's sql connection.
  * @see createOriSql in ori-sql.ts for full documentation
  */
-export { createOriSql } from './ori-sql';
+export { createOriSql } from "./ori-sql";
 
 /**
  * Type guard to check if a value is a SqlIdentifier (single-element string array).
  * @see isIdentifier in ori-sql.ts for full documentation
  */
-export { isIdentifier } from './ori-sql';
+export { isIdentifier } from "./ori-sql";
 
 /**
  * Type representing Bun's SQL function signature.
  * Use this to type your sql parameter when creating oriSql.
  */
-export type { BunSqlFunction } from './ori-sql';
+export type { BunSqlFunction } from "./ori-sql";
 
 /**
  * Single-element string array marking a SQL identifier.
  * Use `${[tableName]}` syntax in oriSql templates.
  */
-export type { SqlIdentifier } from './types';
+export type { SqlIdentifier } from "./types";
 
 /**
  * Type signature for the oriSql tagged template function.
  * Returned by createOriSql().
  */
-export type { OriSqlFactory } from './types';
+export type { OriSqlFactory } from "./types";

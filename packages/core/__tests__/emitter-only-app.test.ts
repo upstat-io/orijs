@@ -17,252 +17,260 @@
  * ```
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { type Application, Ori } from '../src/index.ts';
-import { Event } from '../src/types/event-definition.ts';
-import { Workflow } from '../src/types/workflow-definition.ts';
-import { Type } from '@orijs/validation';
-import type { OriController, RouteBuilder } from '../src/types/index.ts';
-import { Logger } from '@orijs/logging';
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { type Application, Ori } from "../src/index.ts";
+import { Event } from "../src/types/event-definition.ts";
+import { Workflow } from "../src/types/workflow-definition.ts";
+import { Type } from "@orijs/validation";
+import type { OriController, RouteBuilder } from "../src/types/index.ts";
+import { Logger } from "@orijs/logging";
 
 // Test event definition
 const TestEvent = Event.define({
-	name: 'test.event',
-	data: Type.Object({ userId: Type.String() }),
-	result: Type.Object({ processed: Type.Boolean() })
+  name: "test.event",
+  data: Type.Object({ userId: Type.String() }),
+  result: Type.Object({ processed: Type.Boolean() }),
 });
 
 // Test workflow definition
 const TestWorkflow = Workflow.define({
-	name: 'test-workflow',
-	data: Type.Object({ input: Type.String() }),
-	result: Type.Object({ output: Type.String() })
+  name: "test-workflow",
+  data: Type.Object({ input: Type.String() }),
+  result: Type.Object({ output: Type.String() }),
 });
 
 // Simple controller for testing
 class TestController implements OriController {
-	configure(r: RouteBuilder) {
-		r.get('/', () => Response.json({ ok: true }));
-	}
+  configure(r: RouteBuilder) {
+    r.get("/", () => Response.json({ ok: true }));
+  }
 }
 
 // Simple service for testing
 class TestService {
-	getValue() {
-		return 'test';
-	}
+  getValue() {
+    return "test";
+  }
 }
 
 // Provider functions like those in real apps
 function addTestService(app: Application): Application {
-	return app.provider(TestService);
+  return app.provider(TestService);
 }
 
 function addTestController(app: Application): Application {
-	return app.controller('/api', TestController);
+  return app.controller("/api", TestController);
 }
 
-	describe('Emitter-Only App Pattern', () => {
-	let app: Application;
+describe("Emitter-Only App Pattern", () => {
+  let app: Application;
 
-	beforeEach(() => {
-		Logger.reset();
-	});
+  beforeEach(() => {
+    Logger.reset();
+  });
 
-	afterEach(async () => {
-		await app?.stop();
-	});
+  afterEach(async () => {
+    await app?.stop();
+  });
 
-	describe('Event emitter-only with .use() chaining', () => {
-		it('should allow .use() after .event() without consumer', async () => {
-			// This is the exact pattern from ori-backend-public-server
-			app = Ori.create()
-				.event(TestEvent) // No .consumer() - emitter only
-				.use(addTestService); // Should be able to chain .use()
+  describe("Event emitter-only with .use() chaining", () => {
+    it("should allow .use() after .event() without consumer", async () => {
+      // This is the exact pattern from ori-backend-public-server
+      app = Ori.create()
+        .event(TestEvent) // No .consumer() - emitter only
+        .use(addTestService); // Should be able to chain .use()
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Event should be registered
-			const eventCoordinator = (app as any).eventCoordinator;
-			expect(eventCoordinator.getEventDefinition('test.event')).toBeDefined();
+      // Event should be registered
+      const eventCoordinator = (app as any).eventCoordinator;
+      expect(eventCoordinator.getEventDefinition("test.event")).toBeDefined();
 
-			// Service should be registered
-			const container = (app as any).container;
-			expect(container.has(TestService)).toBe(true);
-		});
+      // Service should be registered
+      const container = (app as any).container;
+      expect(container.has(TestService)).toBe(true);
+    });
 
-		it('should allow .controller() after .event() without consumer', async () => {
-			app = Ori.create()
-				.event(TestEvent) // No .consumer()
-				.controller('/api', TestController);
+    it("should allow .controller() after .event() without consumer", async () => {
+      app = Ori.create()
+        .event(TestEvent) // No .consumer()
+        .controller("/api", TestController);
 
-			const server = await app.listen(0);
+      const server = await app.listen(0);
 
-			// Controller should work
-			const response = await fetch(`http://localhost:${server.port}/api`);
-			expect(response.status).toBe(200);
-		});
+      // Controller should work
+      const response = await fetch(`http://localhost:${server.port}/api`);
+      expect(response.status).toBe(200);
+    });
 
-		it('should allow .provider() after .event() without consumer', async () => {
-			app = Ori.create()
-				.event(TestEvent) // No .consumer()
-				.provider(TestService);
+    it("should allow .provider() after .event() without consumer", async () => {
+      app = Ori.create()
+        .event(TestEvent) // No .consumer()
+        .provider(TestService);
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Service should be registered
-			const container = (app as any).container;
-			expect(container.has(TestService)).toBe(true);
-		});
+      // Service should be registered
+      const container = (app as any).container;
+      expect(container.has(TestService)).toBe(true);
+    });
 
-		it('should allow multiple .use() calls after .event() without consumer', async () => {
-			app = Ori.create()
-				.event(TestEvent) // No .consumer()
-				.use(addTestService)
-				.use(addTestController);
+    it("should allow multiple .use() calls after .event() without consumer", async () => {
+      app = Ori.create()
+        .event(TestEvent) // No .consumer()
+        .use(addTestService)
+        .use(addTestController);
 
-			const server = await app.listen(0);
+      const server = await app.listen(0);
 
-			// Both should be registered
-			const container = (app as any).container;
-			expect(container.has(TestService)).toBe(true);
+      // Both should be registered
+      const container = (app as any).container;
+      expect(container.has(TestService)).toBe(true);
 
-			const response = await fetch(`http://localhost:${server.port}/api`);
-			expect(response.status).toBe(200);
-		});
-	});
+      const response = await fetch(`http://localhost:${server.port}/api`);
+      expect(response.status).toBe(200);
+    });
+  });
 
-	describe('Workflow emitter-only with .use() chaining', () => {
-		it('should allow .use() after .workflow() without consumer', async () => {
-			app = Ori.create()
-				.workflow(TestWorkflow) // No .consumer() - emitter only
-				.use(addTestService);
+  describe("Workflow emitter-only with .use() chaining", () => {
+    it("should allow .use() after .workflow() without consumer", async () => {
+      app = Ori.create()
+        .workflow(TestWorkflow) // No .consumer() - emitter only
+        .use(addTestService);
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Workflow should be registered
-			const workflowCoordinator = (app as any).workflowCoordinator;
-			expect(workflowCoordinator.getWorkflowDefinition('test-workflow')).toBeDefined();
+      // Workflow should be registered
+      const workflowCoordinator = (app as any).workflowCoordinator;
+      expect(
+        workflowCoordinator.getWorkflowDefinition("test-workflow"),
+      ).toBeDefined();
 
-			// Service should be registered
-			const container = (app as any).container;
-			expect(container.has(TestService)).toBe(true);
-		});
+      // Service should be registered
+      const container = (app as any).container;
+      expect(container.has(TestService)).toBe(true);
+    });
 
-		it('should allow .controller() after .workflow() without consumer', async () => {
-			app = Ori.create()
-				.workflow(TestWorkflow) // No .consumer()
-				.controller('/api', TestController);
+    it("should allow .controller() after .workflow() without consumer", async () => {
+      app = Ori.create()
+        .workflow(TestWorkflow) // No .consumer()
+        .controller("/api", TestController);
 
-			const server = await app.listen(0);
+      const server = await app.listen(0);
 
-			// Controller should work
-			const response = await fetch(`http://localhost:${server.port}/api`);
-			expect(response.status).toBe(200);
-		});
+      // Controller should work
+      const response = await fetch(`http://localhost:${server.port}/api`);
+      expect(response.status).toBe(200);
+    });
 
-		it('should allow .provider() after .workflow() without consumer', async () => {
-			app = Ori.create()
-				.workflow(TestWorkflow) // No .consumer()
-				.provider(TestService);
+    it("should allow .provider() after .workflow() without consumer", async () => {
+      app = Ori.create()
+        .workflow(TestWorkflow) // No .consumer()
+        .provider(TestService);
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Service should be registered
-			const container = (app as any).container;
-			expect(container.has(TestService)).toBe(true);
-		});
-	});
+      // Service should be registered
+      const container = (app as any).container;
+      expect(container.has(TestService)).toBe(true);
+    });
+  });
 
-	describe('Mixed emitter-only pattern (real app simulation)', () => {
-		it('should support full emitter-only app pattern like ori-backend-public-server', async () => {
-			// This simulates the exact structure of ori-backend-public-server/src/app.ts
-			app = Ori.create()
-				.use(addTestService) // addMappers, addQueryBuilders, etc.
-				.event(TestEvent) // .event(ExampleEvent) - emitter only
-				.use(addTestController) // .use(addWorkflows)
-				.workflow(TestWorkflow) // .workflow(ExampleWorkflowDef) - emitter only
-				.controller('/health', TestController); // .controller(...)
+  describe("Mixed emitter-only pattern (real app simulation)", () => {
+    it("should support full emitter-only app pattern like ori-backend-public-server", async () => {
+      // This simulates the exact structure of ori-backend-public-server/src/app.ts
+      app = Ori.create()
+        .use(addTestService) // addMappers, addQueryBuilders, etc.
+        .event(TestEvent) // .event(ExampleEvent) - emitter only
+        .use(addTestController) // .use(addWorkflows)
+        .workflow(TestWorkflow) // .workflow(ExampleWorkflowDef) - emitter only
+        .controller("/health", TestController); // .controller(...)
 
-			const server = await app.listen(0);
+      const server = await app.listen(0);
 
-			// Event should be registered for emission
-			const eventCoordinator = (app as any).eventCoordinator;
-			expect(eventCoordinator.getEventDefinition('test.event')).toBeDefined();
+      // Event should be registered for emission
+      const eventCoordinator = (app as any).eventCoordinator;
+      expect(eventCoordinator.getEventDefinition("test.event")).toBeDefined();
 
-			// Workflow should be registered for execution
-			const workflowCoordinator = (app as any).workflowCoordinator;
-			expect(workflowCoordinator.getWorkflowDefinition('test-workflow')).toBeDefined();
+      // Workflow should be registered for execution
+      const workflowCoordinator = (app as any).workflowCoordinator;
+      expect(
+        workflowCoordinator.getWorkflowDefinition("test-workflow"),
+      ).toBeDefined();
 
-			// Controllers should work
-			const response = await fetch(`http://localhost:${server.port}/api`);
-			expect(response.status).toBe(200);
-		});
+      // Controllers should work
+      const response = await fetch(`http://localhost:${server.port}/api`);
+      expect(response.status).toBe(200);
+    });
 
-		it('should allow chaining .event() then .workflow() without consumers', async () => {
-			app = Ori.create()
-				.event(TestEvent) // No .consumer()
-				.workflow(TestWorkflow); // No .consumer()
+    it("should allow chaining .event() then .workflow() without consumers", async () => {
+      app = Ori.create()
+        .event(TestEvent) // No .consumer()
+        .workflow(TestWorkflow); // No .consumer()
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Both should be registered
-			const eventCoordinator = (app as any).eventCoordinator;
-			const workflowCoordinator = (app as any).workflowCoordinator;
+      // Both should be registered
+      const eventCoordinator = (app as any).eventCoordinator;
+      const workflowCoordinator = (app as any).workflowCoordinator;
 
-			expect(eventCoordinator.getEventDefinition('test.event')).toBeDefined();
-			expect(workflowCoordinator.getWorkflowDefinition('test-workflow')).toBeDefined();
-		});
+      expect(eventCoordinator.getEventDefinition("test.event")).toBeDefined();
+      expect(
+        workflowCoordinator.getWorkflowDefinition("test-workflow"),
+      ).toBeDefined();
+    });
 
-		it('should allow chaining .workflow() then .event() without consumers', async () => {
-			app = Ori.create()
-				.workflow(TestWorkflow) // No .consumer()
-				.event(TestEvent); // No .consumer()
+    it("should allow chaining .workflow() then .event() without consumers", async () => {
+      app = Ori.create()
+        .workflow(TestWorkflow) // No .consumer()
+        .event(TestEvent); // No .consumer()
 
-			await app.listen(0);
+      await app.listen(0);
 
-			// Both should be registered
-			const eventCoordinator = (app as any).eventCoordinator;
-			const workflowCoordinator = (app as any).workflowCoordinator;
+      // Both should be registered
+      const eventCoordinator = (app as any).eventCoordinator;
+      const workflowCoordinator = (app as any).workflowCoordinator;
 
-			expect(eventCoordinator.getEventDefinition('test.event')).toBeDefined();
-			expect(workflowCoordinator.getWorkflowDefinition('test-workflow')).toBeDefined();
-		});
-	});
+      expect(eventCoordinator.getEventDefinition("test.event")).toBeDefined();
+      expect(
+        workflowCoordinator.getWorkflowDefinition("test-workflow"),
+      ).toBeDefined();
+    });
+  });
 
-	describe('Type safety (compile-time verification)', () => {
-		it('should maintain Application type after .event() for chaining', () => {
-			// This test verifies that the return type allows chaining
-			// If this compiles, the types are correct
-			const result = Ori.create().event(TestEvent);
+  describe("Type safety (compile-time verification)", () => {
+    it("should maintain Application type after .event() for chaining", () => {
+      // This test verifies that the return type allows chaining
+      // If this compiles, the types are correct
+      const result = Ori.create().event(TestEvent);
 
-			// Should be able to access Application methods
-			expect(typeof result.use).toBe('function');
-			expect(typeof result.provider).toBe('function');
-			expect(typeof result.controller).toBe('function');
-			expect(typeof result.listen).toBe('function');
-			expect(typeof result.event).toBe('function');
-			expect(typeof result.workflow).toBe('function');
+      // Should be able to access Application methods
+      expect(typeof result.use).toBe("function");
+      expect(typeof result.provider).toBe("function");
+      expect(typeof result.controller).toBe("function");
+      expect(typeof result.listen).toBe("function");
+      expect(typeof result.event).toBe("function");
+      expect(typeof result.workflow).toBe("function");
 
-			// Should also have consumer method (optional)
-			expect(typeof result.consumer).toBe('function');
-		});
+      // Should also have consumer method (optional)
+      expect(typeof result.consumer).toBe("function");
+    });
 
-		it('should maintain Application type after .workflow() for chaining', () => {
-			// This test verifies that the return type allows chaining
-			// If this compiles, the types are correct
-			const result = Ori.create().workflow(TestWorkflow);
+    it("should maintain Application type after .workflow() for chaining", () => {
+      // This test verifies that the return type allows chaining
+      // If this compiles, the types are correct
+      const result = Ori.create().workflow(TestWorkflow);
 
-			// Should be able to access Application methods
-			expect(typeof result.use).toBe('function');
-			expect(typeof result.provider).toBe('function');
-			expect(typeof result.controller).toBe('function');
-			expect(typeof result.listen).toBe('function');
-			expect(typeof result.event).toBe('function');
-			expect(typeof result.workflow).toBe('function');
+      // Should be able to access Application methods
+      expect(typeof result.use).toBe("function");
+      expect(typeof result.provider).toBe("function");
+      expect(typeof result.controller).toBe("function");
+      expect(typeof result.listen).toBe("function");
+      expect(typeof result.event).toBe("function");
+      expect(typeof result.workflow).toBe("function");
 
-			// Should also have consumer method (optional)
-			expect(typeof result.consumer).toBe('function');
-		});
-	});
+      // Should also have consumer method (optional)
+      expect(typeof result.consumer).toBe("function");
+    });
+  });
 });

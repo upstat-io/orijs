@@ -37,74 +37,86 @@
  */
 
 // Builder - Entry point for defining cache configurations
-export { createCacheBuilder } from './cache-builder';
+export { createCacheBuilder } from "./cache-builder";
 export type {
-	EntityInput,
-	CacheBuilderFactory,
-	CacheBuilderForEntity,
-	CacheBuilderWithTtl
-} from './cache-builder';
+  EntityInput,
+  CacheBuilderFactory,
+  CacheBuilderForEntity,
+  CacheBuilderWithTtl,
+} from "./cache-builder";
 
 // Entity Registry - Define scope hierarchies and entity definitions
 export {
-	EntityRegistry,
-	defineScopes,
-	defineEntities,
-	registerEntityInvalidation,
-	getEntityInvalidationTags,
-	clearEntityInvalidationRegistry
-} from './entity-registry';
+  EntityRegistry,
+  defineScopes,
+  defineEntities,
+  registerEntityInvalidation,
+  getEntityInvalidationTags,
+  clearEntityInvalidationRegistry,
+} from "./entity-registry";
 export type {
-	ScopeDefinition,
-	EntityDefinition,
-	EntityRegistryBuilder,
-	BuiltEntityRegistry,
-	ScopeDef,
-	EntityDef,
-	ScopeDefsInput,
-	ScopeDefsOutput,
-	EntityDefsInput,
-	EntityDefsOutput
-} from './entity-registry.types';
+  ScopeDefinition,
+  EntityDefinition,
+  EntityRegistryBuilder,
+  BuiltEntityRegistry,
+  ScopeDef,
+  EntityDef,
+  ScopeDefsInput,
+  ScopeDefsOutput,
+  EntityDefsInput,
+  EntityDefsOutput,
+} from "./entity-registry.types";
 
 // Cache Registry - Stores configurations and dependency graph
-export { cacheRegistry, CacheRegistry } from './cache-registry';
+export { cacheRegistry, CacheRegistry } from "./cache-registry";
 
 // Services
-export { CacheService, CacheTimeoutError, type InvalidateOptions } from './cache';
+export {
+  CacheService,
+  CacheTimeoutError,
+  type InvalidateOptions,
+} from "./cache";
 
 // Providers - InMemory included, Redis is in @orijs/cache-redis
-export { InMemoryCacheProvider } from './in-memory-cache-provider';
+export { InMemoryCacheProvider } from "./in-memory-cache-provider";
 
 // Types - All type definitions
 export {
-	hasMetaSupport,
-	type Duration,
-	type DefaultTTL,
-	type CacheConfig,
-	type CacheProvider,
-	type CacheProviderWithMeta,
-	type FactoryContext,
-	type CacheEntry,
-	type CacheServiceOptions
-} from './types';
+  hasMetaSupport,
+  type Duration,
+  type DefaultTTL,
+  type CacheConfig,
+  type CacheProvider,
+  type CacheProviderWithMeta,
+  type FactoryContext,
+  type CacheEntry,
+  type CacheServiceOptions,
+} from "./types";
 
 // Constants
-export { CACHE_KEY_PREFIX, META_KEY_PREFIX, TAG_META_KEY_PREFIX } from './types';
+export {
+  CACHE_KEY_PREFIX,
+  META_KEY_PREFIX,
+  TAG_META_KEY_PREFIX,
+} from "./types";
 
 // Utilities - Duration parsing
-export { parseDuration, formatDuration } from './duration';
+export { parseDuration, formatDuration } from "./duration";
 
 // Utilities - Key generation
 export {
-	generateCacheKey,
-	generateMetaKey,
-	generateConfigMetaKey,
-	generateTagMetaKey,
-	isCacheKey,
-	isMetaKey,
-	isTagMetaKey
-} from './key-generator';
+  generateCacheKey,
+  generateMetaKey,
+  generateConfigMetaKey,
+  generateTagMetaKey,
+  isCacheKey,
+  isMetaKey,
+  isTagMetaKey,
+} from "./key-generator";
 
 // Utilities - Singleflight for thundering herd prevention
-export { Singleflight, globalSingleflight, type SingleflightOptions } from './singleflight';
+export {
+  Singleflight,
+  globalSingleflight,
+  type SingleflightOptions,
+} from "./singleflight";

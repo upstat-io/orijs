@@ -25,7 +25,7 @@
  * cacheRegistry.validateNoCycles();
  */
 
-import type { CacheConfig } from './types';
+import type { CacheConfig } from "./types";
 
 /**
  * Entity type for cache registry operations.
@@ -41,178 +41,181 @@ type EntityType = string;
  * Cache Registry - stores cache configurations and dependency graphs
  */
 class CacheRegistry {
-	/**
-	 * Cache configurations indexed by entity type
-	 */
-	private readonly configs = new Map<EntityType, CacheConfig[]>();
+  /**
+   * Cache configurations indexed by entity type
+   */
+  private readonly configs = new Map<EntityType, CacheConfig[]>();
 
-	/**
-	 * Forward dependency graph: entity -> entities it depends on
-	 * e.g., 'Product' -> ['Account', 'Project']
-	 */
-	private readonly dependencyGraph = new Map<EntityType, Set<EntityType>>();
+  /**
+   * Forward dependency graph: entity -> entities it depends on
+   * e.g., 'Product' -> ['Account', 'Project']
+   */
+  private readonly dependencyGraph = new Map<EntityType, Set<EntityType>>();
 
-	/**
-	 * Reverse dependency graph: entity -> entities that depend on it
-	 * e.g., 'Account' -> ['User', 'Product', 'Project', ...]
-	 */
-	private readonly reverseDependencyGraph = new Map<EntityType, Set<EntityType>>();
+  /**
+   * Reverse dependency graph: entity -> entities that depend on it
+   * e.g., 'Account' -> ['User', 'Product', 'Project', ...]
+   */
+  private readonly reverseDependencyGraph = new Map<
+    EntityType,
+    Set<EntityType>
+  >();
 
-	/**
-	 * Register a cache configuration
-	 *
-	 * @param config - The cache configuration to register
-	 */
-	public register<TParams extends object>(config: CacheConfig<TParams>): void {
-		const entityType = config.entity;
+  /**
+   * Register a cache configuration
+   *
+   * @param config - The cache configuration to register
+   */
+  public register<TParams extends object>(config: CacheConfig<TParams>): void {
+    const entityType = config.entity;
 
-		// Add to configs map
-		if (!this.configs.has(entityType)) {
-			this.configs.set(entityType, []);
-		}
-		this.configs.get(entityType)!.push(config as CacheConfig);
+    // Add to configs map
+    if (!this.configs.has(entityType)) {
+      this.configs.set(entityType, []);
+    }
+    this.configs.get(entityType)!.push(config as CacheConfig);
 
-		// Build dependency graphs
-		const dependencies = Object.keys(config.dependsOn) as EntityType[];
+    // Build dependency graphs
+    const dependencies = Object.keys(config.dependsOn) as EntityType[];
 
-		// Forward graph: this entity depends on these entities
-		if (!this.dependencyGraph.has(entityType)) {
-			this.dependencyGraph.set(entityType, new Set());
-		}
-		for (const dep of dependencies) {
-			this.dependencyGraph.get(entityType)!.add(dep);
-		}
+    // Forward graph: this entity depends on these entities
+    if (!this.dependencyGraph.has(entityType)) {
+      this.dependencyGraph.set(entityType, new Set());
+    }
+    for (const dep of dependencies) {
+      this.dependencyGraph.get(entityType)!.add(dep);
+    }
 
-		// Reverse graph: these entities have this entity depending on them
-		for (const dep of dependencies) {
-			if (!this.reverseDependencyGraph.has(dep)) {
-				this.reverseDependencyGraph.set(dep, new Set());
-			}
-			this.reverseDependencyGraph.get(dep)!.add(entityType);
-		}
-	}
+    // Reverse graph: these entities have this entity depending on them
+    for (const dep of dependencies) {
+      if (!this.reverseDependencyGraph.has(dep)) {
+        this.reverseDependencyGraph.set(dep, new Set());
+      }
+      this.reverseDependencyGraph.get(dep)!.add(entityType);
+    }
+  }
 
-	/**
-	 * Get all cache configurations for an entity type
-	 *
-	 * @param entityType - The entity type to look up
-	 * @returns Array of cache configurations (empty if none)
-	 */
-	public getByEntityType(entityType: EntityType): readonly CacheConfig[] {
-		return this.configs.get(entityType) ?? [];
-	}
+  /**
+   * Get all cache configurations for an entity type
+   *
+   * @param entityType - The entity type to look up
+   * @returns Array of cache configurations (empty if none)
+   */
+  public getByEntityType(entityType: EntityType): readonly CacheConfig[] {
+    return this.configs.get(entityType) ?? [];
+  }
 
-	/**
-	 * Get all entity types that have caches depending on the given entity
-	 *
-	 * Used for cascade invalidation: when entity X changes, which caches
-	 * need to be invalidated?
-	 *
-	 * @param entityType - The entity that changed
-	 * @returns Set of dependent entity types
-	 */
-	public getDependents(entityType: EntityType): Set<EntityType> {
-		return this.reverseDependencyGraph.get(entityType) ?? new Set();
-	}
+  /**
+   * Get all entity types that have caches depending on the given entity
+   *
+   * Used for cascade invalidation: when entity X changes, which caches
+   * need to be invalidated?
+   *
+   * @param entityType - The entity that changed
+   * @returns Set of dependent entity types
+   */
+  public getDependents(entityType: EntityType): Set<EntityType> {
+    return this.reverseDependencyGraph.get(entityType) ?? new Set();
+  }
 
-	/**
-	 * Get all entities that the given entity depends on
-	 *
-	 * @param entityType - The entity to check
-	 * @returns Set of dependency entity types
-	 */
-	public getDependencies(entityType: EntityType): Set<EntityType> {
-		return this.dependencyGraph.get(entityType) ?? new Set();
-	}
+  /**
+   * Get all entities that the given entity depends on
+   *
+   * @param entityType - The entity to check
+   * @returns Set of dependency entity types
+   */
+  public getDependencies(entityType: EntityType): Set<EntityType> {
+    return this.dependencyGraph.get(entityType) ?? new Set();
+  }
 
-	/**
-	 * Validate that there are no circular dependencies
-	 *
-	 * Should be called at application startup after all caches are registered.
-	 *
-	 * @throws Error if a cycle is detected
-	 */
-	public validateNoCycles(): void {
-		const visited = new Set<EntityType>();
-		const recursionStack = new Set<EntityType>();
+  /**
+   * Validate that there are no circular dependencies
+   *
+   * Should be called at application startup after all caches are registered.
+   *
+   * @throws Error if a cycle is detected
+   */
+  public validateNoCycles(): void {
+    const visited = new Set<EntityType>();
+    const recursionStack = new Set<EntityType>();
 
-		const hasCycle = (entity: EntityType, path: EntityType[]): boolean => {
-			visited.add(entity);
-			recursionStack.add(entity);
+    const hasCycle = (entity: EntityType, path: EntityType[]): boolean => {
+      visited.add(entity);
+      recursionStack.add(entity);
 
-			const dependencies = this.dependencyGraph.get(entity);
-			if (dependencies) {
-				for (const dep of dependencies) {
-					if (!visited.has(dep)) {
-						if (hasCycle(dep, [...path, dep])) {
-							return true;
-						}
-					} else if (recursionStack.has(dep)) {
-						// Found cycle
-						const cyclePath = [...path, dep].join(' -> ');
-						throw new Error(`Circular cache dependency detected: ${cyclePath}`);
-					}
-				}
-			}
+      const dependencies = this.dependencyGraph.get(entity);
+      if (dependencies) {
+        for (const dep of dependencies) {
+          if (!visited.has(dep)) {
+            if (hasCycle(dep, [...path, dep])) {
+              return true;
+            }
+          } else if (recursionStack.has(dep)) {
+            // Found cycle
+            const cyclePath = [...path, dep].join(" -> ");
+            throw new Error(`Circular cache dependency detected: ${cyclePath}`);
+          }
+        }
+      }
 
-			recursionStack.delete(entity);
-			return false;
-		};
+      recursionStack.delete(entity);
+      return false;
+    };
 
-		// Check each entity as a potential cycle start
-		for (const entity of this.dependencyGraph.keys()) {
-			if (!visited.has(entity)) {
-				hasCycle(entity, [entity]);
-			}
-		}
-	}
+    // Check each entity as a potential cycle start
+    for (const entity of this.dependencyGraph.keys()) {
+      if (!visited.has(entity)) {
+        hasCycle(entity, [entity]);
+      }
+    }
+  }
 
-	/**
-	 * Get all registered entity types
-	 */
-	public getRegisteredEntityTypes(): EntityType[] {
-		return Array.from(this.configs.keys());
-	}
+  /**
+   * Get all registered entity types
+   */
+  public getRegisteredEntityTypes(): EntityType[] {
+    return Array.from(this.configs.keys());
+  }
 
-	/**
-	 * Get the number of registered cache configurations
-	 */
-	public get size(): number {
-		let count = 0;
-		for (const configs of this.configs.values()) {
-			count += configs.length;
-		}
-		return count;
-	}
+  /**
+   * Get the number of registered cache configurations
+   */
+  public get size(): number {
+    let count = 0;
+    for (const configs of this.configs.values()) {
+      count += configs.length;
+    }
+    return count;
+  }
 
-	/**
-	 * Reset the registry (for testing)
-	 */
-	public reset(): void {
-		this.configs.clear();
-		this.dependencyGraph.clear();
-		this.reverseDependencyGraph.clear();
-	}
+  /**
+   * Reset the registry (for testing)
+   */
+  public reset(): void {
+    this.configs.clear();
+    this.dependencyGraph.clear();
+    this.reverseDependencyGraph.clear();
+  }
 
-	/**
-	 * Get a summary of the registry (for debugging)
-	 */
-	public getSummary(): {
-		entityTypes: number;
-		totalConfigs: number;
-		dependencyEdges: number;
-	} {
-		let dependencyEdges = 0;
-		for (const deps of this.dependencyGraph.values()) {
-			dependencyEdges += deps.size;
-		}
+  /**
+   * Get a summary of the registry (for debugging)
+   */
+  public getSummary(): {
+    entityTypes: number;
+    totalConfigs: number;
+    dependencyEdges: number;
+  } {
+    let dependencyEdges = 0;
+    for (const deps of this.dependencyGraph.values()) {
+      dependencyEdges += deps.size;
+    }
 
-		return {
-			entityTypes: this.configs.size,
-			totalConfigs: this.size,
-			dependencyEdges
-		};
-	}
+    return {
+      entityTypes: this.configs.size,
+      totalConfigs: this.size,
+      dependencyEdges,
+    };
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

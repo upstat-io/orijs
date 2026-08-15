@@ -1,28 +1,37 @@
 export {
-	Type,
-	t,
-	Value,
-	FormatRegistry,
-	validate,
-	validateSync,
-	isValidator,
-	isStandardSchema,
-	isTypeBoxSchema
-} from './types';
+  Type,
+  t,
+  Value,
+  FormatRegistry,
+  validate,
+  validateSync,
+  isValidator,
+  isStandardSchema,
+  isTypeBoxSchema,
+} from "./types";
 
 export type {
-	Static,
-	TSchema,
-	StandardSchema,
-	StandardSchemaIssue,
-	Validator,
-	Schema,
-	ValidationResult,
-	ValidationError
-} from './types';
+  Static,
+  TSchema,
+  StandardSchema,
+  StandardSchemaIssue,
+  Validator,
+  Schema,
+  ValidationResult,
+  ValidationError,
+} from "./types";
 
-export { Params, type StringParamOptions, type NumberParamOptions } from './params';
-export { Query, type PaginationOptions, type SearchOptions, type SortOptions } from './query';
+export {
+  Params,
+  type StringParamOptions,
+  type NumberParamOptions,
+} from "./params";
+export {
+  Query,
+  type PaginationOptions,
+  type SearchOptions,
+  type SortOptions,
+} from "./query";
 
 // Safe JSON parsing with prototype pollution protection
-export { Json } from './json';
+export { Json } from "./json";

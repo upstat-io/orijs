@@ -14,20 +14,20 @@
  * @module logging/trace-fields
  */
 
-import type { TraceFieldDef } from './types';
+import type { TraceFieldDef } from "./types";
 
 // ANSI color codes for terminal output
 export const ANSI_COLORS = {
-	reset: '\x1b[0m',
-	red: '\x1b[31m',
-	green: '\x1b[32m',
-	yellow: '\x1b[33m',
-	blue: '\x1b[34m',
-	magenta: '\x1b[35m',
-	cyan: '\x1b[36m',
-	white: '\x1b[37m',
-	gray: '\x1b[90m',
-	brightYellow: '\x1b[93m'
+  reset: "\x1b[0m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  magenta: "\x1b[35m",
+  cyan: "\x1b[36m",
+  white: "\x1b[37m",
+  gray: "\x1b[90m",
+  brightYellow: "\x1b[93m",
 } as const;
 
 /**
@@ -35,10 +35,10 @@ export const ANSI_COLORS = {
  * These are built-in and always available.
  */
 const CORE_TRACE_FIELDS: Record<string, TraceFieldDef> = {
-	correlationId: { abbrev: 'corrId', color: ANSI_COLORS.brightYellow },
-	traceId: { abbrev: 'trcId', color: ANSI_COLORS.brightYellow },
-	spanId: { abbrev: 'spanId', color: ANSI_COLORS.gray },
-	parentSpanId: { abbrev: 'pSpanId', color: ANSI_COLORS.gray }
+  correlationId: { abbrev: "corrId", color: ANSI_COLORS.brightYellow },
+  traceId: { abbrev: "trcId", color: ANSI_COLORS.brightYellow },
+  spanId: { abbrev: "spanId", color: ANSI_COLORS.gray },
+  parentSpanId: { abbrev: "pSpanId", color: ANSI_COLORS.gray },
 };
 
 /**
@@ -52,7 +52,7 @@ const appTraceFields: Record<string, TraceFieldDef> = {};
  * Used by isTraceField() and getTraceField().
  */
 export function getTraceFields(): Readonly<Record<string, TraceFieldDef>> {
-	return { ...CORE_TRACE_FIELDS, ...appTraceFields };
+  return { ...CORE_TRACE_FIELDS, ...appTraceFields };
 }
 
 /**
@@ -69,19 +69,21 @@ export function getTraceFields(): Readonly<Record<string, TraceFieldDef>> {
  * });
  * ```
  */
-export function registerTraceFields(fields: Record<string, TraceFieldDef>): void {
-	for (const [key, def] of Object.entries(fields)) {
-		appTraceFields[key] = def;
-	}
+export function registerTraceFields(
+  fields: Record<string, TraceFieldDef>,
+): void {
+  for (const [key, def] of Object.entries(fields)) {
+    appTraceFields[key] = def;
+  }
 }
 
 /**
  * Resets application trace fields (for testing).
  */
 export function resetTraceFields(): void {
-	for (const key of Object.keys(appTraceFields)) {
-		delete appTraceFields[key];
-	}
+  for (const key of Object.keys(appTraceFields)) {
+    delete appTraceFields[key];
+  }
 }
 
 /** Default truncation length for UUIDs and long IDs */
@@ -91,8 +93,8 @@ export const DEFAULT_TRUNCATE_LENGTH = 8;
  * Checks if a field name is a known trace field (core or application-registered).
  */
 export function isTraceField(fieldName: string): boolean {
-	const fields = getTraceFields();
-	return fieldName in fields;
+  const fields = getTraceFields();
+  return fieldName in fields;
 }
 
 /**
@@ -100,19 +102,22 @@ export function isTraceField(fieldName: string): boolean {
  * Returns undefined if not a trace field.
  */
 export function getTraceField(fieldName: string): TraceFieldDef | undefined {
-	const fields = getTraceFields();
-	return fields[fieldName];
+  const fields = getTraceFields();
+  return fields[fieldName];
 }
 
 /**
  * Truncates a string value to the specified length.
  * Useful for displaying UUIDs in a compact format.
  */
-export function truncateValue(value: string, length: number = DEFAULT_TRUNCATE_LENGTH): string {
-	if (value.length <= length) {
-		return value;
-	}
-	return value.slice(0, length);
+export function truncateValue(
+  value: string,
+  length: number = DEFAULT_TRUNCATE_LENGTH,
+): string {
+  if (value.length <= length) {
+    return value;
+  }
+  return value.slice(0, length);
 }
 
 /**
@@ -123,19 +128,23 @@ export function truncateValue(value: string, length: number = DEFAULT_TRUNCATE_L
  * @param useColors - Whether to include ANSI color codes
  * @returns Formatted string like "trcId:abc12345"
  */
-export function formatTraceField(fieldName: string, value: string, useColors: boolean = true): string {
-	const fields = getTraceFields();
-	const def = fields[fieldName];
-	if (!def) {
-		return `${fieldName}:${value}`;
-	}
+export function formatTraceField(
+  fieldName: string,
+  value: string,
+  useColors: boolean = true,
+): string {
+  const fields = getTraceFields();
+  const def = fields[fieldName];
+  if (!def) {
+    return `${fieldName}:${value}`;
+  }
 
-	const truncated = truncateValue(value);
+  const truncated = truncateValue(value);
 
-	if (useColors) {
-		return `${def.color}${def.abbrev}:${truncated}${ANSI_COLORS.reset}`;
-	}
-	return `${def.abbrev}:${truncated}`;
+  if (useColors) {
+    return `${def.color}${def.abbrev}:${truncated}${ANSI_COLORS.reset}`;
+  }
+  return `${def.abbrev}:${truncated}`;
 }
 
 /**
@@ -143,18 +152,18 @@ export function formatTraceField(fieldName: string, value: string, useColors: bo
  * Returns two objects: trace fields and other fields.
  */
 export function extractTraceFields(
-	context: Record<string, unknown>
+  context: Record<string, unknown>,
 ): [Record<string, unknown>, Record<string, unknown>] {
-	const traceFields: Record<string, unknown> = {};
-	const otherFields: Record<string, unknown> = {};
+  const traceFields: Record<string, unknown> = {};
+  const otherFields: Record<string, unknown> = {};
 
-	for (const [key, value] of Object.entries(context)) {
-		if (isTraceField(key)) {
-			traceFields[key] = value;
-		} else {
-			otherFields[key] = value;
-		}
-	}
+  for (const [key, value] of Object.entries(context)) {
+    if (isTraceField(key)) {
+      traceFields[key] = value;
+    } else {
+      otherFields[key] = value;
+    }
+  }
 
-	return [traceFields, otherFields];
+  return [traceFields, otherFields];
 }

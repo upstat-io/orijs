@@ -66,8 +66,8 @@
  * @see {@link EventConsumer} - Utility type for implementing consumers
  */
 
-import type { TSchema, Static } from '@orijs/validation';
-import type { Logger } from '@orijs/logging';
+import type { TSchema, Static } from "@orijs/validation";
+import type { Logger } from "@orijs/logging";
 
 /**
  * Configuration for defining an event.
@@ -76,35 +76,35 @@ import type { Logger } from '@orijs/logging';
  * @template TResult - TypeBox schema for the result
  */
 export interface EventConfig<TData extends TSchema, TResult extends TSchema> {
-	/** Unique event name. Use dot notation: 'entity.action' (e.g., 'user.created') */
-	readonly name: string;
-	/** TypeBox schema for the event input data */
-	readonly data: TData;
-	/** TypeBox schema for the event result. Use Type.Void() for fire-and-forget events */
-	readonly result: TResult;
-	/** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
-	readonly ttl?: number;
-	/**
-	 * Key derivation function for idempotent/cancellable events.
-	 *
-	 * When provided, the derived key is used as the BullMQ jobId on emit,
-	 * enabling both deduplication (same key = same job) and cancellation
-	 * (cancel by derived key).
-	 *
-	 * @param data - The event payload
-	 * @returns A string key derived from the payload
-	 *
-	 * @example
-	 * ```typescript
-	 * const AlertUnacknowledged = Event.define({
-	 *   name: 'alert.unacknowledged',
-	 *   data: Type.Object({ alertUuid: Type.String() }),
-	 *   result: Type.Void(),
-	 *   key: (data) => data.alertUuid
-	 * });
-	 * ```
-	 */
-	readonly key?: (data: Static<TData>) => string;
+  /** Unique event name. Use dot notation: 'entity.action' (e.g., 'user.created') */
+  readonly name: string;
+  /** TypeBox schema for the event input data */
+  readonly data: TData;
+  /** TypeBox schema for the event result. Use Type.Void() for fire-and-forget events */
+  readonly result: TResult;
+  /** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
+  readonly ttl?: number;
+  /**
+   * Key derivation function for idempotent/cancellable events.
+   *
+   * When provided, the derived key is used as the BullMQ jobId on emit,
+   * enabling both deduplication (same key = same job) and cancellation
+   * (cancel by derived key).
+   *
+   * @param data - The event payload
+   * @returns A string key derived from the payload
+   *
+   * @example
+   * ```typescript
+   * const AlertUnacknowledged = Event.define({
+   *   name: 'alert.unacknowledged',
+   *   data: Type.Object({ alertUuid: Type.String() }),
+   *   result: Type.Void(),
+   *   key: (data) => data.alertUuid
+   * });
+   * ```
+   */
+  readonly key?: (data: Static<TData>) => string;
 }
 
 /**
@@ -124,50 +124,50 @@ export interface EventConfig<TData extends TSchema, TResult extends TSchema> {
  * ```
  */
 export interface EventDefinition<TData, TResult> {
-	/** Unique event name */
-	readonly name: string;
-	/** TypeBox schema for runtime validation of input data */
-	readonly dataSchema: TSchema;
-	/** TypeBox schema for runtime validation of results */
-	readonly resultSchema: TSchema;
-	/** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
-	readonly ttl?: number;
-	/**
-	 * Type carrier for data type extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract the data type.
-	 *
-	 * **DO NOT** access this field in runtime code - use the utility types instead:
-	 * ```typescript
-	 * type MyData = Data<typeof MyEvent>; // Correct
-	 * const data = MyEvent._data; // WRONG - always undefined!
-	 * ```
-	 */
-	readonly _data: TData;
-	/**
-	 * Type carrier for result type extraction.
-	 *
-	 * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
-	 * It exists solely for TypeScript's type system to extract the result type.
-	 *
-	 * **DO NOT** access this field in runtime code - use the utility types instead:
-	 * ```typescript
-	 * type MyResult = Result<typeof MyEvent>; // Correct
-	 * const result = MyEvent._result; // WRONG - always undefined!
-	 * ```
-	 */
-	readonly _result: TResult;
-	/**
-	 * Key derivation function for idempotent/cancellable events.
-	 *
-	 * When defined, emit automatically uses `key(payload)` as the BullMQ jobId.
-	 * Use the same derived key with `cancel()` to remove a pending delayed event.
-	 *
-	 * @param data - The event payload
-	 * @returns A string key derived from the payload
-	 */
-	readonly key?: (data: TData) => string;
+  /** Unique event name */
+  readonly name: string;
+  /** TypeBox schema for runtime validation of input data */
+  readonly dataSchema: TSchema;
+  /** TypeBox schema for runtime validation of results */
+  readonly resultSchema: TSchema;
+  /** Time-to-live in milliseconds. When set, stale waiting/failed jobs are cleaned after this duration. */
+  readonly ttl?: number;
+  /**
+   * Type carrier for data type extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract the data type.
+   *
+   * **DO NOT** access this field in runtime code - use the utility types instead:
+   * ```typescript
+   * type MyData = Data<typeof MyEvent>; // Correct
+   * const data = MyEvent._data; // WRONG - always undefined!
+   * ```
+   */
+  readonly _data: TData;
+  /**
+   * Type carrier for result type extraction.
+   *
+   * **IMPORTANT**: This field is ALWAYS `undefined` at runtime.
+   * It exists solely for TypeScript's type system to extract the result type.
+   *
+   * **DO NOT** access this field in runtime code - use the utility types instead:
+   * ```typescript
+   * type MyResult = Result<typeof MyEvent>; // Correct
+   * const result = MyEvent._result; // WRONG - always undefined!
+   * ```
+   */
+  readonly _result: TResult;
+  /**
+   * Key derivation function for idempotent/cancellable events.
+   *
+   * When defined, emit automatically uses `key(payload)` as the BullMQ jobId.
+   * Use the same derived key with `cancel()` to remove a pending delayed event.
+   *
+   * @param data - The event payload
+   * @returns A string key derived from the payload
+   */
+  readonly key?: (data: TData) => string;
 }
 
 /**
@@ -193,45 +193,64 @@ export interface EventDefinition<TData, TResult> {
  * ```
  */
 export interface EventContext<TPayload> {
-	/** Unique event instance ID (for tracing and idempotency) */
-	readonly eventId: string;
-	/** The event payload data */
-	readonly data: TPayload;
-	/** Logger instance for structured logging with propagated context */
-	readonly log: Logger;
-	/** Event name (matches the EventDefinition.name) */
-	readonly eventName: string;
-	/** Timestamp when the event was emitted (milliseconds since epoch) */
-	readonly timestamp: number;
-	/** Unique ID for request-response correlation */
-	readonly correlationId: string;
-	/** ID of parent event (for event chain tracking) */
-	readonly causationId?: string;
-	/**
-	 * Emit function for chained events.
-	 * Allows handlers to emit additional events with proper context propagation.
-	 */
-	readonly emit: <TReturn = void>(
-		eventName: string,
-		payload: unknown,
-		options?: { delay?: number; idempotencyKey?: string; enqueueOnly?: boolean }
-	) => { wait: () => Promise<TReturn> };
-	/**
-	 * Cancel a pending delayed event by its derived key.
-	 *
-	 * The key must match the value produced by the event definition's `key` function
-	 * (or the explicit `idempotencyKey` used at emit time).
-	 *
-	 * @param eventName - The event name to cancel
-	 * @param key - The derived key identifying the pending event
-	 * @returns true if the event was found and cancelled, false otherwise
-	 */
-	readonly cancel: (eventName: string, key: string) => Promise<boolean>;
-	readonly prepareIdempotencyKeyRetirement?: (eventName: string, key: string) => Promise<void>;
-	readonly finalizeIdempotencyKeyRetirement?: (eventName: string, key: string) => Promise<void>;
-	readonly hasSuccessfulIdempotencyKeyCompletionReceipt?: (eventName: string, key: string) => Promise<boolean>;
-	readonly hasRetainedEvent?: (eventName: string, eventId: string) => Promise<boolean>;
-	readonly isRetainedEventRetryable?: (eventName: string, eventId: string) => Promise<boolean>;
+  /** Unique event instance ID (for tracing and idempotency) */
+  readonly eventId: string;
+  /** The event payload data */
+  readonly data: TPayload;
+  /** Logger instance for structured logging with propagated context */
+  readonly log: Logger;
+  /** Event name (matches the EventDefinition.name) */
+  readonly eventName: string;
+  /** Timestamp when the event was emitted (milliseconds since epoch) */
+  readonly timestamp: number;
+  /** Unique ID for request-response correlation */
+  readonly correlationId: string;
+  /** ID of parent event (for event chain tracking) */
+  readonly causationId?: string;
+  /**
+   * Emit function for chained events.
+   * Allows handlers to emit additional events with proper context propagation.
+   */
+  readonly emit: <TReturn = void>(
+    eventName: string,
+    payload: unknown,
+    options?: {
+      delay?: number;
+      idempotencyKey?: string;
+      enqueueOnly?: boolean;
+    },
+  ) => { wait: () => Promise<TReturn> };
+  /**
+   * Cancel a pending delayed event by its derived key.
+   *
+   * The key must match the value produced by the event definition's `key` function
+   * (or the explicit `idempotencyKey` used at emit time).
+   *
+   * @param eventName - The event name to cancel
+   * @param key - The derived key identifying the pending event
+   * @returns true if the event was found and cancelled, false otherwise
+   */
+  readonly cancel: (eventName: string, key: string) => Promise<boolean>;
+  readonly prepareIdempotencyKeyRetirement?: (
+    eventName: string,
+    key: string,
+  ) => Promise<void>;
+  readonly finalizeIdempotencyKeyRetirement?: (
+    eventName: string,
+    key: string,
+  ) => Promise<void>;
+  readonly hasSuccessfulIdempotencyKeyCompletionReceipt?: (
+    eventName: string,
+    key: string,
+  ) => Promise<boolean>;
+  readonly hasRetainedEvent?: (
+    eventName: string,
+    eventId: string,
+  ) => Promise<boolean>;
+  readonly isRetainedEventRetryable?: (
+    eventName: string,
+    eventId: string,
+  ) => Promise<boolean>;
 }
 
 /**
@@ -257,30 +276,30 @@ export interface EventContext<TPayload> {
  * ```
  */
 export const Event = {
-	/**
-	 * Define a new event with TypeBox schemas for data and result.
-	 *
-	 * ## Why Static<T>?
-	 *
-	 * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
-	 * TypeScript cannot infer the corresponding type from a runtime value alone.
-	 * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
-	 * that a schema validates. This enables compile-time type safety from runtime schemas.
-	 *
-	 * @param config - Event configuration with name, data schema, and result schema
-	 * @returns EventDefinition with type carriers for compile-time type extraction
-	 */
-	define<TData extends TSchema, TResult extends TSchema>(
-		config: EventConfig<TData, TResult>
-	): EventDefinition<Static<TData>, Static<TResult>> {
-		return Object.freeze({
-			name: config.name,
-			dataSchema: config.data,
-			resultSchema: config.result,
-			...(config.ttl !== undefined && { ttl: config.ttl }),
-			...(config.key && { key: config.key }),
-			_data: undefined as unknown as Static<TData>,
-			_result: undefined as unknown as Static<TResult>
-		});
-	}
+  /**
+   * Define a new event with TypeBox schemas for data and result.
+   *
+   * ## Why Static<T>?
+   *
+   * TypeBox schemas are runtime objects (e.g., `Type.Object({ id: Type.String() })`).
+   * TypeScript cannot infer the corresponding type from a runtime value alone.
+   * `Static<TSchema>` is TypeBox's utility type that extracts the TypeScript type
+   * that a schema validates. This enables compile-time type safety from runtime schemas.
+   *
+   * @param config - Event configuration with name, data schema, and result schema
+   * @returns EventDefinition with type carriers for compile-time type extraction
+   */
+  define<TData extends TSchema, TResult extends TSchema>(
+    config: EventConfig<TData, TResult>,
+  ): EventDefinition<Static<TData>, Static<TResult>> {
+    return Object.freeze({
+      name: config.name,
+      dataSchema: config.data,
+      resultSchema: config.result,
+      ...(config.ttl !== undefined && { ttl: config.ttl }),
+      ...(config.key && { key: config.key }),
+      _data: undefined as unknown as Static<TData>,
+      _result: undefined as unknown as Static<TResult>,
+    });
+  },
 };

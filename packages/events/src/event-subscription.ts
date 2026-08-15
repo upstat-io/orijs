@@ -29,16 +29,16 @@ export type ErrorCallback = (error: Error) => void;
  * Uses discriminated union to make impossible states unrepresentable.
  */
 type SubscriptionState<T> =
-	| { readonly status: 'pending' }
-	| { readonly status: 'resolved'; readonly value: T }
-	| { readonly status: 'rejected'; readonly error: Error };
+  | { readonly status: "pending" }
+  | { readonly status: "resolved"; readonly value: T }
+  | { readonly status: "rejected"; readonly error: Error };
 
 /**
  * Promise handlers stored together for cleaner state management.
  */
 interface PromiseHandlers<T> {
-	readonly resolve: (value: T) => void;
-	readonly reject: (error: Error) => void;
+  readonly resolve: (value: T) => void;
+  readonly reject: (error: Error) => void;
 }
 
 /**
@@ -71,213 +71,213 @@ interface PromiseHandlers<T> {
  * @template T - The type of the handler's return value
  */
 export class EventSubscription<T = void> {
-	/** Current state - single source of truth */
-	private state: SubscriptionState<T> = { status: 'pending' };
+  /** Current state - single source of truth */
+  private state: SubscriptionState<T> = { status: "pending" };
 
-	/** Callback for successful results */
-	private subscribeCallback: SubscribeCallback<T> | null = null;
+  /** Callback for successful results */
+  private subscribeCallback: SubscribeCallback<T> | null = null;
 
-	/** Callback for errors */
-	private errorCallback: ErrorCallback | null = null;
+  /** Callback for errors */
+  private errorCallback: ErrorCallback | null = null;
 
-	/** Promise handlers (stored together) */
-	private promiseHandlers: PromiseHandlers<T> | null = null;
+  /** Promise handlers (stored together) */
+  private promiseHandlers: PromiseHandlers<T> | null = null;
 
-	/** Cached promise for toPromise() */
-	private promise: Promise<T> | null = null;
+  /** Cached promise for toPromise() */
+  private promise: Promise<T> | null = null;
 
-	/**
-	 * Creates a new EventSubscription.
-	 * @param correlationId - Unique ID for correlating with handler response
-	 */
-	public constructor(public readonly correlationId: string) {}
+  /**
+   * Creates a new EventSubscription.
+   * @param correlationId - Unique ID for correlating with handler response
+   */
+  public constructor(public readonly correlationId: string) {}
 
-	/**
-	 * Registers a callback to receive the handler's return value.
-	 * If already resolved, callback is invoked immediately.
-	 *
-	 * @param callback - Function to receive the result
-	 * @returns this (for chaining with .catch())
-	 */
-	public subscribe(callback: SubscribeCallback<T>): this {
-		this.subscribeCallback = callback;
+  /**
+   * Registers a callback to receive the handler's return value.
+   * If already resolved, callback is invoked immediately.
+   *
+   * @param callback - Function to receive the result
+   * @returns this (for chaining with .catch())
+   */
+  public subscribe(callback: SubscribeCallback<T>): this {
+    this.subscribeCallback = callback;
 
-		// If already resolved, invoke immediately
-		if (this.state.status === 'resolved') {
-			callback(this.state.value);
-		}
+    // If already resolved, invoke immediately
+    if (this.state.status === "resolved") {
+      callback(this.state.value);
+    }
 
-		return this;
-	}
+    return this;
+  }
 
-	/**
-	 * Registers a callback to receive handler errors.
-	 * If already rejected, callback is invoked immediately.
-	 *
-	 * @param callback - Function to receive the error
-	 * @returns this (for chaining)
-	 */
-	public catch(callback: ErrorCallback): this {
-		this.errorCallback = callback;
+  /**
+   * Registers a callback to receive handler errors.
+   * If already rejected, callback is invoked immediately.
+   *
+   * @param callback - Function to receive the error
+   * @returns this (for chaining)
+   */
+  public catch(callback: ErrorCallback): this {
+    this.errorCallback = callback;
 
-		// If already rejected, invoke immediately
-		if (this.state.status === 'rejected') {
-			callback(this.state.error);
-		}
+    // If already rejected, invoke immediately
+    if (this.state.status === "rejected") {
+      callback(this.state.error);
+    }
 
-		return this;
-	}
+    return this;
+  }
 
-	/**
-	 * Resolves the subscription with a value.
-	 * Called by the provider when handler completes.
-	 *
-	 * @internal
-	 * @param value - The handler's return value
-	 */
-	public _resolve(value: T): void {
-		if (this.state.status !== 'pending') {
-			return; // Already settled
-		}
+  /**
+   * Resolves the subscription with a value.
+   * Called by the provider when handler completes.
+   *
+   * @internal
+   * @param value - The handler's return value
+   */
+  public _resolve(value: T): void {
+    if (this.state.status !== "pending") {
+      return; // Already settled
+    }
 
-		this.state = { status: 'resolved', value };
+    this.state = { status: "resolved", value };
 
-		this.subscribeCallback?.(value);
-		this.promiseHandlers?.resolve(value);
-	}
+    this.subscribeCallback?.(value);
+    this.promiseHandlers?.resolve(value);
+  }
 
-	/**
-	 * Rejects the subscription with an error.
-	 * Called by the provider when handler throws.
-	 *
-	 * @internal
-	 * @param error - The error from the handler
-	 */
-	public _reject(error: Error): void {
-		if (this.state.status !== 'pending') {
-			return; // Already settled
-		}
+  /**
+   * Rejects the subscription with an error.
+   * Called by the provider when handler throws.
+   *
+   * @internal
+   * @param error - The error from the handler
+   */
+  public _reject(error: Error): void {
+    if (this.state.status !== "pending") {
+      return; // Already settled
+    }
 
-		this.state = { status: 'rejected', error };
+    this.state = { status: "rejected", error };
 
-		this.errorCallback?.(error);
-		this.promiseHandlers?.reject(error);
-	}
+    this.errorCallback?.(error);
+    this.promiseHandlers?.reject(error);
+  }
 
-	/**
-	 * Returns whether this subscription has been resolved.
-	 */
-	public isResolved(): boolean {
-		return this.state.status === 'resolved';
-	}
+  /**
+   * Returns whether this subscription has been resolved.
+   */
+  public isResolved(): boolean {
+    return this.state.status === "resolved";
+  }
 
-	/**
-	 * Returns whether this subscription has been rejected.
-	 */
-	public isRejected(): boolean {
-		return this.state.status === 'rejected';
-	}
+  /**
+   * Returns whether this subscription has been rejected.
+   */
+  public isRejected(): boolean {
+    return this.state.status === "rejected";
+  }
 
-	/**
-	 * Returns whether this subscription has been settled (resolved or rejected).
-	 */
-	public isSettled(): boolean {
-		return this.state.status !== 'pending';
-	}
+  /**
+   * Returns whether this subscription has been settled (resolved or rejected).
+   */
+  public isSettled(): boolean {
+    return this.state.status !== "pending";
+  }
 
-	/**
-	 * Converts this subscription to a Promise.
-	 * Enables async/await usage with optional timeout.
-	 *
-	 * @param timeoutMs - Optional timeout in milliseconds. If handler doesn't
-	 *                    respond within this time, the promise rejects with a
-	 *                    timeout error. Prevents hanging awaits.
-	 * @returns Promise that resolves with handler result or rejects with error/timeout
-	 *
-	 * @example
-	 * ```ts
-	 * // Without timeout
-	 * const result = await events.emit<Result>('event', payload).toPromise();
-	 *
-	 * // With 5 second timeout
-	 * const result = await events.emit<Result>('slow.event', payload).toPromise(5000);
-	 * ```
-	 */
-	public toPromise(timeoutMs?: number): Promise<T> {
-		// Create base promise if not already created
-		if (!this.promise) {
-			this.promise = new Promise<T>((resolve, reject) => {
-				// If already settled, resolve/reject immediately
-				if (this.state.status === 'resolved') {
-					resolve(this.state.value);
-					return;
-				}
-				if (this.state.status === 'rejected') {
-					reject(this.state.error);
-					return;
-				}
+  /**
+   * Converts this subscription to a Promise.
+   * Enables async/await usage with optional timeout.
+   *
+   * @param timeoutMs - Optional timeout in milliseconds. If handler doesn't
+   *                    respond within this time, the promise rejects with a
+   *                    timeout error. Prevents hanging awaits.
+   * @returns Promise that resolves with handler result or rejects with error/timeout
+   *
+   * @example
+   * ```ts
+   * // Without timeout
+   * const result = await events.emit<Result>('event', payload).toPromise();
+   *
+   * // With 5 second timeout
+   * const result = await events.emit<Result>('slow.event', payload).toPromise(5000);
+   * ```
+   */
+  public toPromise(timeoutMs?: number): Promise<T> {
+    // Create base promise if not already created
+    if (!this.promise) {
+      this.promise = new Promise<T>((resolve, reject) => {
+        // If already settled, resolve/reject immediately
+        if (this.state.status === "resolved") {
+          resolve(this.state.value);
+          return;
+        }
+        if (this.state.status === "rejected") {
+          reject(this.state.error);
+          return;
+        }
 
-				// Store handlers for later resolution
-				this.promiseHandlers = { resolve, reject };
-			});
+        // Store handlers for later resolution
+        this.promiseHandlers = { resolve, reject };
+      });
 
-			// Safety net: prevent unhandled rejection from crashing the process.
-			// Callers using await/then still receive the rejection normally —
-			// this only prevents the "unhandled" classification if nobody is listening.
-			this.promise.catch(() => {});
-		}
+      // Safety net: prevent unhandled rejection from crashing the process.
+      // Callers using await/then still receive the rejection normally —
+      // this only prevents the "unhandled" classification if nobody is listening.
+      this.promise.catch(() => {});
+    }
 
-		// If no timeout or already settled, return cached promise
-		if (!timeoutMs || timeoutMs <= 0 || this.isSettled()) {
-			return this.promise;
-		}
+    // If no timeout or already settled, return cached promise
+    if (!timeoutMs || timeoutMs <= 0 || this.isSettled()) {
+      return this.promise;
+    }
 
-		// Wrap with timeout that cleans up properly
-		const wrapped = new Promise<T>((resolve, reject) => {
-			const timeoutId = setTimeout(() => {
-				if (!this.isSettled()) {
-					reject(new Error(`EventSubscription timeout after ${timeoutMs}ms`));
-				}
-			}, timeoutMs);
+    // Wrap with timeout that cleans up properly
+    const wrapped = new Promise<T>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        if (!this.isSettled()) {
+          reject(new Error(`EventSubscription timeout after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
 
-			this.promise!.then((value) => {
-				clearTimeout(timeoutId);
-				resolve(value);
-			}).catch((error) => {
-				clearTimeout(timeoutId);
-				reject(error);
-			});
-		});
+      this.promise!.then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      }).catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
 
-		// Safety net: prevent unhandled rejection from crashing the process.
-		// Same protection as the base promise (line 227). Callers using
-		// await/then still receive the rejection — this only prevents the
-		// "unhandled" classification when nobody is listening (fire-and-forget).
-		wrapped.catch(() => {});
-		return wrapped;
-	}
+    // Safety net: prevent unhandled rejection from crashing the process.
+    // Same protection as the base promise (line 227). Callers using
+    // await/then still receive the rejection — this only prevents the
+    // "unhandled" classification when nobody is listening (fire-and-forget).
+    wrapped.catch(() => {});
+    return wrapped;
+  }
 
-	/**
-	 * Makes EventSubscription "thenable" for direct await support.
-	 * This allows `await events.emit(...)` without calling .toPromise().
-	 *
-	 * @param onfulfilled - Called when the handler returns successfully
-	 * @param onrejected - Called when the handler throws
-	 * @returns Promise for chaining
-	 *
-	 * @example
-	 * ```ts
-	 * // Direct await (no .toPromise() needed)
-	 * const result = await events.emit<Result>('event', payload);
-	 * ```
-	 */
-	// oxlint-disable-next-line unicorn/no-thenable -- Intentional: implements Promise-like interface for await support
-	public then<TResult1 = T, TResult2 = never>(
-		onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
-		onrejected?: ((reason: Error) => TResult2 | PromiseLike<TResult2>) | null
-	): Promise<TResult1 | TResult2> {
-		return this.toPromise().then(onfulfilled, onrejected);
-	}
+  /**
+   * Makes EventSubscription "thenable" for direct await support.
+   * This allows `await events.emit(...)` without calling .toPromise().
+   *
+   * @param onfulfilled - Called when the handler returns successfully
+   * @param onrejected - Called when the handler throws
+   * @returns Promise for chaining
+   *
+   * @example
+   * ```ts
+   * // Direct await (no .toPromise() needed)
+   * const result = await events.emit<Result>('event', payload);
+   * ```
+   */
+  // oxlint-disable-next-line unicorn/no-thenable -- Intentional: implements Promise-like interface for await support
+  public then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: Error) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return this.toPromise().then(onfulfilled, onrejected);
+  }
 }
 
 /**
@@ -287,6 +287,6 @@ export class EventSubscription<T = void> {
  * @returns New EventSubscription instance
  */
 export function createSubscription<T = void>(): EventSubscription<T> {
-	const correlationId = crypto.randomUUID();
-	return new EventSubscription<T>(correlationId);
+  const correlationId = crypto.randomUUID();
+  return new EventSubscription<T>(correlationId);
 }

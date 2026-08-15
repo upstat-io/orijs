@@ -7,12 +7,16 @@
  * @module events/events
  */
 
-import type { BuiltEventRegistry } from './event-registry.types';
-import type { EventProvider } from './event-provider.types';
-import type { EventSubscription } from './event-subscription';
-import { InProcessEventProvider } from './in-process-orchestrator';
-import { EventHandlerBuilder, type EventHandler, type EventBuilder } from './event-handler-builder';
-import { capturePropagationMeta, type PropagationMeta } from '@orijs/logging';
+import type { BuiltEventRegistry } from "./event-registry.types";
+import type { EventProvider } from "./event-provider.types";
+import type { EventSubscription } from "./event-subscription";
+import { InProcessEventProvider } from "./in-process-orchestrator";
+import {
+  EventHandlerBuilder,
+  type EventHandler,
+  type EventBuilder,
+} from "./event-handler-builder";
+import { capturePropagationMeta, type PropagationMeta } from "@orijs/logging";
 
 /**
  * Type-safe emit function bound to a registry.
@@ -24,20 +28,20 @@ import { capturePropagationMeta, type PropagationMeta } from '@orijs/logging';
  * @template TEventNames - Union of valid event names
  */
 export interface TypedEmitFn<TEventNames extends string> {
-	/**
-	 * Emits an event.
-	 *
-	 * @template TReturn - Expected return type from handler
-	 * @param eventName - The event name (type-checked)
-	 * @param payload - The event payload
-	 * @param options - Emit options (delay, causationId for event chains)
-	 * @returns EventSubscription for request-response
-	 */
-	<TReturn = void>(
-		eventName: TEventNames,
-		payload: unknown,
-		options?: { delay?: number; causationId?: string }
-	): EventSubscription<TReturn>;
+  /**
+   * Emits an event.
+   *
+   * @template TReturn - Expected return type from handler
+   * @param eventName - The event name (type-checked)
+   * @param payload - The event payload
+   * @param options - Emit options (delay, causationId for event chains)
+   * @returns EventSubscription for request-response
+   */
+  <TReturn = void>(
+    eventName: TEventNames,
+    payload: unknown,
+    options?: { delay?: number; causationId?: string },
+  ): EventSubscription<TReturn>;
 }
 
 /**
@@ -46,56 +50,56 @@ export interface TypedEmitFn<TEventNames extends string> {
  * @template TEventNames - Union of valid event names
  */
 export interface EventSystem<TEventNames extends string = string> {
-	/** Type-safe emit function */
-	readonly emit: TypedEmitFn<TEventNames>;
-	/** The underlying event provider */
-	readonly provider: EventProvider;
-	/** The event registry */
-	readonly registry: BuiltEventRegistry<TEventNames>;
+  /** Type-safe emit function */
+  readonly emit: TypedEmitFn<TEventNames>;
+  /** The underlying event provider */
+  readonly provider: EventProvider;
+  /** The event registry */
+  readonly registry: BuiltEventRegistry<TEventNames>;
 
-	/**
-	 * Registers a handler for an event.
-	 *
-	 * @template TPayload - Expected payload type
-	 * @template TReturn - Handler return type
-	 * @param eventName - The event name
-	 * @param handler - Handler function
-	 */
-	onEvent<TPayload = unknown, TReturn = void>(
-		eventName: TEventNames,
-		handler: EventHandler<TPayload, TReturn>
-	): void;
+  /**
+   * Registers a handler for an event.
+   *
+   * @template TPayload - Expected payload type
+   * @template TReturn - Handler return type
+   * @param eventName - The event name
+   * @param handler - Handler function
+   */
+  onEvent<TPayload = unknown, TReturn = void>(
+    eventName: TEventNames,
+    handler: EventHandler<TPayload, TReturn>,
+  ): void;
 
-	/**
-	 * Creates a handler builder for class-based handlers.
-	 *
-	 * @returns EventBuilder for handler registration
-	 */
-	createBuilder(): EventBuilder<TEventNames>;
+  /**
+   * Creates a handler builder for class-based handlers.
+   *
+   * @returns EventBuilder for handler registration
+   */
+  createBuilder(): EventBuilder<TEventNames>;
 
-	/**
-	 * Starts the event system.
-	 */
-	start(): Promise<void>;
+  /**
+   * Starts the event system.
+   */
+  start(): Promise<void>;
 
-	/**
-	 * Stops the event system.
-	 */
-	stop(): Promise<void>;
+  /**
+   * Stops the event system.
+   */
+  stop(): Promise<void>;
 }
 
 /**
  * Options for creating an event system.
  */
 export interface CreateEventSystemOptions {
-	/** Custom event provider (default: InProcessEventProvider) */
-	provider?: EventProvider;
-	/** Default propagation metadata */
-	defaultMeta?: PropagationMeta;
-	/** Logger for post-start registration failure warnings */
-	logger?: { warn(message: string, meta?: Record<string, unknown>): void };
-	/** Callback for post-start registration failures (alternative to logger) */
-	onRegistrationError?: (eventName: string, error: Error) => void;
+  /** Custom event provider (default: InProcessEventProvider) */
+  provider?: EventProvider;
+  /** Default propagation metadata */
+  defaultMeta?: PropagationMeta;
+  /** Logger for post-start registration failure warnings */
+  logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+  /** Callback for post-start registration failures (alternative to logger) */
+  onRegistrationError?: (eventName: string, error: Error) => void;
 }
 
 /**
@@ -127,131 +131,142 @@ export interface CreateEventSystemOptions {
  * ```
  */
 export function createEventSystem<TEventNames extends string>(
-	registry: BuiltEventRegistry<TEventNames>,
-	options?: CreateEventSystemOptions
+  registry: BuiltEventRegistry<TEventNames>,
+  options?: CreateEventSystemOptions,
 ): EventSystem<TEventNames> {
-	const provider = options?.provider ?? new InProcessEventProvider();
-	const defaultMeta = options?.defaultMeta ?? {};
+  const provider = options?.provider ?? new InProcessEventProvider();
+  const defaultMeta = options?.defaultMeta ?? {};
 
-	// Track propagation metadata (can be updated per-request)
-	let currentMeta: PropagationMeta = defaultMeta;
+  // Track propagation metadata (can be updated per-request)
+  const currentMeta: PropagationMeta = defaultMeta;
 
-	// Subscription tracking for start() to await
-	let started = false;
-	let startPromise: Promise<void> | null = null;
-	const pendingSubscriptions: Promise<void>[] = [];
-	const subscriptionErrors: Error[] = [];
+  // Subscription tracking for start() to await
+  let started = false;
+  let startPromise: Promise<void> | null = null;
+  const pendingSubscriptions: Promise<void>[] = [];
+  const subscriptionErrors: Error[] = [];
 
-	const trackSubscription = (promise: Promise<void>): void => {
-		pendingSubscriptions.push(
-			promise.catch((err: unknown) => {
-				subscriptionErrors.push(err instanceof Error ? err : new Error(String(err)));
-			})
-		);
-	};
+  const trackSubscription = (promise: Promise<void>): void => {
+    pendingSubscriptions.push(
+      promise.catch((err: unknown) => {
+        subscriptionErrors.push(
+          err instanceof Error ? err : new Error(String(err)),
+        );
+      }),
+    );
+  };
 
-	const drainPending = async (): Promise<void> => {
-		while (pendingSubscriptions.length > 0) {
-			const batch = pendingSubscriptions.splice(0);
-			await Promise.all(batch);
-		}
-		if (subscriptionErrors.length > 0) {
-			const errors = [...subscriptionErrors];
-			subscriptionErrors.length = 0;
-			throw new AggregateError(errors, `${errors.length} subscription(s) failed during startup`);
-		}
-	};
+  const drainPending = async (): Promise<void> => {
+    while (pendingSubscriptions.length > 0) {
+      const batch = pendingSubscriptions.splice(0);
+      await Promise.all(batch);
+    }
+    if (subscriptionErrors.length > 0) {
+      const errors = [...subscriptionErrors];
+      subscriptionErrors.length = 0;
+      throw new AggregateError(
+        errors,
+        `${errors.length} subscription(s) failed during startup`,
+      );
+    }
+  };
 
-	/**
-	 * Type-safe emit function.
-	 * Automatically propagates trace context from AsyncLocalStorage.
-	 */
-	const emit: TypedEmitFn<TEventNames> = <TReturn = void>(
-		eventName: TEventNames,
-		payload: unknown,
-		emitOptions?: { delay?: number; causationId?: string }
-	): EventSubscription<TReturn> => {
-		// Validate event name against registry
-		if (!registry.hasEvent(eventName)) {
-			throw new Error(`Unknown event: ${eventName}`);
-		}
+  /**
+   * Type-safe emit function.
+   * Automatically propagates trace context from AsyncLocalStorage.
+   */
+  const emit: TypedEmitFn<TEventNames> = <TReturn = void>(
+    eventName: TEventNames,
+    payload: unknown,
+    emitOptions?: { delay?: number; causationId?: string },
+  ): EventSubscription<TReturn> => {
+    // Validate event name against registry
+    if (!registry.hasEvent(eventName)) {
+      throw new Error(`Unknown event: ${eventName}`);
+    }
 
-		// Capture context from AsyncLocalStorage (shared across all OriJS systems)
-		const capturedMeta = capturePropagationMeta();
-		const meta: PropagationMeta = { ...currentMeta, ...capturedMeta };
+    // Capture context from AsyncLocalStorage (shared across all OriJS systems)
+    const capturedMeta = capturePropagationMeta();
+    const meta: PropagationMeta = { ...currentMeta, ...capturedMeta };
 
-		return provider.emit<TReturn>(eventName, payload, meta, emitOptions);
-	};
+    return provider.emit<TReturn>(eventName, payload, meta, emitOptions);
+  };
 
-	/**
-	 * Registers a handler for an event.
-	 */
-	const onEvent = <TPayload = unknown, TReturn = void>(
-		eventName: TEventNames,
-		handler: EventHandler<TPayload, TReturn>
-	): void => {
-		// Validate event name against registry
-		if (!registry.hasEvent(eventName)) {
-			throw new Error(`Unknown event: ${eventName}`);
-		}
+  /**
+   * Registers a handler for an event.
+   */
+  const onEvent = <TPayload = unknown, TReturn = void>(
+    eventName: TEventNames,
+    handler: EventHandler<TPayload, TReturn>,
+  ): void => {
+    // Validate event name against registry
+    if (!registry.hasEvent(eventName)) {
+      throw new Error(`Unknown event: ${eventName}`);
+    }
 
-		const builder = new EventHandlerBuilder<TEventNames>();
-		builder.on(eventName, handler);
-		const promise = builder.registerWith(provider, emit);
+    const builder = new EventHandlerBuilder<TEventNames>();
+    builder.on(eventName, handler);
+    const promise = builder.registerWith(provider, emit);
 
-		if (started) {
-			// Post-start: catch with observability
-			promise.catch((err) => {
-				try {
-					const msg = err instanceof Error ? err.message : String(err);
-					if (options?.logger) {
-						options.logger.warn('Late event handler registration failed', { event: eventName, error: msg });
-					} else if (options?.onRegistrationError) {
-						options.onRegistrationError(eventName, err instanceof Error ? err : new Error(msg));
-					}
-				} catch {
-					// Swallow observability handler errors to prevent unhandled rejection
-				}
-			});
-		} else {
-			// Pre-start: collect for start() to await
-			trackSubscription(promise);
-		}
-	};
+    if (started) {
+      // Post-start: catch with observability
+      promise.catch((err) => {
+        try {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (options?.logger) {
+            options.logger.warn("Late event handler registration failed", {
+              event: eventName,
+              error: msg,
+            });
+          } else if (options?.onRegistrationError) {
+            options.onRegistrationError(
+              eventName,
+              err instanceof Error ? err : new Error(msg),
+            );
+          }
+        } catch {
+          // Swallow observability handler errors to prevent unhandled rejection
+        }
+      });
+    } else {
+      // Pre-start: collect for start() to await
+      trackSubscription(promise);
+    }
+  };
 
-	/**
-	 * Creates a handler builder.
-	 */
-	const createBuilder = (): EventBuilder<TEventNames> => {
-		const builder = new EventHandlerBuilder<TEventNames>();
-		return builder;
-	};
+  /**
+   * Creates a handler builder.
+   */
+  const createBuilder = (): EventBuilder<TEventNames> => {
+    const builder = new EventHandlerBuilder<TEventNames>();
+    return builder;
+  };
 
-	return {
-		emit,
-		provider,
-		registry,
-		onEvent,
-		createBuilder,
-		start: async () => {
-			if (started) return;
-			if (startPromise) return startPromise;
+  return {
+    emit,
+    provider,
+    registry,
+    onEvent,
+    createBuilder,
+    start: async () => {
+      if (started) return;
+      if (startPromise) return startPromise;
 
-			startPromise = (async () => {
-				try {
-					await drainPending();
-					await provider.start();
-					await drainPending();
-					started = true;
-				} finally {
-					startPromise = null;
-				}
-			})();
+      startPromise = (async () => {
+        try {
+          await drainPending();
+          await provider.start();
+          await drainPending();
+          started = true;
+        } finally {
+          startPromise = null;
+        }
+      })();
 
-			return startPromise;
-		},
-		stop: () => provider.stop()
-	};
+      return startPromise;
+    },
+    stop: () => provider.stop(),
+  };
 }
 
 /**
@@ -263,11 +278,11 @@ export function createEventSystem<TEventNames extends string>(
  * @returns PropagationMeta object
  */
 export function createPropagationMeta(
-	correlationId?: string,
-	additional?: Record<string, unknown>
+  correlationId?: string,
+  additional?: Record<string, unknown>,
 ): PropagationMeta {
-	return {
-		correlationId,
-		...additional
-	};
+  return {
+    correlationId,
+    ...additional,
+  };
 }

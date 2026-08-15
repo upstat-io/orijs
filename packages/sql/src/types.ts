@@ -52,4 +52,7 @@ export type SqlIdentifier = readonly [string];
  * result.count; // number
  * ```
  */
-export type OriSqlFactory = <T>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T> & T;
+export type OriSqlFactory = <T>(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<T> & T;

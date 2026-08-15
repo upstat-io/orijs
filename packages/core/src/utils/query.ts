@@ -2,27 +2,31 @@
  * Adds a value to the query object, handling repeated keys as arrays.
  * Uses null-prototype object to prevent prototype pollution.
  */
-function addQueryValue(query: Record<string, string | string[]>, key: string, value: string): void {
-	const existing = query[key];
-	if (existing === undefined) {
-		query[key] = value;
-	} else if (Array.isArray(existing)) {
-		existing.push(value);
-	} else {
-		query[key] = [existing, value];
-	}
+function addQueryValue(
+  query: Record<string, string | string[]>,
+  key: string,
+  value: string,
+): void {
+  const existing = query[key];
+  if (existing === undefined) {
+    query[key] = value;
+  } else if (Array.isArray(existing)) {
+    existing.push(value);
+  } else {
+    query[key] = [existing, value];
+  }
 }
 
 /**
  * Safely decodes a URI component, returning the original string if decoding fails.
  */
 function safeDecodeURIComponent(str: string): string {
-	try {
-		return decodeURIComponent(str);
-	} catch {
-		// Return raw string if decoding fails (e.g., malformed %XX sequences)
-		return str;
-	}
+  try {
+    return decodeURIComponent(str);
+  } catch {
+    // Return raw string if decoding fails (e.g., malformed %XX sequences)
+    return str;
+  }
 }
 
 /**
@@ -32,12 +36,12 @@ function safeDecodeURIComponent(str: string): string {
  * @returns Record of query parameter key-value pairs (arrays for repeated keys)
  */
 export function parseQuery(url: URL): Record<string, string | string[]> {
-	// Use null-prototype object to prevent prototype pollution
-	const query: Record<string, string | string[]> = Object.create(null);
-	url.searchParams.forEach((value, key) => {
-		addQueryValue(query, key, value);
-	});
-	return query;
+  // Use null-prototype object to prevent prototype pollution
+  const query: Record<string, string | string[]> = Object.create(null);
+  url.searchParams.forEach((value, key) => {
+    addQueryValue(query, key, value);
+  });
+  return query;
 }
 
 /**
@@ -46,33 +50,37 @@ export function parseQuery(url: URL): Record<string, string | string[]> {
  * @param queryString - The raw query string (without the leading '?')
  * @returns Record of query parameter key-value pairs (arrays for repeated keys)
  */
-export function parseQueryString(queryString: string): Record<string, string | string[]> {
-	if (!queryString) {
-		// Use null-prototype object to prevent prototype pollution
-		return Object.create(null);
-	}
+export function parseQueryString(
+  queryString: string,
+): Record<string, string | string[]> {
+  if (!queryString) {
+    // Use null-prototype object to prevent prototype pollution
+    return Object.create(null);
+  }
 
-	// Use null-prototype object to prevent prototype pollution
-	const query: Record<string, string | string[]> = Object.create(null);
-	const pairs = queryString.split('&');
+  // Use null-prototype object to prevent prototype pollution
+  const query: Record<string, string | string[]> = Object.create(null);
+  const pairs = queryString.split("&");
 
-	for (let i = 0; i < pairs.length; i++) {
-		const pair = pairs[i]!;
-		const eqIndex = pair.indexOf('=');
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i]!;
+    const eqIndex = pair.indexOf("=");
 
-		let key: string;
-		let value: string;
+    let key: string;
+    let value: string;
 
-		if (eqIndex === -1) {
-			key = safeDecodeURIComponent(pair.replace(/\+/g, ' '));
-			value = '';
-		} else {
-			key = safeDecodeURIComponent(pair.slice(0, eqIndex).replace(/\+/g, ' '));
-			value = safeDecodeURIComponent(pair.slice(eqIndex + 1).replace(/\+/g, ' '));
-		}
+    if (eqIndex === -1) {
+      key = safeDecodeURIComponent(pair.replace(/\+/g, " "));
+      value = "";
+    } else {
+      key = safeDecodeURIComponent(pair.slice(0, eqIndex).replace(/\+/g, " "));
+      value = safeDecodeURIComponent(
+        pair.slice(eqIndex + 1).replace(/\+/g, " "),
+      );
+    }
 
-		addQueryValue(query, key, value);
-	}
+    addQueryValue(query, key, value);
+  }
 
-	return query;
+  return query;
 }

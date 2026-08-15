@@ -28,25 +28,25 @@
  * ```
  */
 export interface ConfigProvider {
-	/**
-	 * Gets a configuration value by key.
-	 * @param key - The configuration key
-	 * @returns The value, or undefined if not found
-	 */
-	get(key: string): Promise<string | undefined>;
+  /**
+   * Gets a configuration value by key.
+   * @param key - The configuration key
+   * @returns The value, or undefined if not found
+   */
+  get(key: string): Promise<string | undefined>;
 
-	/**
-	 * Gets a required configuration value.
-	 * @param key - The configuration key
-	 * @throws Error if the value is not found or empty
-	 */
-	getRequired(key: string): Promise<string>;
+  /**
+   * Gets a required configuration value.
+   * @param key - The configuration key
+   * @throws Error if the value is not found or empty
+   */
+  getRequired(key: string): Promise<string>;
 
-	/**
-	 * Loads multiple configuration values at once.
-	 * Called during startup to eagerly cache values for sync access.
-	 * @param keys - The keys to load
-	 * @returns Key-value pairs for the requested keys
-	 */
-	loadKeys(keys: string[]): Promise<Record<string, string | undefined>>;
+  /**
+   * Loads multiple configuration values at once.
+   * Called during startup to eagerly cache values for sync access.
+   * @param keys - The keys to load
+   * @returns Key-value pairs for the requested keys
+   */
+  loadKeys(keys: string[]): Promise<Record<string, string | undefined>>;
 }

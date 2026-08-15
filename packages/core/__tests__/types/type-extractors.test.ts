@@ -28,195 +28,201 @@
  * @see utility.ts for consumer-aware utility types that re-export these
  */
 
-import { describe, expect, it } from 'bun:test';
-import { Type } from '@orijs/validation';
-import type { Data, Result } from '../../src/types/type-extractors';
-import { Event } from '../../src/types/event-definition';
-import { Workflow } from '../../src/types/workflow-definition';
+import { describe, expect, it } from "bun:test";
+import { Type } from "@orijs/validation";
+import type { Data, Result } from "../../src/types/type-extractors";
+import { Event } from "../../src/types/event-definition";
+import { Workflow } from "../../src/types/workflow-definition";
 
-describe('Data type extractor for events', () => {
-	it('should extract data type from EventDefinition', () => {
-		const UserCreated = Event.define({
-			name: 'user.created',
-			data: Type.Object({
-				userId: Type.String(),
-				email: Type.String()
-			}),
-			result: Type.Void()
-		});
+describe("Data type extractor for events", () => {
+  it("should extract data type from EventDefinition", () => {
+    const UserCreated = Event.define({
+      name: "user.created",
+      data: Type.Object({
+        userId: Type.String(),
+        email: Type.String(),
+      }),
+      result: Type.Void(),
+    });
 
-		// Type-level test: Data<T> extracts the correct type
-		type ExtractedData = Data<typeof UserCreated>;
+    // Type-level test: Data<T> extracts the correct type
+    type ExtractedData = Data<typeof UserCreated>;
 
-		// Runtime verification that the type works
-		const data: ExtractedData = { userId: 'u-1', email: 'test@example.com' };
-		expect(data.userId).toBe('u-1');
-		expect(data.email).toBe('test@example.com');
-	});
+    // Runtime verification that the type works
+    const data: ExtractedData = { userId: "u-1", email: "test@example.com" };
+    expect(data.userId).toBe("u-1");
+    expect(data.email).toBe("test@example.com");
+  });
 
-	it('should produce compile error for non-definition types', () => {
-		// Type-level test: Data<T> now produces a compile error for invalid types
-		// This is verified via @ts-expect-error - if the error disappears, the test fails
+  it("should produce compile error for non-definition types", () => {
+    // Type-level test: Data<T> now produces a compile error for invalid types
+    // This is verified via @ts-expect-error - if the error disappears, the test fails
 
-		// @ts-expect-error - Type does not satisfy constraint
-		type _InvalidData = Data<{ foo: string }>;
+    // @ts-expect-error - Type does not satisfy constraint
+    type _InvalidData = Data<{ foo: string }>;
 
-		// @ts-expect-error - Type 'string' does not satisfy constraint
-		type _InvalidFromString = Data<string>;
+    // @ts-expect-error - Type 'string' does not satisfy constraint
+    type _InvalidFromString = Data<string>;
 
-		// This test passes if the @ts-expect-error comments are valid
-		expect(true).toBe(true);
-	});
+    // This test passes if the @ts-expect-error comments are valid
+    expect(true).toBe(true);
+  });
 });
 
-describe('Result type extractor for events', () => {
-	it('should extract result type from EventDefinition', () => {
-		const TestEvent = Event.define({
-			name: 'test.event',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({
-				processed: Type.Boolean(),
-				timestamp: Type.String()
-			})
-		});
+describe("Result type extractor for events", () => {
+  it("should extract result type from EventDefinition", () => {
+    const TestEvent = Event.define({
+      name: "test.event",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({
+        processed: Type.Boolean(),
+        timestamp: Type.String(),
+      }),
+    });
 
-		type ExtractedResult = Result<typeof TestEvent>;
+    type ExtractedResult = Result<typeof TestEvent>;
 
-		const result: ExtractedResult = { processed: true, timestamp: '2024-01-01' };
-		expect(result.processed).toBe(true);
-		expect(result.timestamp).toBe('2024-01-01');
-	});
+    const result: ExtractedResult = {
+      processed: true,
+      timestamp: "2024-01-01",
+    };
+    expect(result.processed).toBe(true);
+    expect(result.timestamp).toBe("2024-01-01");
+  });
 
-	it('should handle void result type', () => {
-		const VoidEvent = Event.define({
-			name: 'void.event',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Void()
-		});
+  it("should handle void result type", () => {
+    const VoidEvent = Event.define({
+      name: "void.event",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Void(),
+    });
 
-		type ExtractedResult = Result<typeof VoidEvent>;
+    type ExtractedResult = Result<typeof VoidEvent>;
 
-		const result: ExtractedResult = undefined as void;
-		expect(result).toBeUndefined();
-	});
+    const result: ExtractedResult = undefined as void;
+    expect(result).toBeUndefined();
+  });
 });
 
-describe('Data type extractor for workflows', () => {
-	it('should extract data type from WorkflowDefinition', () => {
-		const ProcessOrder = Workflow.define({
-			name: 'process-order',
-			data: Type.Object({
-				orderId: Type.String(),
-				items: Type.Array(Type.Object({ sku: Type.String() }))
-			}),
-			result: Type.Object({ success: Type.Boolean() })
-		});
+describe("Data type extractor for workflows", () => {
+  it("should extract data type from WorkflowDefinition", () => {
+    const ProcessOrder = Workflow.define({
+      name: "process-order",
+      data: Type.Object({
+        orderId: Type.String(),
+        items: Type.Array(Type.Object({ sku: Type.String() })),
+      }),
+      result: Type.Object({ success: Type.Boolean() }),
+    });
 
-		type ExtractedData = Data<typeof ProcessOrder>;
+    type ExtractedData = Data<typeof ProcessOrder>;
 
-		const data: ExtractedData = { orderId: 'ord-1', items: [{ sku: 'SKU-001' }] };
-		expect(data.orderId).toBe('ord-1');
-		expect(data.items[0]!.sku).toBe('SKU-001');
-	});
+    const data: ExtractedData = {
+      orderId: "ord-1",
+      items: [{ sku: "SKU-001" }],
+    };
+    expect(data.orderId).toBe("ord-1");
+    expect(data.items[0]!.sku).toBe("SKU-001");
+  });
 });
 
-describe('Result type extractor for workflows', () => {
-	it('should extract result type from WorkflowDefinition', () => {
-		const TestWorkflow = Workflow.define({
-			name: 'test-workflow',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({
-				completed: Type.Boolean(),
-				output: Type.String()
-			})
-		});
+describe("Result type extractor for workflows", () => {
+  it("should extract result type from WorkflowDefinition", () => {
+    const TestWorkflow = Workflow.define({
+      name: "test-workflow",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({
+        completed: Type.Boolean(),
+        output: Type.String(),
+      }),
+    });
 
-		type ExtractedResult = Result<typeof TestWorkflow>;
+    type ExtractedResult = Result<typeof TestWorkflow>;
 
-		const result: ExtractedResult = { completed: true, output: 'done' };
-		expect(result.completed).toBe(true);
-		expect(result.output).toBe('done');
-	});
+    const result: ExtractedResult = { completed: true, output: "done" };
+    expect(result.completed).toBe(true);
+    expect(result.output).toBe("done");
+  });
 
-	it('should handle complex nested result types', () => {
-		const ComplexWorkflow = Workflow.define({
-			name: 'complex-workflow',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({
-				status: Type.Union([Type.Literal('success'), Type.Literal('failure')]),
-				details: Type.Object({
-					steps: Type.Array(
-						Type.Object({
-							name: Type.String(),
-							duration: Type.Number()
-						})
-					)
-				})
-			})
-		});
+  it("should handle complex nested result types", () => {
+    const ComplexWorkflow = Workflow.define({
+      name: "complex-workflow",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({
+        status: Type.Union([Type.Literal("success"), Type.Literal("failure")]),
+        details: Type.Object({
+          steps: Type.Array(
+            Type.Object({
+              name: Type.String(),
+              duration: Type.Number(),
+            }),
+          ),
+        }),
+      }),
+    });
 
-		type ExtractedResult = Result<typeof ComplexWorkflow>;
+    type ExtractedResult = Result<typeof ComplexWorkflow>;
 
-		const result: ExtractedResult = {
-			status: 'success',
-			details: {
-				steps: [{ name: 'step1', duration: 100 }]
-			}
-		};
-		expect(result.status).toBe('success');
-		expect(result.details.steps[0]!.name).toBe('step1');
-	});
+    const result: ExtractedResult = {
+      status: "success",
+      details: {
+        steps: [{ name: "step1", duration: 100 }],
+      },
+    };
+    expect(result.status).toBe("success");
+    expect(result.details.steps[0]!.name).toBe("step1");
+  });
 });
 
-describe('type extractors independence', () => {
-	it('should work without importing consumer types', () => {
-		// This test verifies that type-extractors.ts has no consumer dependencies
-		// by only using the types exported from it
-		const TestEvent = Event.define({
-			name: 'test',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({ ok: Type.Boolean() })
-		});
+describe("type extractors independence", () => {
+  it("should work without importing consumer types", () => {
+    // This test verifies that type-extractors.ts has no consumer dependencies
+    // by only using the types exported from it
+    const TestEvent = Event.define({
+      name: "test",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({ ok: Type.Boolean() }),
+    });
 
-		// All these types work without consumer.ts
-		type D = Data<typeof TestEvent>;
-		type R = Result<typeof TestEvent>;
+    // All these types work without consumer.ts
+    type D = Data<typeof TestEvent>;
+    type R = Result<typeof TestEvent>;
 
-		const d: D = { id: 'test' };
-		const r: R = { ok: true };
+    const d: D = { id: "test" };
+    const r: R = { ok: true };
 
-		expect(d.id).toBe('test');
-		expect(r.ok).toBe(true);
-	});
+    expect(d.id).toBe("test");
+    expect(r.ok).toBe(true);
+  });
 
-	it('should work for both EventDefinition and WorkflowDefinition', () => {
-		// Data<T> and Result<T> work for both definition types
-		const TestEvent = Event.define({
-			name: 'test-event',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({ ok: Type.Boolean() })
-		});
+  it("should work for both EventDefinition and WorkflowDefinition", () => {
+    // Data<T> and Result<T> work for both definition types
+    const TestEvent = Event.define({
+      name: "test-event",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({ ok: Type.Boolean() }),
+    });
 
-		const TestWorkflow = Workflow.define({
-			name: 'test-workflow',
-			data: Type.Object({ id: Type.String() }),
-			result: Type.Object({ ok: Type.Boolean() })
-		});
+    const TestWorkflow = Workflow.define({
+      name: "test-workflow",
+      data: Type.Object({ id: Type.String() }),
+      result: Type.Object({ ok: Type.Boolean() }),
+    });
 
-		// Same utility types work for both
-		type EventData = Data<typeof TestEvent>;
-		type WorkflowData = Data<typeof TestWorkflow>;
-		type EventResult = Result<typeof TestEvent>;
-		type WorkflowResult = Result<typeof TestWorkflow>;
+    // Same utility types work for both
+    type EventData = Data<typeof TestEvent>;
+    type WorkflowData = Data<typeof TestWorkflow>;
+    type EventResult = Result<typeof TestEvent>;
+    type WorkflowResult = Result<typeof TestWorkflow>;
 
-		const ed: EventData = { id: 'event' };
-		const wd: WorkflowData = { id: 'workflow' };
-		const er: EventResult = { ok: true };
-		const wr: WorkflowResult = { ok: false };
+    const ed: EventData = { id: "event" };
+    const wd: WorkflowData = { id: "workflow" };
+    const er: EventResult = { ok: true };
+    const wr: WorkflowResult = { ok: false };
 
-		expect(ed.id).toBe('event');
-		expect(wd.id).toBe('workflow');
-		expect(er.ok).toBe(true);
-		expect(wr.ok).toBe(false);
-	});
+    expect(ed.id).toBe("event");
+    expect(wd.id).toBe("workflow");
+    expect(er.ok).toBe(true);
+    expect(wr.ok).toBe(false);
+  });
 });

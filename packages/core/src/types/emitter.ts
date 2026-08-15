@@ -17,8 +17,8 @@
  * `ctx.workflows` which are provided by the framework.
  */
 
-import type { EventDefinition } from './event-definition';
-import type { WorkflowDefinition } from './workflow-definition';
+import type { EventDefinition } from "./event-definition";
+import type { WorkflowDefinition } from "./workflow-definition";
 
 /**
  * Re-export of SocketEmitter for convenience.
@@ -38,7 +38,7 @@ import type { WorkflowDefinition } from './workflow-definition';
  * For WebSocket-specific types like `WebSocketConnection`, `WebSocketProvider`,
  * or `SocketCoordinator`, import from `@orijs/websocket` directly.
  */
-export type { SocketEmitter } from '@orijs/websocket';
+export type { SocketEmitter } from "@orijs/websocket";
 
 /**
  * Event emitter interface for type-safe event emission.
@@ -66,70 +66,70 @@ export type { SocketEmitter } from '@orijs/websocket';
  * Options for controller-level event emission.
  */
 export interface EventEmitOptions {
-	/** Delay in milliseconds before event delivery */
-	readonly delay?: number;
-	/**
-	 * Explicit idempotency key. Overrides the event definition's `key` function.
-	 * When provided, this key is used as the BullMQ jobId for deduplication and cancellation.
-	 */
-	readonly idempotencyKey?: string;
+  /** Delay in milliseconds before event delivery */
+  readonly delay?: number;
+  /**
+   * Explicit idempotency key. Overrides the event definition's `key` function.
+   * When provided, this key is used as the BullMQ jobId for deduplication and cancellation.
+   */
+  readonly idempotencyKey?: string;
 }
 
 export interface EventEmitter {
-	/**
-	 * Emit an event with type-safe payload.
-	 *
-	 * ## Validation
-	 *
-	 * The payload is validated against the event's TypeBox schema at runtime.
-	 * Invalid payloads throw a validation error before the event is queued.
-	 *
-	 * ## Execution Model
-	 *
-	 * Events are processed asynchronously via BullMQ. The Promise resolves
-	 * when the consumer's `onEvent` handler completes. For fire-and-forget
-	 * events (Type.Void() response), the Promise resolves when the event
-	 * is successfully queued.
-	 *
-	 * ## Idempotency
-	 *
-	 * If the event definition has a `key` function, the derived key is automatically
-	 * used as the BullMQ jobId. This enables deduplication and cancellation.
-	 * An explicit `idempotencyKey` in options overrides the definition's key function.
-	 *
-	 * @template TPayload - The event payload type
-	 * @template TResponse - The event response type
-	 * @param event - The event definition created via Event.define()
-	 * @param payload - The event payload (validated against TypeBox schema)
-	 * @param options - Optional emit options (delay, idempotencyKey)
-	 * @returns Promise resolving to the consumer's response
-	 *
-	 * @throws {ValidationError} If payload fails TypeBox schema validation
-	 * @throws {EventNotRegisteredError} If no consumer is registered for this event
-	 * @throws {Error} If the consumer's onEvent handler throws
-	 */
-	emit<TPayload, TResponse>(
-		event: EventDefinition<TPayload, TResponse>,
-		payload: TPayload,
-		options?: EventEmitOptions
-	): Promise<TResponse>;
+  /**
+   * Emit an event with type-safe payload.
+   *
+   * ## Validation
+   *
+   * The payload is validated against the event's TypeBox schema at runtime.
+   * Invalid payloads throw a validation error before the event is queued.
+   *
+   * ## Execution Model
+   *
+   * Events are processed asynchronously via BullMQ. The Promise resolves
+   * when the consumer's `onEvent` handler completes. For fire-and-forget
+   * events (Type.Void() response), the Promise resolves when the event
+   * is successfully queued.
+   *
+   * ## Idempotency
+   *
+   * If the event definition has a `key` function, the derived key is automatically
+   * used as the BullMQ jobId. This enables deduplication and cancellation.
+   * An explicit `idempotencyKey` in options overrides the definition's key function.
+   *
+   * @template TPayload - The event payload type
+   * @template TResponse - The event response type
+   * @param event - The event definition created via Event.define()
+   * @param payload - The event payload (validated against TypeBox schema)
+   * @param options - Optional emit options (delay, idempotencyKey)
+   * @returns Promise resolving to the consumer's response
+   *
+   * @throws {ValidationError} If payload fails TypeBox schema validation
+   * @throws {EventNotRegisteredError} If no consumer is registered for this event
+   * @throws {Error} If the consumer's onEvent handler throws
+   */
+  emit<TPayload, TResponse>(
+    event: EventDefinition<TPayload, TResponse>,
+    payload: TPayload,
+    options?: EventEmitOptions,
+  ): Promise<TResponse>;
 
-	/**
-	 * Cancel a pending delayed event by its derived key.
-	 *
-	 * The key should match the value produced by the event definition's `key` function
-	 * or the explicit `idempotencyKey` used at emit time.
-	 *
-	 * @template TPayload - The event payload type (unused, for type inference)
-	 * @template TResponse - The event response type (unused, for type inference)
-	 * @param event - The event definition
-	 * @param key - The derived key identifying the pending event
-	 * @returns true if the event was found and cancelled, false otherwise
-	 */
-	cancel<TPayload, TResponse>(
-		event: EventDefinition<TPayload, TResponse>,
-		key: string
-	): Promise<boolean>;
+  /**
+   * Cancel a pending delayed event by its derived key.
+   *
+   * The key should match the value produced by the event definition's `key` function
+   * or the explicit `idempotencyKey` used at emit time.
+   *
+   * @template TPayload - The event payload type (unused, for type inference)
+   * @template TResponse - The event response type (unused, for type inference)
+   * @param event - The event definition
+   * @param key - The derived key identifying the pending event
+   * @returns true if the event was found and cancelled, false otherwise
+   */
+  cancel<TPayload, TResponse>(
+    event: EventDefinition<TPayload, TResponse>,
+    key: string,
+  ): Promise<boolean>;
 }
 
 /**
@@ -154,35 +154,35 @@ export interface EventEmitter {
  * ```
  */
 export interface WorkflowExecutor {
-	/**
-	 * Execute a workflow with type-safe input data.
-	 *
-	 * ## Validation
-	 *
-	 * The data is validated against the workflow's TypeBox schema at runtime.
-	 * Invalid data throws a validation error before the workflow is queued.
-	 *
-	 * ## Execution Model
-	 *
-	 * Workflows are queued via BullMQ and executed asynchronously. The Promise
-	 * resolves immediately with a WorkflowHandle for tracking progress. Use
-	 * `handle.result()` to wait for completion.
-	 *
-	 * @template TData - The workflow input data type
-	 * @template TResult - The workflow result type
-	 * @param workflow - The workflow definition created via Workflow.define()
-	 * @param data - The workflow input data (validated against TypeBox schema)
-	 * @param options - Optional execution options (id, priority, delay)
-	 * @returns Promise resolving to a workflow handle for tracking/cancellation
-	 *
-	 * @throws {ValidationError} If data fails TypeBox schema validation
-	 * @throws {WorkflowNotRegisteredError} If no consumer is registered for this workflow
-	 */
-	execute<TData, TResult>(
-		workflow: WorkflowDefinition<TData, TResult>,
-		data: TData,
-		options?: WorkflowExecuteOptions
-	): Promise<WorkflowHandle<TResult>>;
+  /**
+   * Execute a workflow with type-safe input data.
+   *
+   * ## Validation
+   *
+   * The data is validated against the workflow's TypeBox schema at runtime.
+   * Invalid data throws a validation error before the workflow is queued.
+   *
+   * ## Execution Model
+   *
+   * Workflows are queued via BullMQ and executed asynchronously. The Promise
+   * resolves immediately with a WorkflowHandle for tracking progress. Use
+   * `handle.result()` to wait for completion.
+   *
+   * @template TData - The workflow input data type
+   * @template TResult - The workflow result type
+   * @param workflow - The workflow definition created via Workflow.define()
+   * @param data - The workflow input data (validated against TypeBox schema)
+   * @param options - Optional execution options (id, priority, delay)
+   * @returns Promise resolving to a workflow handle for tracking/cancellation
+   *
+   * @throws {ValidationError} If data fails TypeBox schema validation
+   * @throws {WorkflowNotRegisteredError} If no consumer is registered for this workflow
+   */
+  execute<TData, TResult>(
+    workflow: WorkflowDefinition<TData, TResult>,
+    data: TData,
+    options?: WorkflowExecuteOptions,
+  ): Promise<WorkflowHandle<TResult>>;
 }
 
 /**
@@ -203,23 +203,23 @@ export interface WorkflowExecutor {
  * ```
  */
 export interface WorkflowExecuteOptions {
-	/**
-	 * Custom workflow ID. If not provided, a UUID will be generated.
-	 * Use for idempotency - re-executing with same ID is a no-op.
-	 */
-	readonly id?: string;
-	/**
-	 * Priority level. Lower numbers = higher priority.
-	 * @default 0
-	 * @example -10 for high priority, 10 for low priority
-	 */
-	readonly priority?: number;
-	/**
-	 * Delay before starting the workflow, in milliseconds.
-	 * @default 0 (start immediately)
-	 * @example 60000 for 1 minute delay
-	 */
-	readonly delay?: number;
+  /**
+   * Custom workflow ID. If not provided, a UUID will be generated.
+   * Use for idempotency - re-executing with same ID is a no-op.
+   */
+  readonly id?: string;
+  /**
+   * Priority level. Lower numbers = higher priority.
+   * @default 0
+   * @example -10 for high priority, 10 for low priority
+   */
+  readonly priority?: number;
+  /**
+   * Delay before starting the workflow, in milliseconds.
+   * @default 0 (start immediately)
+   * @example 60000 for 1 minute delay
+   */
+  readonly delay?: number;
 }
 
 /**
@@ -253,40 +253,40 @@ export interface WorkflowExecuteOptions {
  * ```
  */
 export interface WorkflowHandle<TResult> {
-	/** Unique workflow instance ID (matches WorkflowExecuteOptions.id if provided) */
-	readonly id: string;
+  /** Unique workflow instance ID (matches WorkflowExecuteOptions.id if provided) */
+  readonly id: string;
 
-	/**
-	 * Get the current status of the workflow.
-	 *
-	 * This is a non-blocking call that returns immediately with the current
-	 * status. For completion notification, use `result()` instead.
-	 *
-	 * @returns Promise resolving to current status
-	 */
-	status(): Promise<WorkflowStatus>;
+  /**
+   * Get the current status of the workflow.
+   *
+   * This is a non-blocking call that returns immediately with the current
+   * status. For completion notification, use `result()` instead.
+   *
+   * @returns Promise resolving to current status
+   */
+  status(): Promise<WorkflowStatus>;
 
-	/**
-	 * Wait for the workflow to complete and get the result.
-	 *
-	 * This is a blocking call that waits until the workflow finishes.
-	 * If the workflow is already complete, returns immediately.
-	 *
-	 * @returns Promise resolving to the workflow result
-	 * @throws {WorkflowFailedError} If workflow failed - contains original error
-	 * @throws {WorkflowCancelledError} If workflow was cancelled
-	 */
-	result(): Promise<TResult>;
+  /**
+   * Wait for the workflow to complete and get the result.
+   *
+   * This is a blocking call that waits until the workflow finishes.
+   * If the workflow is already complete, returns immediately.
+   *
+   * @returns Promise resolving to the workflow result
+   * @throws {WorkflowFailedError} If workflow failed - contains original error
+   * @throws {WorkflowCancelledError} If workflow was cancelled
+   */
+  result(): Promise<TResult>;
 
-	/**
-	 * Cancel the workflow if it's still running.
-	 *
-	 * Cancellation is best-effort - if the workflow completes before the
-	 * cancellation is processed, it will not be cancelled.
-	 *
-	 * @returns Promise resolving to true if cancelled, false if already completed/failed
-	 */
-	cancel(): Promise<boolean>;
+  /**
+   * Cancel the workflow if it's still running.
+   *
+   * Cancellation is best-effort - if the workflow completes before the
+   * cancellation is processed, it will not be cancelled.
+   *
+   * @returns Promise resolving to true if cancelled, false if already completed/failed
+   */
+  cancel(): Promise<boolean>;
 }
 
 /**
@@ -298,4 +298,5 @@ export interface WorkflowHandle<TResult> {
  * - `failed`: Workflow threw an error
  * - `cancelled`: Workflow was cancelled via handle.cancel()
  */
-export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type WorkflowStatus =
+  "pending" | "running" | "completed" | "failed" | "cancelled";

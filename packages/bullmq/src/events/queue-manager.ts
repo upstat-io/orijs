@@ -12,26 +12,26 @@
  */
 
 import {
-	Queue,
-	Worker,
-	type Job,
-	type JobsOptions,
-	type WorkerOptions,
-	type ConnectionOptions
-} from 'bullmq';
-import type { Logger } from '@orijs/logging';
+  Queue,
+  Worker,
+  type Job,
+  type JobsOptions,
+  type WorkerOptions,
+  type ConnectionOptions,
+} from "bullmq";
+import type { Logger } from "@orijs/logging";
 
 /**
  * Full passthrough to BullMQ's JobsOptions.
  * Allows configuration of retries, backoff, keepJobs, removeOnComplete, etc.
  */
-export type { JobsOptions as BullMQJobOptions } from 'bullmq';
+export type { JobsOptions as BullMQJobOptions } from "bullmq";
 
 /**
  * Full passthrough to BullMQ's WorkerOptions.
  * Allows configuration of concurrency, limiter, stalledInterval, etc.
  */
-export type { WorkerOptions as BullMQWorkerOptions } from 'bullmq';
+export type { WorkerOptions as BullMQWorkerOptions } from "bullmq";
 
 /**
  * Job handler function type.
@@ -42,63 +42,72 @@ export type JobHandler<TResult = unknown> = (job: Job) => Promise<TResult>;
  * Internal ioredis client interface.
  */
 interface IRedisClient {
-	on(event: string, handler: (...args: unknown[]) => void): this;
-	exists(...keys: string[]): Promise<number>;
-	eval(script: string, numberOfKeys: number, ...args: string[]): Promise<unknown>;
+  on(event: string, handler: (...args: unknown[]) => void): this;
+  exists(...keys: string[]): Promise<number>;
+  eval(
+    script: string,
+    numberOfKeys: number,
+    ...args: string[]
+  ): Promise<unknown>;
 }
 
 /**
  * BullMQ's RedisConnection exposes _client for accessing the underlying ioredis client.
  */
 interface IRedisConnection {
-	_client: IRedisClient;
+  _client: IRedisClient;
 }
 
 /**
  * Interface for queue operations (for testing).
  */
 export interface IQueueLike {
-	add(name: string, data: unknown, opts?: JobsOptions): Promise<EventJobReference>;
-	on(event: string, callback: (...args: unknown[]) => void): void;
-	close(): Promise<void>;
-	/** Main ioredis connection - exposed for adding error handlers that persist through close() */
-	connection: IRedisConnection;
-	/** Clean jobs by grace period and status. Optional — not all queue implementations support this. */
-	clean?(grace: number, limit: number, type: string): Promise<string[]>;
-	/** Get a job by its ID. Optional — not all queue implementations support this. */
-	getJob?(
-		jobId: string
-	): Promise<
-		| (EventJobReference & { remove(): Promise<void>; getState(): Promise<string> })
-		| undefined
-	>;
+  add(
+    name: string,
+    data: unknown,
+    opts?: JobsOptions,
+  ): Promise<EventJobReference>;
+  on(event: string, callback: (...args: unknown[]) => void): void;
+  close(): Promise<void>;
+  /** Main ioredis connection - exposed for adding error handlers that persist through close() */
+  connection: IRedisConnection;
+  /** Clean jobs by grace period and status. Optional — not all queue implementations support this. */
+  clean?(grace: number, limit: number, type: string): Promise<string[]>;
+  /** Get a job by its ID. Optional — not all queue implementations support this. */
+  getJob?(jobId: string): Promise<
+    | (EventJobReference & {
+        remove(): Promise<void>;
+        getState(): Promise<string>;
+      })
+    | undefined
+  >;
 }
 
 export interface EventJobReference {
-	readonly id: string;
-	readonly returnvalue?: unknown;
-	readonly failedReason?: string;
-	getState?(): Promise<string>;
+  readonly id: string;
+  readonly returnvalue?: unknown;
+  readonly failedReason?: string;
+  getState?(): Promise<string>;
 }
 
 /**
  * Interface for worker operations (for testing).
  */
 export interface IWorkerLike {
-	on(event: string, callback: (...args: unknown[]) => void): void;
-	close(): Promise<void>;
-	/** Wait until worker is connected and ready to process jobs */
-	waitUntilReady(): Promise<unknown>;
-	/** Main ioredis connection - exposed for adding error handlers that persist through close() */
-	connection: IRedisConnection;
-	/** Blocking ioredis connection - exposed for adding error handlers that persist through close() */
-	blockingConnection: IRedisConnection;
+  on(event: string, callback: (...args: unknown[]) => void): void;
+  close(): Promise<void>;
+  /** Wait until worker is connected and ready to process jobs */
+  waitUntilReady(): Promise<unknown>;
+  /** Main ioredis connection - exposed for adding error handlers that persist through close() */
+  connection: IRedisConnection;
+  /** Blocking ioredis connection - exposed for adding error handlers that persist through close() */
+  blockingConnection: IRedisConnection;
 }
 
 /**
  * Default queue name prefix for event queues.
  */
-const DEFAULT_QUEUE_PREFIX = 'event';
+const DEFAULT_QUEUE_PREFIX = "event";
 
 /**
  * Metrics hooks for queue observability.
@@ -113,123 +122,149 @@ const DEFAULT_QUEUE_PREFIX = 'event';
  * ```
  */
 export interface QueueMetrics {
-	/** Called when a job is added to a queue */
-	onJobAdded?(eventName: string, jobId: string): void;
-	/** Called when a job completes successfully */
-	onJobCompleted?(eventName: string, jobId: string, durationMs: number): void;
-	/** Called when a job fails */
-	onJobFailed?(eventName: string, jobId: string, error: Error): void;
+  /** Called when a job is added to a queue */
+  onJobAdded?(eventName: string, jobId: string): void;
+  /** Called when a job completes successfully */
+  onJobCompleted?(eventName: string, jobId: string, durationMs: number): void;
+  /** Called when a job fails */
+  onJobFailed?(eventName: string, jobId: string, error: Error): void;
 }
 
 /**
  * Default retry configuration for failed jobs.
  */
 export interface RetryOptions {
-	/** Maximum number of retry attempts (default: 3) */
-	readonly attempts?: number;
-	/** Backoff strategy: 'exponential' or 'fixed' (default: 'exponential') */
-	readonly backoffType?: 'exponential' | 'fixed';
-	/** Initial delay in milliseconds for backoff (default: 1000) */
-	readonly backoffDelay?: number;
+  /** Maximum number of retry attempts (default: 3) */
+  readonly attempts?: number;
+  /** Backoff strategy: 'exponential' or 'fixed' (default: 'exponential') */
+  readonly backoffType?: "exponential" | "fixed";
+  /** Initial delay in milliseconds for backoff (default: 1000) */
+  readonly backoffDelay?: number;
 }
 
 /**
  * Queue manager configuration options.
  */
 export interface QueueManagerOptions {
-	/** Redis connection options */
-	readonly connection: ConnectionOptions;
-	/** Queue name prefix (default: 'event') */
-	readonly queuePrefix?: string;
-	/** Optional metrics hooks for observability */
-	readonly metrics?: QueueMetrics;
-	/** Default retry configuration for failed jobs (simplified interface) */
-	readonly defaultRetry?: RetryOptions;
-	/**
-	 * Full BullMQ job options passthrough.
-	 * These are merged with defaultRetry (this takes precedence).
-	 *
-	 * Common options:
-	 * - attempts: Max retry attempts
-	 * - backoff: Retry strategy { type: 'exponential' | 'fixed', delay: number }
-	 * - removeOnComplete: true | number (keep N jobs) | { age, count }
-	 * - removeOnFail: true | number | { age, count }
-	 *
-	 * @example
-	 * ```ts
-	 * defaultJobOptions: {
-	 *   attempts: 5,
-	 *   backoff: { type: 'exponential', delay: 2000 },
-	 *   removeOnComplete: { age: 3600 }, // Keep for 1 hour
-	 *   removeOnFail: false, // Keep failed jobs for inspection
-	 * }
-	 * ```
-	 */
-	readonly defaultJobOptions?: Partial<JobsOptions>;
-	/**
-	 * Full BullMQ worker options passthrough.
-	 *
-	 * Common options:
-	 * - concurrency: Number of jobs to process in parallel
-	 * - limiter: Rate limiting { max, duration }
-	 * - stalledInterval: How often to check for stalled jobs
-	 *
-	 * @example
-	 * ```ts
-	 * defaultWorkerOptions: {
-	 *   concurrency: 10,
-	 *   limiter: { max: 100, duration: 1000 }, // 100 jobs per second
-	 * }
-	 * ```
-	 */
-	readonly defaultWorkerOptions?: Partial<WorkerOptions>;
-	/** Optional queue class override (for testing) */
-	readonly QueueClass?: new (name: string, options: { connection: ConnectionOptions }) => IQueueLike;
-	/** Optional worker class override (for testing) */
-	readonly WorkerClass?: new (
-		name: string,
-		processor: (job: Job) => Promise<unknown>,
-		options: { connection: ConnectionOptions }
-	) => IWorkerLike;
-	/** Optional logger for error reporting */
-	readonly logger?: Logger;
+  /** Redis connection options */
+  readonly connection: ConnectionOptions;
+  /** Queue name prefix (default: 'event') */
+  readonly queuePrefix?: string;
+  /** Optional metrics hooks for observability */
+  readonly metrics?: QueueMetrics;
+  /** Default retry configuration for failed jobs (simplified interface) */
+  readonly defaultRetry?: RetryOptions;
+  /**
+   * Full BullMQ job options passthrough.
+   * These are merged with defaultRetry (this takes precedence).
+   *
+   * Common options:
+   * - attempts: Max retry attempts
+   * - backoff: Retry strategy { type: 'exponential' | 'fixed', delay: number }
+   * - removeOnComplete: true | number (keep N jobs) | { age, count }
+   * - removeOnFail: true | number | { age, count }
+   *
+   * @example
+   * ```ts
+   * defaultJobOptions: {
+   *   attempts: 5,
+   *   backoff: { type: 'exponential', delay: 2000 },
+   *   removeOnComplete: { age: 3600 }, // Keep for 1 hour
+   *   removeOnFail: false, // Keep failed jobs for inspection
+   * }
+   * ```
+   */
+  readonly defaultJobOptions?: Partial<JobsOptions>;
+  /**
+   * Full BullMQ worker options passthrough.
+   *
+   * Common options:
+   * - concurrency: Number of jobs to process in parallel
+   * - limiter: Rate limiting { max, duration }
+   * - stalledInterval: How often to check for stalled jobs
+   *
+   * @example
+   * ```ts
+   * defaultWorkerOptions: {
+   *   concurrency: 10,
+   *   limiter: { max: 100, duration: 1000 }, // 100 jobs per second
+   * }
+   * ```
+   */
+  readonly defaultWorkerOptions?: Partial<WorkerOptions>;
+  /** Optional queue class override (for testing) */
+  readonly QueueClass?: new (
+    name: string,
+    options: { connection: ConnectionOptions },
+  ) => IQueueLike;
+  /** Optional worker class override (for testing) */
+  readonly WorkerClass?: new (
+    name: string,
+    processor: (job: Job) => Promise<unknown>,
+    options: { connection: ConnectionOptions },
+  ) => IWorkerLike;
+  /** Optional logger for error reporting */
+  readonly logger?: Logger;
 }
 
 /**
  * Queue Manager interface for dependency injection.
  */
 export interface IQueueManager {
-	/** Convert event name to queue name */
-	getQueueName(eventName: string): string;
-	/** Get or create a queue for an event type */
-	getQueue(eventName: string): IQueueLike;
-	/** Add a job to an event queue */
-	addJob<TData = unknown>(
-		eventName: string,
-		data: TData,
-		options?: JobsOptions
-	): Promise<EventJobReference>;
-	/** Reload a job so retained terminal state includes its durable result. */
-	getJob?(eventName: string, jobId: string): Promise<EventJobReference | undefined>;
-	/** Register a worker for an event type */
-	registerWorker<TResult = unknown>(
-		eventName: string,
-		handler: JobHandler<TResult>,
-		onCompleted?: (jobId: string, result: TResult) => void
-	): Promise<void>;
-	/** Stop all queues and workers */
-	stop(): Promise<void>;
-	/** Clean jobs from a queue by grace period and status type. Returns cleaned job IDs. */
-	cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]>;
-	/** Remove a specific job by its ID. Returns true if the job was found and removed. */
-	removeJob(eventName: string, jobId: string): Promise<boolean>;
-	hasCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<boolean>;
-	hasSuccessfulCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<boolean>;
-	recordCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<void>;
-	prepareCompletionReceiptRetirement?(eventName: string, idempotencyKey: string): Promise<void>;
-	finalizeCompletionReceiptRetirement?(eventName: string, idempotencyKey: string): Promise<void>;
-	hasJob?(eventName: string, jobId: string): Promise<boolean>;
-	isJobRetryable?(eventName: string, jobId: string): Promise<boolean>;
+  /** Convert event name to queue name */
+  getQueueName(eventName: string): string;
+  /** Get or create a queue for an event type */
+  getQueue(eventName: string): IQueueLike;
+  /** Add a job to an event queue */
+  addJob<TData = unknown>(
+    eventName: string,
+    data: TData,
+    options?: JobsOptions,
+  ): Promise<EventJobReference>;
+  /** Reload a job so retained terminal state includes its durable result. */
+  getJob?(
+    eventName: string,
+    jobId: string,
+  ): Promise<EventJobReference | undefined>;
+  /** Register a worker for an event type */
+  registerWorker<TResult = unknown>(
+    eventName: string,
+    handler: JobHandler<TResult>,
+    onCompleted?: (jobId: string, result: TResult) => void,
+  ): Promise<void>;
+  /** Stop all queues and workers */
+  stop(): Promise<void>;
+  /** Clean jobs from a queue by grace period and status type. Returns cleaned job IDs. */
+  cleanJobs(
+    eventName: string,
+    graceMs: number,
+    limit: number,
+    type: string,
+  ): Promise<string[]>;
+  /** Remove a specific job by its ID. Returns true if the job was found and removed. */
+  removeJob(eventName: string, jobId: string): Promise<boolean>;
+  hasCompletionReceipt?(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<boolean>;
+  hasSuccessfulCompletionReceipt?(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<boolean>;
+  recordCompletionReceipt?(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void>;
+  prepareCompletionReceiptRetirement?(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void>;
+  finalizeCompletionReceiptRetirement?(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void>;
+  hasJob?(eventName: string, jobId: string): Promise<boolean>;
+  isJobRetryable?(eventName: string, jobId: string): Promise<boolean>;
 }
 
 /**
@@ -261,356 +296,415 @@ export interface IQueueManager {
  * ```
  */
 export class QueueManager implements IQueueManager {
-	private readonly connection: ConnectionOptions;
-	private readonly queuePrefix: string;
-	private readonly metrics: QueueMetrics | undefined;
-	private readonly logger: Logger | undefined;
-	private readonly defaultRetry: Required<RetryOptions>;
-	private readonly defaultJobOptions: Partial<JobsOptions>;
-	private readonly defaultWorkerOptions: Partial<WorkerOptions>;
-	private readonly queues = new Map<string, IQueueLike>();
-	private readonly workers = new Map<string, IWorkerLike>();
-	private readonly QueueClass: new (name: string, options: { connection: ConnectionOptions }) => IQueueLike;
-	private readonly WorkerClass: new (
-		name: string,
-		processor: (job: Job) => Promise<unknown>,
-		options: { connection: ConnectionOptions }
-	) => IWorkerLike;
+  private readonly connection: ConnectionOptions;
+  private readonly queuePrefix: string;
+  private readonly metrics: QueueMetrics | undefined;
+  private readonly logger: Logger | undefined;
+  private readonly defaultRetry: Required<RetryOptions>;
+  private readonly defaultJobOptions: Partial<JobsOptions>;
+  private readonly defaultWorkerOptions: Partial<WorkerOptions>;
+  private readonly queues = new Map<string, IQueueLike>();
+  private readonly workers = new Map<string, IWorkerLike>();
+  private readonly QueueClass: new (
+    name: string,
+    options: { connection: ConnectionOptions },
+  ) => IQueueLike;
+  private readonly WorkerClass: new (
+    name: string,
+    processor: (job: Job) => Promise<unknown>,
+    options: { connection: ConnectionOptions },
+  ) => IWorkerLike;
 
-	/**
-	 * Creates a new QueueManager.
-	 *
-	 * @param options - Configuration including Redis connection
-	 */
-	public constructor(options: QueueManagerOptions) {
-		this.connection = options.connection;
-		this.queuePrefix = options.queuePrefix ?? DEFAULT_QUEUE_PREFIX;
-		this.metrics = options.metrics;
-		this.logger = options.logger;
-		this.defaultRetry = {
-			attempts: options.defaultRetry?.attempts ?? 3,
-			backoffType: options.defaultRetry?.backoffType ?? 'exponential',
-			backoffDelay: options.defaultRetry?.backoffDelay ?? 1000
-		};
-		this.defaultJobOptions = options.defaultJobOptions ?? {};
-		// Default concurrency of 10 for I/O-bound event handlers
-		this.defaultWorkerOptions = {
-			concurrency: 10,
-			...options.defaultWorkerOptions
-		};
-		this.QueueClass = options.QueueClass ?? (Queue as unknown as typeof this.QueueClass);
-		this.WorkerClass = options.WorkerClass ?? (Worker as unknown as typeof this.WorkerClass);
-	}
+  /**
+   * Creates a new QueueManager.
+   *
+   * @param options - Configuration including Redis connection
+   */
+  public constructor(options: QueueManagerOptions) {
+    this.connection = options.connection;
+    this.queuePrefix = options.queuePrefix ?? DEFAULT_QUEUE_PREFIX;
+    this.metrics = options.metrics;
+    this.logger = options.logger;
+    this.defaultRetry = {
+      attempts: options.defaultRetry?.attempts ?? 3,
+      backoffType: options.defaultRetry?.backoffType ?? "exponential",
+      backoffDelay: options.defaultRetry?.backoffDelay ?? 1000,
+    };
+    this.defaultJobOptions = options.defaultJobOptions ?? {};
+    // Default concurrency of 10 for I/O-bound event handlers
+    this.defaultWorkerOptions = {
+      concurrency: 10,
+      ...options.defaultWorkerOptions,
+    };
+    this.QueueClass =
+      options.QueueClass ?? (Queue as unknown as typeof this.QueueClass);
+    this.WorkerClass =
+      options.WorkerClass ?? (Worker as unknown as typeof this.WorkerClass);
+  }
 
-	/**
-	 * Converts event name to queue name.
-	 *
-	 * @param eventName - The event name (e.g., 'monitor.check')
-	 * @returns Queue name (e.g., 'event.monitor.check')
-	 */
-	public getQueueName(eventName: string): string {
-		return `${this.queuePrefix}.${eventName}`;
-	}
+  /**
+   * Converts event name to queue name.
+   *
+   * @param eventName - The event name (e.g., 'monitor.check')
+   * @returns Queue name (e.g., 'event.monitor.check')
+   */
+  public getQueueName(eventName: string): string {
+    return `${this.queuePrefix}.${eventName}`;
+  }
 
-	private getReceiptKeys(eventName: string, idempotencyKey: string): [string, string] {
-		const digest = Buffer.from(idempotencyKey).toString('base64url');
-		const prefix = `${this.getQueueName(eventName)}:receipt:${digest}`;
-		return [prefix, `${prefix}:retired`];
-	}
+  private getReceiptKeys(
+    eventName: string,
+    idempotencyKey: string,
+  ): [string, string] {
+    const digest = Buffer.from(idempotencyKey).toString("base64url");
+    const prefix = `${this.getQueueName(eventName)}:receipt:${digest}`;
+    return [prefix, `${prefix}:retired`];
+  }
 
-	public async hasCompletionReceipt(eventName: string, idempotencyKey: string): Promise<boolean> {
-		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
-		return (await this.getQueue(eventName).connection._client.exists(receiptKey, retiredKey)) > 0;
-	}
+  public async hasCompletionReceipt(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    const [receiptKey, retiredKey] = this.getReceiptKeys(
+      eventName,
+      idempotencyKey,
+    );
+    return (
+      (await this.getQueue(eventName).connection._client.exists(
+        receiptKey,
+        retiredKey,
+      )) > 0
+    );
+  }
 
-	public async hasSuccessfulCompletionReceipt(eventName: string, idempotencyKey: string): Promise<boolean> {
-		const [receiptKey] = this.getReceiptKeys(eventName, idempotencyKey);
-		return (await this.getQueue(eventName).connection._client.exists(receiptKey)) > 0;
-	}
+  public async hasSuccessfulCompletionReceipt(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    const [receiptKey] = this.getReceiptKeys(eventName, idempotencyKey);
+    return (
+      (await this.getQueue(eventName).connection._client.exists(receiptKey)) > 0
+    );
+  }
 
-	public async hasJob(eventName: string, jobId: string): Promise<boolean> {
-		return (await this.getQueue(eventName).getJob?.(jobId)) != null;
-	}
+  public async hasJob(eventName: string, jobId: string): Promise<boolean> {
+    return (await this.getQueue(eventName).getJob?.(jobId)) != null;
+  }
 
-	public async isJobRetryable(eventName: string, jobId: string): Promise<boolean> {
-		const job = await this.getQueue(eventName).getJob?.(jobId);
-		if (!job) return false;
-		const state = await job.getState();
-		return state !== 'failed' && state !== 'completed';
-	}
+  public async isJobRetryable(
+    eventName: string,
+    jobId: string,
+  ): Promise<boolean> {
+    const job = await this.getQueue(eventName).getJob?.(jobId);
+    if (!job) return false;
+    const state = await job.getState();
+    return state !== "failed" && state !== "completed";
+  }
 
-	public async recordCompletionReceipt(eventName: string, idempotencyKey: string): Promise<void> {
-		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
-		await this.getQueue(eventName).connection._client.eval(
-			"if redis.call('GET', KEYS[2]) == '2' then redis.call('DEL', KEYS[2]); return 0 end; redis.call('SET', KEYS[1], '1'); return 1",
-			2,
-			receiptKey,
-			retiredKey
-		);
-	}
+  public async recordCompletionReceipt(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const [receiptKey, retiredKey] = this.getReceiptKeys(
+      eventName,
+      idempotencyKey,
+    );
+    await this.getQueue(eventName).connection._client.eval(
+      "if redis.call('GET', KEYS[2]) == '2' then redis.call('DEL', KEYS[2]); return 0 end; redis.call('SET', KEYS[1], '1'); return 1",
+      2,
+      receiptKey,
+      retiredKey,
+    );
+  }
 
-	public async prepareCompletionReceiptRetirement(eventName: string, idempotencyKey: string): Promise<void> {
-		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
-		await this.getQueue(eventName).connection._client.eval(
-			"redis.call('SET', KEYS[2], '1'); return redis.call('EXISTS', KEYS[1])",
-			2,
-			receiptKey,
-			retiredKey
-		);
-	}
+  public async prepareCompletionReceiptRetirement(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const [receiptKey, retiredKey] = this.getReceiptKeys(
+      eventName,
+      idempotencyKey,
+    );
+    await this.getQueue(eventName).connection._client.eval(
+      "redis.call('SET', KEYS[2], '1'); return redis.call('EXISTS', KEYS[1])",
+      2,
+      receiptKey,
+      retiredKey,
+    );
+  }
 
-	public async finalizeCompletionReceiptRetirement(eventName: string, idempotencyKey: string): Promise<void> {
-		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
-		await this.getQueue(eventName).connection._client.eval(
-			"local state = redis.call('GET', KEYS[2]); if not state then return 0 end; if redis.call('DEL', KEYS[1]) == 1 then redis.call('DEL', KEYS[2]); return 0 end; if state == '1' then redis.call('SET', KEYS[2], '2') end; return 1",
-			2,
-			receiptKey,
-			retiredKey
-		);
-	}
+  public async finalizeCompletionReceiptRetirement(
+    eventName: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const [receiptKey, retiredKey] = this.getReceiptKeys(
+      eventName,
+      idempotencyKey,
+    );
+    await this.getQueue(eventName).connection._client.eval(
+      "local state = redis.call('GET', KEYS[2]); if not state then return 0 end; if redis.call('DEL', KEYS[1]) == 1 then redis.call('DEL', KEYS[2]); return 0 end; if state == '1' then redis.call('SET', KEYS[2], '2') end; return 1",
+      2,
+      receiptKey,
+      retiredKey,
+    );
+  }
 
-	/**
-	 * Gets or creates a queue for an event type.
-	 *
-	 * @param eventName - The event name
-	 * @returns The queue instance
-	 */
-	public getQueue(eventName: string): IQueueLike {
-		const queueName = this.getQueueName(eventName);
+  /**
+   * Gets or creates a queue for an event type.
+   *
+   * @param eventName - The event name
+   * @returns The queue instance
+   */
+  public getQueue(eventName: string): IQueueLike {
+    const queueName = this.getQueueName(eventName);
 
-		const existingQueue = this.queues.get(queueName);
-		if (existingQueue) {
-			return existingQueue;
-		}
+    const existingQueue = this.queues.get(queueName);
+    if (existingQueue) {
+      return existingQueue;
+    }
 
-		const queue = new this.QueueClass(queueName, {
-			connection: this.connection
-		});
+    const queue = new this.QueueClass(queueName, {
+      connection: this.connection,
+    });
 
-		// Handle queue errors per BullMQ docs
-		queue.on('error', (err: unknown) => {
-			const message = err instanceof Error ? err.message : String(err);
-			this.logger?.error('Queue error', { eventName, error: message });
-		});
+    // Handle queue errors per BullMQ docs
+    queue.on("error", (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger?.error("Queue error", { eventName, error: message });
+    });
 
-		this.queues.set(queueName, queue);
-		return queue;
-	}
+    this.queues.set(queueName, queue);
+    return queue;
+  }
 
-	/**
-	 * Adds a job to an event queue.
-	 *
-	 * @param eventName - The event name
-	 * @param data - Job data (typically { payload, meta, correlationId })
-	 * @param options - Optional job options (delay, attempts, etc.)
-	 * @returns The created job reference
-	 */
-	public async addJob<TData = unknown>(
-		eventName: string,
-		data: TData,
-		options?: JobsOptions
-	): Promise<EventJobReference> {
-		const queue = this.getQueue(eventName);
+  /**
+   * Adds a job to an event queue.
+   *
+   * @param eventName - The event name
+   * @param data - Job data (typically { payload, meta, correlationId })
+   * @param options - Optional job options (delay, attempts, etc.)
+   * @returns The created job reference
+   */
+  public async addJob<TData = unknown>(
+    eventName: string,
+    data: TData,
+    options?: JobsOptions,
+  ): Promise<EventJobReference> {
+    const queue = this.getQueue(eventName);
 
-		// Merge options: defaultRetry (base) -> defaultJobOptions -> caller options (highest precedence)
-		const jobOptions: JobsOptions = {
-			attempts: this.defaultRetry.attempts,
-			backoff: {
-				type: this.defaultRetry.backoffType,
-				delay: this.defaultRetry.backoffDelay
-			},
-			...this.defaultJobOptions,
-			...options // Allow caller to override all defaults
-		};
+    // Merge options: defaultRetry (base) -> defaultJobOptions -> caller options (highest precedence)
+    const jobOptions: JobsOptions = {
+      attempts: this.defaultRetry.attempts,
+      backoff: {
+        type: this.defaultRetry.backoffType,
+        delay: this.defaultRetry.backoffDelay,
+      },
+      ...this.defaultJobOptions,
+      ...options, // Allow caller to override all defaults
+    };
 
-		const job = await queue.add('event', data, jobOptions);
+    const job = await queue.add("event", data, jobOptions);
 
-		// Call metrics hook if configured
-		this.metrics?.onJobAdded?.(eventName, job.id);
+    // Call metrics hook if configured
+    this.metrics?.onJobAdded?.(eventName, job.id);
 
-		return job;
-	}
+    return job;
+  }
 
-	public async getJob(eventName: string, jobId: string): Promise<EventJobReference | undefined> {
-		return this.getQueue(eventName).getJob?.(jobId);
-	}
+  public async getJob(
+    eventName: string,
+    jobId: string,
+  ): Promise<EventJobReference | undefined> {
+    return this.getQueue(eventName).getJob?.(jobId);
+  }
 
-	/**
-	 * Registers a worker for an event type.
-	 *
-	 * The worker will process jobs from the event's queue.
-	 * Job data contains { payload, meta, correlationId }.
-	 *
-	 * @param eventName - The event name to handle
-	 * @param handler - Handler function for processing jobs
-	 */
-	public async registerWorker<TResult = unknown>(
-		eventName: string,
-		handler: JobHandler<TResult>,
-		onCompleted?: (jobId: string, result: TResult) => void
-	): Promise<void> {
-		const queueName = this.getQueueName(eventName);
+  /**
+   * Registers a worker for an event type.
+   *
+   * The worker will process jobs from the event's queue.
+   * Job data contains { payload, meta, correlationId }.
+   *
+   * @param eventName - The event name to handle
+   * @param handler - Handler function for processing jobs
+   */
+  public async registerWorker<TResult = unknown>(
+    eventName: string,
+    handler: JobHandler<TResult>,
+    onCompleted?: (jobId: string, result: TResult) => void,
+  ): Promise<void> {
+    const queueName = this.getQueueName(eventName);
 
-		// Track job start times for duration metrics
-		const jobStartTimes = new Map<string, number>();
+    // Track job start times for duration metrics
+    const jobStartTimes = new Map<string, number>();
 
-		const worker = new this.WorkerClass(
-			queueName,
-			async (job: Job): Promise<TResult> => {
-				jobStartTimes.set(job.id!, Date.now());
-				return handler(job);
-			},
-			{
-				connection: this.connection,
-				...this.defaultWorkerOptions
-			}
-		);
+    const worker = new this.WorkerClass(
+      queueName,
+      async (job: Job): Promise<TResult> => {
+        jobStartTimes.set(job.id!, Date.now());
+        return handler(job);
+      },
+      {
+        connection: this.connection,
+        ...this.defaultWorkerOptions,
+      },
+    );
 
-		// Handle worker errors
-		worker.on('error', (err: unknown) => {
-			const message = err instanceof Error ? err.message : String(err);
-			this.logger?.error('Worker error', { eventName, error: message });
-		});
+    // Handle worker errors
+    worker.on("error", (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger?.error("Worker error", { eventName, error: message });
+    });
 
-		if (this.metrics || onCompleted) {
-			worker.on('completed', (...args: unknown[]) => {
-				const arg = args[0] as { id?: string };
-				const result = args[1] as TResult;
-				const jobId = arg?.id ?? 'unknown';
-				const startTime = jobStartTimes.get(jobId);
-				const duration = startTime ? Date.now() - startTime : 0;
-				jobStartTimes.delete(jobId);
-				this.metrics?.onJobCompleted?.(eventName, jobId, duration);
-				onCompleted?.(jobId, result);
-			});
-		}
+    if (this.metrics || onCompleted) {
+      worker.on("completed", (...args: unknown[]) => {
+        const arg = args[0] as { id?: string };
+        const result = args[1] as TResult;
+        const jobId = arg?.id ?? "unknown";
+        const startTime = jobStartTimes.get(jobId);
+        const duration = startTime ? Date.now() - startTime : 0;
+        jobStartTimes.delete(jobId);
+        this.metrics?.onJobCompleted?.(eventName, jobId, duration);
+        onCompleted?.(jobId, result);
+      });
+    }
 
-		if (this.metrics) {
-			worker.on('failed', (...args: unknown[]) => {
-				const arg = args[0] as { id?: string };
-				const err = args[1] as Error | undefined;
-				const jobId = arg?.id ?? 'unknown';
-				jobStartTimes.delete(jobId);
-				this.metrics?.onJobFailed?.(eventName, jobId, err ?? new Error('Unknown error'));
-			});
-		}
+    if (this.metrics) {
+      worker.on("failed", (...args: unknown[]) => {
+        const arg = args[0] as { id?: string };
+        const err = args[1] as Error | undefined;
+        const jobId = arg?.id ?? "unknown";
+        jobStartTimes.delete(jobId);
+        this.metrics?.onJobFailed?.(
+          eventName,
+          jobId,
+          err ?? new Error("Unknown error"),
+        );
+      });
+    }
 
-		// CRITICAL: Wait for worker to be connected and ready to process jobs.
-		// Without this, jobs added immediately after registration may complete
-		// before the worker is connected, causing race conditions.
-		await worker.waitUntilReady();
+    // CRITICAL: Wait for worker to be connected and ready to process jobs.
+    // Without this, jobs added immediately after registration may complete
+    // before the worker is connected, causing race conditions.
+    await worker.waitUntilReady();
 
-		// Atomically swap: new worker is ready, close old one if exists
-		const existing = this.workers.get(queueName);
-		this.workers.set(queueName, worker);
-		if (existing) {
-			try {
-				await existing.close();
-			} catch (err) {
-				this.logger?.warn('Failed to close replaced worker', {
-					queueName,
-					error: err instanceof Error ? err.message : 'Unknown error'
-				});
-			}
-		}
+    // Atomically swap: new worker is ready, close old one if exists
+    const existing = this.workers.get(queueName);
+    this.workers.set(queueName, worker);
+    if (existing) {
+      try {
+        await existing.close();
+      } catch (err) {
+        this.logger?.warn("Failed to close replaced worker", {
+          queueName,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
 
-		this.logger?.info(`Event Worker Created -> [${queueName}]`, {
-			concurrency: this.defaultWorkerOptions.concurrency ?? 1
-		});
-	}
+    this.logger?.info(`Event Worker Created -> [${queueName}]`, {
+      concurrency: this.defaultWorkerOptions.concurrency ?? 1,
+    });
+  }
 
-	/**
-	 * Cleans jobs from a queue by grace period and status type.
-	 *
-	 * @param eventName - The event name
-	 * @param graceMs - Grace period in milliseconds (jobs older than this are cleaned)
-	 * @param limit - Maximum number of jobs to clean per call
-	 * @param type - Job status type to clean ('wait', 'failed', etc.)
-	 * @returns Array of cleaned job IDs, or empty array if clean is not supported
-	 */
-	public async cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]> {
-		const queue = this.getQueue(eventName);
-		if (queue.clean) {
-			return queue.clean(graceMs, limit, type);
-		}
-		return [];
-	}
+  /**
+   * Cleans jobs from a queue by grace period and status type.
+   *
+   * @param eventName - The event name
+   * @param graceMs - Grace period in milliseconds (jobs older than this are cleaned)
+   * @param limit - Maximum number of jobs to clean per call
+   * @param type - Job status type to clean ('wait', 'failed', etc.)
+   * @returns Array of cleaned job IDs, or empty array if clean is not supported
+   */
+  public async cleanJobs(
+    eventName: string,
+    graceMs: number,
+    limit: number,
+    type: string,
+  ): Promise<string[]> {
+    const queue = this.getQueue(eventName);
+    if (queue.clean) {
+      return queue.clean(graceMs, limit, type);
+    }
+    return [];
+  }
 
-	/**
-	 * Removes a specific job by its ID.
-	 *
-	 * Used to cancel pending delayed events before they fire.
-	 *
-	 * @param eventName - The event name
-	 * @param jobId - The job ID (typically the idempotency key)
-	 * @returns true if the job was found and removed, false otherwise
-	 */
-	public async removeJob(eventName: string, jobId: string): Promise<boolean> {
-		const queue = this.getQueue(eventName);
-		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, jobId);
-		const discardReceiptState = () =>
-			queue.connection._client.eval(
-				"return redis.call('DEL', KEYS[1], KEYS[2])",
-				2,
-				receiptKey,
-				retiredKey
-			);
-		if (!queue.getJob) {
-			await discardReceiptState();
-			return false;
-		}
-		const job = await queue.getJob(jobId);
-		if (!job) {
-			await discardReceiptState();
-			return false;
-		}
-		await job.remove();
-		await discardReceiptState();
-		return true;
-	}
+  /**
+   * Removes a specific job by its ID.
+   *
+   * Used to cancel pending delayed events before they fire.
+   *
+   * @param eventName - The event name
+   * @param jobId - The job ID (typically the idempotency key)
+   * @returns true if the job was found and removed, false otherwise
+   */
+  public async removeJob(eventName: string, jobId: string): Promise<boolean> {
+    const queue = this.getQueue(eventName);
+    const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, jobId);
+    const discardReceiptState = () =>
+      queue.connection._client.eval(
+        "return redis.call('DEL', KEYS[1], KEYS[2])",
+        2,
+        receiptKey,
+        retiredKey,
+      );
+    if (!queue.getJob) {
+      await discardReceiptState();
+      return false;
+    }
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      await discardReceiptState();
+      return false;
+    }
+    await job.remove();
+    await discardReceiptState();
+    return true;
+  }
 
-	/**
-	 * Stops all queues and workers gracefully.
-	 *
-	 * Shutdown order per BullMQ best practices:
-	 * 1. Workers first (stop processing, wait for current jobs to finish)
-	 * 2. Then queues (close producer connections)
-	 *
-	 * Worker.close() without force parameter waits for current jobs to finalize.
-	 *
-	 * BUG WORKAROUND: BullMQ's RedisConnection.close() removes error handlers in its
-	 * finally block BEFORE all async operations complete. This causes ioredis errors
-	 * (especially "Connection is closed" from blocking commands like BRPOPLPUSH) to
-	 * become unhandled. We add our own error handlers to the internal ioredis clients
-	 * that persist through close().
-	 */
-	public async stop(): Promise<void> {
-		// Error handler for expected connection close errors during shutdown
-		const connectionErrorHandler = (err: unknown) => {
-			const message = err instanceof Error ? err.message : String(err);
-			// Expected during graceful shutdown - blocking commands get rejected
-			if (message.includes('Connection is closed')) {
-				return; // Silently ignore expected shutdown errors
-			}
-			this.logger?.error('Redis connection error during shutdown', { error: message });
-		};
+  /**
+   * Stops all queues and workers gracefully.
+   *
+   * Shutdown order per BullMQ best practices:
+   * 1. Workers first (stop processing, wait for current jobs to finish)
+   * 2. Then queues (close producer connections)
+   *
+   * Worker.close() without force parameter waits for current jobs to finalize.
+   *
+   * BUG WORKAROUND: BullMQ's RedisConnection.close() removes error handlers in its
+   * finally block BEFORE all async operations complete. This causes ioredis errors
+   * (especially "Connection is closed" from blocking commands like BRPOPLPUSH) to
+   * become unhandled. We add our own error handlers to the internal ioredis clients
+   * that persist through close().
+   */
+  public async stop(): Promise<void> {
+    // Error handler for expected connection close errors during shutdown
+    const connectionErrorHandler = (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      // Expected during graceful shutdown - blocking commands get rejected
+      if (message.includes("Connection is closed")) {
+        return; // Silently ignore expected shutdown errors
+      }
+      this.logger?.error("Redis connection error during shutdown", {
+        error: message,
+      });
+    };
 
-		// Close workers first (stop processing, wait for jobs to finish)
-		for (const worker of this.workers.values()) {
-			// Add persistent error handlers before close
-			worker.connection._client.on('error', connectionErrorHandler);
-			worker.blockingConnection._client.on('error', connectionErrorHandler);
-			// close() without force=true waits for current jobs to complete
-			await worker.close();
-		}
-		this.workers.clear();
+    // Close workers first (stop processing, wait for jobs to finish)
+    for (const worker of this.workers.values()) {
+      // Add persistent error handlers before close
+      worker.connection._client.on("error", connectionErrorHandler);
+      worker.blockingConnection._client.on("error", connectionErrorHandler);
+      // close() without force=true waits for current jobs to complete
+      await worker.close();
+    }
+    this.workers.clear();
 
-		// Then close queues
-		for (const queue of this.queues.values()) {
-			// Add persistent error handler before close
-			queue.connection._client.on('error', connectionErrorHandler);
-			await queue.close();
-		}
-		this.queues.clear();
-	}
+    // Then close queues
+    for (const queue of this.queues.values()) {
+      // Add persistent error handler before close
+      queue.connection._client.on("error", connectionErrorHandler);
+      await queue.close();
+    }
+    this.queues.clear();
+  }
 }

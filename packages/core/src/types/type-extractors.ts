@@ -29,7 +29,10 @@
  * Definition type that has _data and _result type carriers.
  * Both EventDefinition and WorkflowDefinition satisfy this.
  */
-type DefinitionWithDataResult = { readonly _data: unknown; readonly _result: unknown };
+type DefinitionWithDataResult = {
+  readonly _data: unknown;
+  readonly _result: unknown;
+};
 
 /**
  * Extract the data type from an EventDefinition or WorkflowDefinition.
@@ -55,7 +58,7 @@ type DefinitionWithDataResult = { readonly _data: unknown; readonly _result: unk
  * type EmailData = Data<typeof SendEmail>;    // { to: string }
  * ```
  */
-export type Data<T extends DefinitionWithDataResult> = T['_data'];
+export type Data<T extends DefinitionWithDataResult> = T["_data"];
 
 /**
  * Extract the result type from an EventDefinition or WorkflowDefinition.
@@ -69,7 +72,7 @@ export type Data<T extends DefinitionWithDataResult> = T['_data'];
  * type EmailResult = Result<typeof SendEmail>;    // { messageId: string }
  * ```
  */
-export type Result<T extends DefinitionWithDataResult> = T['_result'];
+export type Result<T extends DefinitionWithDataResult> = T["_result"];
 
 /**
  * Definition type that has only _data type carrier (no _result).
@@ -93,4 +96,4 @@ type DefinitionWithData = { readonly _data: unknown };
  * type IncidentData = MessageData<typeof IncidentCreated>;  // { uuid: string; title: string }
  * ```
  */
-export type MessageData<T extends DefinitionWithData> = T['_data'];
+export type MessageData<T extends DefinitionWithData> = T["_data"];

@@ -10,18 +10,18 @@
  * @module events/event-context
  */
 
-import { Logger, type PropagationMeta } from '@orijs/logging';
-import type { EventMessage } from './event-provider.types';
-import type { EventSubscription } from './event-subscription';
+import { Logger, type PropagationMeta } from "@orijs/logging";
+import type { EventMessage } from "./event-provider.types";
+import type { EventSubscription } from "./event-subscription";
 
 /**
  * Emit function type for event context.
  * Allows handlers to emit additional events with proper context propagation.
  */
 export type EventEmitFn<TEventNames extends string = string> = <TReturn = void>(
-	eventName: TEventNames,
-	payload: unknown,
-	options?: { delay?: number }
+  eventName: TEventNames,
+  payload: unknown,
+  options?: { delay?: number },
 ) => EventSubscription<TReturn>;
 
 /**
@@ -49,35 +49,40 @@ export type EventEmitFn<TEventNames extends string = string> = <TReturn = void>(
  * });
  * ```
  */
-export interface EventContext<TPayload = unknown, TEventNames extends string = string> {
-	/** Unique ID for this specific event instance (for idempotency) */
-	readonly eventId: string;
-	/** The event payload data */
-	readonly data: TPayload;
-	/** Logger with propagated context (correlationId, etc.) */
-	readonly log: Logger;
-	/** Emit function for chained events (causationId auto-set) */
-	readonly emit: EventEmitFn<TEventNames>;
-	/** Unique ID for request-response correlation */
-	readonly correlationId: string;
-	/** ID of parent event (for event chain tracking) */
-	readonly causationId?: string;
-	/** The event name being handled */
-	readonly eventName: string;
-	/** Timestamp when event was emitted */
-	readonly timestamp: number;
+export interface EventContext<
+  TPayload = unknown,
+  TEventNames extends string = string,
+> {
+  /** Unique ID for this specific event instance (for idempotency) */
+  readonly eventId: string;
+  /** The event payload data */
+  readonly data: TPayload;
+  /** Logger with propagated context (correlationId, etc.) */
+  readonly log: Logger;
+  /** Emit function for chained events (causationId auto-set) */
+  readonly emit: EventEmitFn<TEventNames>;
+  /** Unique ID for request-response correlation */
+  readonly correlationId: string;
+  /** ID of parent event (for event chain tracking) */
+  readonly causationId?: string;
+  /** The event name being handled */
+  readonly eventName: string;
+  /** Timestamp when event was emitted */
+  readonly timestamp: number;
 }
 
 /**
  * Options for creating an event context.
  */
-export interface CreateEventContextOptions<TEventNames extends string = string> {
-	/** The event message */
-	message: EventMessage;
-	/** Function to emit chained events */
-	emitFn: EventEmitFn<TEventNames>;
-	/** Optional logger name override */
-	loggerName?: string;
+export interface CreateEventContextOptions<
+  TEventNames extends string = string,
+> {
+  /** The event message */
+  message: EventMessage;
+  /** Function to emit chained events */
+  emitFn: EventEmitFn<TEventNames>;
+  /** Optional logger name override */
+  loggerName?: string;
 }
 
 /**
@@ -91,24 +96,30 @@ export interface CreateEventContextOptions<TEventNames extends string = string> 
  * @param options - Context creation options
  * @returns EventContext for the handler
  */
-export function createEventContext<TPayload = unknown, TEventNames extends string = string>(
-	options: CreateEventContextOptions<TEventNames>
+export function createEventContext<
+  TPayload = unknown,
+  TEventNames extends string = string,
+>(
+  options: CreateEventContextOptions<TEventNames>,
 ): EventContext<TPayload, TEventNames> {
-	const { message, emitFn, loggerName } = options;
+  const { message, emitFn, loggerName } = options;
 
-	// Create logger with propagated context
-	const log = Logger.fromMeta(loggerName ?? `Event:${message.eventName}`, message.meta);
+  // Create logger with propagated context
+  const log = Logger.fromMeta(
+    loggerName ?? `Event:${message.eventName}`,
+    message.meta,
+  );
 
-	return Object.freeze({
-		eventId: message.eventId,
-		data: message.payload as TPayload,
-		log,
-		emit: emitFn,
-		correlationId: message.correlationId,
-		causationId: message.causationId,
-		eventName: message.eventName,
-		timestamp: message.timestamp
-	});
+  return Object.freeze({
+    eventId: message.eventId,
+    data: message.payload as TPayload,
+    log,
+    emit: emitFn,
+    correlationId: message.correlationId,
+    causationId: message.causationId,
+    eventName: message.eventName,
+    timestamp: message.timestamp,
+  });
 }
 
 /**
@@ -120,11 +131,11 @@ export function createEventContext<TPayload = unknown, TEventNames extends strin
  * @returns PropagationMeta for the chained event
  */
 export function createChainedMeta(
-	parentMeta: PropagationMeta,
-	parentCorrelationId: string
+  parentMeta: PropagationMeta,
+  parentCorrelationId: string,
 ): { meta: PropagationMeta; causationId: string } {
-	return {
-		meta: parentMeta,
-		causationId: parentCorrelationId
-	};
+  return {
+    meta: parentMeta,
+    causationId: parentCorrelationId,
+  };
 }

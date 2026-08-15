@@ -16,7 +16,7 @@
  * ```
  */
 
-import type { ClientMessageDefinition } from './types';
+import type { ClientMessageDefinition } from "./types";
 
 /**
  * Factory for creating client message definitions (validation-agnostic).
@@ -29,19 +29,19 @@ import type { ClientMessageDefinition } from './types';
  * ```
  */
 export const ClientMessage = {
-	/**
-	 * Define a client-side socket message for type-safe emission.
-	 *
-	 * @template TData - The message data type
-	 * @param name - Message name (must match server definition)
-	 * @returns Message definition for use with emit()
-	 */
-	define<TData>(name: string): ClientMessageDefinition<TData> {
-		return Object.freeze({
-			name,
-			_data: undefined as unknown as TData
-		});
-	}
+  /**
+   * Define a client-side socket message for type-safe emission.
+   *
+   * @template TData - The message data type
+   * @param name - Message name (must match server definition)
+   * @returns Message definition for use with emit()
+   */
+  define<TData>(name: string): ClientMessageDefinition<TData> {
+    return Object.freeze({
+      name,
+      _data: undefined as unknown as TData,
+    });
+  },
 };
 
 // =============================================================================
@@ -56,7 +56,8 @@ export const ClientMessage = {
  * client.emit(JoinRoom, { room: 'account:123' });
  * ```
  */
-export const JoinRoom: ClientMessageDefinition<{ room: string }> = ClientMessage.define('room.join');
+export const JoinRoom: ClientMessageDefinition<{ room: string }> =
+  ClientMessage.define("room.join");
 
 /**
  * Leave a room/topic to stop receiving messages from it.
@@ -66,7 +67,8 @@ export const JoinRoom: ClientMessageDefinition<{ room: string }> = ClientMessage
  * client.emit(LeaveRoom, { room: 'account:123' });
  * ```
  */
-export const LeaveRoom: ClientMessageDefinition<{ room: string }> = ClientMessage.define('room.leave');
+export const LeaveRoom: ClientMessageDefinition<{ room: string }> =
+  ClientMessage.define("room.leave");
 
 /**
  * JSON-based heartbeat for keep-alive.
@@ -81,7 +83,8 @@ export const LeaveRoom: ClientMessageDefinition<{ room: string }> = ClientMessag
  * client.emit(Heartbeat, {});
  * ```
  */
-export const Heartbeat: ClientMessageDefinition<Record<string, never>> = ClientMessage.define('heartbeat');
+export const Heartbeat: ClientMessageDefinition<Record<string, never>> =
+  ClientMessage.define("heartbeat");
 
 /**
  * Authenticate the WebSocket connection.
@@ -108,7 +111,7 @@ export const Heartbeat: ClientMessageDefinition<Record<string, never>> = ClientM
  * ```
  */
 export const Authenticate: ClientMessageDefinition<AuthenticateData> =
-	ClientMessage.define('auth.authenticate');
+  ClientMessage.define("auth.authenticate");
 
 // =============================================================================
 // Type Exports

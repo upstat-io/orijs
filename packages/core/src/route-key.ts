@@ -43,7 +43,7 @@ export type RouteKey<T> = symbol & { readonly __routeType?: T };
  * @returns A typed symbol for use with r.set() and ctx.get()
  */
 export function createRouteKey<T>(name: string): RouteKey<T> {
-	return Symbol(name) as RouteKey<T>;
+  return Symbol(name) as RouteKey<T>;
 }
 
 /**
@@ -53,5 +53,5 @@ export function createRouteKey<T>(name: string): RouteKey<T> {
  * @returns True if the value is a symbol (RouteKey)
  */
 export function isRouteKey(value: unknown): value is RouteKey<unknown> {
-	return typeof value === 'symbol';
+  return typeof value === "symbol";
 }

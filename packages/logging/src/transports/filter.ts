@@ -1,10 +1,10 @@
-import type { Transport, LogObject } from '../logger.ts';
+import type { Transport, LogObject } from "../logger.ts";
 
 export interface FilterOptions {
-	/** Only log these names (empty = all) */
-	includeNames?: string[];
-	/** Never log these names */
-	excludeNames?: string[];
+  /** Only log these names (empty = all) */
+  includeNames?: string[];
+  /** Never log these names */
+  excludeNames?: string[];
 }
 
 /**
@@ -23,39 +23,46 @@ export interface FilterOptions {
  * })
  * ```
  */
-export function filterTransport(transport: Transport, options: FilterOptions): Transport {
-	const includeSet = options.includeNames?.length ? new Set(options.includeNames) : null;
-	const excludeSet = options.excludeNames?.length ? new Set(options.excludeNames) : null;
+export function filterTransport(
+  transport: Transport,
+  options: FilterOptions,
+): Transport {
+  const includeSet = options.includeNames?.length
+    ? new Set(options.includeNames)
+    : null;
+  const excludeSet = options.excludeNames?.length
+    ? new Set(options.excludeNames)
+    : null;
 
-	function shouldLog(name?: string): boolean {
-		if (!name) return true;
+  function shouldLog(name?: string): boolean {
+    if (!name) return true;
 
-		// If include list exists, name must be in it
-		if (includeSet && !includeSet.has(name)) {
-			return false;
-		}
+    // If include list exists, name must be in it
+    if (includeSet && !includeSet.has(name)) {
+      return false;
+    }
 
-		// If exclude list exists, name must not be in it
-		if (excludeSet && excludeSet.has(name)) {
-			return false;
-		}
+    // If exclude list exists, name must not be in it
+    if (excludeSet && excludeSet.has(name)) {
+      return false;
+    }
 
-		return true;
-	}
+    return true;
+  }
 
-	return {
-		write(obj: LogObject): void {
-			if (shouldLog(obj.name)) {
-				transport.write(obj);
-			}
-		},
+  return {
+    write(obj: LogObject): void {
+      if (shouldLog(obj.name)) {
+        transport.write(obj);
+      }
+    },
 
-		async flush(): Promise<void> {
-			await transport.flush();
-		},
+    async flush(): Promise<void> {
+      await transport.flush();
+    },
 
-		async close(): Promise<void> {
-			await transport.close();
-		}
-	};
+    async close(): Promise<void> {
+      await transport.close();
+    },
+  };
 }

@@ -11,7 +11,8 @@
 export const MAX_TOPIC_LENGTH = 256;
 
 /** UUID v4 format regex for socket ID validation */
-export const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Validates a topic name for safety.
@@ -31,16 +32,18 @@ export const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-
  * ```
  */
 export function validateTopic(topic: string): void {
-	if (!topic || topic.length === 0) {
-		throw new Error('Topic cannot be empty');
-	}
-	if (topic.length > MAX_TOPIC_LENGTH) {
-		throw new Error(`Topic name too long (max ${MAX_TOPIC_LENGTH} characters)`);
-	}
-	// Strict allowlist: word chars, colons, dots, hyphens only
-	if (!/^[\w:.\-]+$/.test(topic)) {
-		throw new Error('Topic contains invalid characters (allowed: a-z, A-Z, 0-9, _, :, ., -)');
-	}
+  if (!topic || topic.length === 0) {
+    throw new Error("Topic cannot be empty");
+  }
+  if (topic.length > MAX_TOPIC_LENGTH) {
+    throw new Error(`Topic name too long (max ${MAX_TOPIC_LENGTH} characters)`);
+  }
+  // Strict allowlist: word chars, colons, dots, hyphens only
+  if (!/^[\w:.\-]+$/.test(topic)) {
+    throw new Error(
+      "Topic contains invalid characters (allowed: a-z, A-Z, 0-9, _, :, ., -)",
+    );
+  }
 }
 
 /**
@@ -61,10 +64,10 @@ export function validateTopic(topic: string): void {
  * ```
  */
 export function validateSocketId(socketId: string): void {
-	if (!socketId || socketId.length === 0) {
-		throw new Error('Socket ID cannot be empty');
-	}
-	if (!UUID_V4_REGEX.test(socketId)) {
-		throw new Error('Invalid socket ID format (must be UUID v4)');
-	}
+  if (!socketId || socketId.length === 0) {
+    throw new Error("Socket ID cannot be empty");
+  }
+  if (!UUID_V4_REGEX.test(socketId)) {
+    throw new Error("Invalid socket ID format (must be UUID v4)");
+  }
 }

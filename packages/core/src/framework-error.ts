@@ -14,7 +14,7 @@
  * When enabled, framework errors show full stack traces.
  */
 export function isDebugMode(): boolean {
-	return Bun.env.ORIJS_DEBUG === 'true';
+  return Bun.env.ORIJS_DEBUG === "true";
 }
 
 /**
@@ -22,16 +22,16 @@ export function isDebugMode(): boolean {
  * Shows clean messages to consumers, full traces to framework developers.
  */
 export class FrameworkError extends Error {
-	public override readonly name = 'FrameworkError';
+  public override readonly name = "FrameworkError";
 
-	constructor(message: string) {
-		super(message);
+  constructor(message: string) {
+    super(message);
 
-		// Capture stack trace from call site
-		if (Error.captureStackTrace) {
-			Error.captureStackTrace(this, FrameworkError);
-		}
-	}
+    // Capture stack trace from call site
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, FrameworkError);
+    }
+  }
 }
 
 /**
@@ -52,11 +52,11 @@ export class FrameworkError extends Error {
  * ```
  */
 export function throwFrameworkError(message: string): never {
-	if (isDebugMode()) {
-		throw new FrameworkError(message);
-	}
+  if (isDebugMode()) {
+    throw new FrameworkError(message);
+  }
 
-	// Clean output for consumers - no source code shown
-	console.error('\n' + message + '\n');
-	process.exit(1);
+  // Clean output for consumers - no source code shown
+  console.error("\n" + message + "\n");
+  process.exit(1);
 }

@@ -8,15 +8,18 @@
  */
 
 // Re-export Redis for type consistency (avoids ioredis version mismatches)
-export { Redis } from '@orijs/cache-redis';
+export { Redis } from "@orijs/cache-redis";
 
 // Event Provider
-export { BullMQEventProvider, type BullMQEventProviderOptions } from './events/bullmq-event-provider';
+export {
+  BullMQEventProvider,
+  type BullMQEventProviderOptions,
+} from "./events/bullmq-event-provider";
 
 // Workflow Provider
 export {
-	BullMQWorkflowProvider,
-	createBullMQWorkflowProvider,
-	type BullMQWorkflowProviderOptions,
-	type BullMQWorkflowOptions
-} from './workflows/bullmq-workflow-provider';
+  BullMQWorkflowProvider,
+  createBullMQWorkflowProvider,
+  type BullMQWorkflowProviderOptions,
+  type BullMQWorkflowOptions,
+} from "./workflows/bullmq-workflow-provider";

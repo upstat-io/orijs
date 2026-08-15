@@ -31,51 +31,53 @@
  * ```
  */
 export interface EventRegistryBuilder<TEventNames extends string = never> {
-	/**
-	 * Register a new event by name.
-	 *
-	 * @param name - Unique name for this event (e.g., 'user.created')
-	 * @returns Builder with event added
-	 *
-	 * @example
-	 * .event('user.created')
-	 * .event('order.placed')
-	 */
-	event<N extends string>(name: N): EventRegistryBuilder<TEventNames | N>;
+  /**
+   * Register a new event by name.
+   *
+   * @param name - Unique name for this event (e.g., 'user.created')
+   * @returns Builder with event added
+   *
+   * @example
+   * .event('user.created')
+   * .event('order.placed')
+   */
+  event<N extends string>(name: N): EventRegistryBuilder<TEventNames | N>;
 
-	/**
-	 * Apply a composition function to add multiple events.
-	 *
-	 * Enables modular organization of event definitions.
-	 * The function receives the current builder and returns a new builder.
-	 *
-	 * @param fn - Function that adds events and returns the builder
-	 * @returns Builder with events added by the function
-	 *
-	 * @example
-	 * function addUserEvents<T extends string>(
-	 *   reg: EventRegistryBuilder<T>
-	 * ): EventRegistryBuilder<T | 'user.created' | 'user.deleted'> {
-	 *   return reg
-	 *     .event('user.created')
-	 *     .event('user.deleted');
-	 * }
-	 *
-	 * EventRegistry.create()
-	 *   .use(addUserEvents)
-	 *   .use(addOrderEvents)
-	 *   .build();
-	 */
-	use<TNewNames extends string>(
-		fn: (builder: EventRegistryBuilder<TEventNames>) => EventRegistryBuilder<TNewNames>
-	): EventRegistryBuilder<TNewNames>;
+  /**
+   * Apply a composition function to add multiple events.
+   *
+   * Enables modular organization of event definitions.
+   * The function receives the current builder and returns a new builder.
+   *
+   * @param fn - Function that adds events and returns the builder
+   * @returns Builder with events added by the function
+   *
+   * @example
+   * function addUserEvents<T extends string>(
+   *   reg: EventRegistryBuilder<T>
+   * ): EventRegistryBuilder<T | 'user.created' | 'user.deleted'> {
+   *   return reg
+   *     .event('user.created')
+   *     .event('user.deleted');
+   * }
+   *
+   * EventRegistry.create()
+   *   .use(addUserEvents)
+   *   .use(addOrderEvents)
+   *   .build();
+   */
+  use<TNewNames extends string>(
+    fn: (
+      builder: EventRegistryBuilder<TEventNames>,
+    ) => EventRegistryBuilder<TNewNames>,
+  ): EventRegistryBuilder<TNewNames>;
 
-	/**
-	 * Build the final immutable event registry.
-	 *
-	 * @returns Frozen registry with lookup methods
-	 */
-	build(): BuiltEventRegistry<TEventNames>;
+  /**
+   * Build the final immutable event registry.
+   *
+   * @returns Frozen registry with lookup methods
+   */
+  build(): BuiltEventRegistry<TEventNames>;
 }
 
 // --- BUILT REGISTRY INTERFACE ---
@@ -100,18 +102,18 @@ export interface EventRegistryBuilder<TEventNames extends string = never> {
  * ```
  */
 export interface BuiltEventRegistry<TEventNames extends string = string> {
-	/**
-	 * Get all registered event names.
-	 *
-	 * @returns Array of event names
-	 */
-	getEventNames(): readonly TEventNames[];
+  /**
+   * Get all registered event names.
+   *
+   * @returns Array of event names
+   */
+  getEventNames(): readonly TEventNames[];
 
-	/**
-	 * Check if an event exists in the registry.
-	 *
-	 * @param name - Event name to check
-	 * @returns True if the event exists, false otherwise
-	 */
-	hasEvent(name: string): name is TEventNames;
+  /**
+   * Check if an event exists in the registry.
+   *
+   * @param name - Event name to check
+   * @returns True if the event exists, false otherwise
+   */
+  hasEvent(name: string): name is TEventNames;
 }

@@ -24,8 +24,8 @@
  * The default 30s heartbeat interval is safe for all common configurations.
  * Set heartbeatInterval < min(proxy_idle_timeout) to prevent disconnects.
  */
-export const PING_FRAME = '2';
-export const PONG_FRAME = '3';
+export const PING_FRAME = "2";
+export const PONG_FRAME = "3";
 
 /**
  * Client-side message definition (validation-agnostic).
@@ -52,8 +52,8 @@ export const PONG_FRAME = '3';
  * ```
  */
 export interface ClientMessageDefinition<TData> {
-	readonly name: string;
-	readonly _data: TData;
+  readonly name: string;
+  readonly _data: TData;
 }
 
 /**
@@ -61,12 +61,12 @@ export interface ClientMessageDefinition<TData> {
  * Matches the format emitted by SocketEmitter.emit().
  */
 export interface MessageEnvelope<TData = unknown> {
-	/** Message name (e.g., 'incident.created') */
-	name: string;
-	/** Message payload */
-	data: TData;
-	/** Server-side timestamp when message was emitted */
-	timestamp: number;
+  /** Message name (e.g., 'incident.created') */
+  name: string;
+  /** Message payload */
+  data: TData;
+  /** Server-side timestamp when message was emitted */
+  timestamp: number;
 }
 
 /**
@@ -76,67 +76,71 @@ export interface MessageEnvelope<TData = unknown> {
  * @param data - The message payload (typed based on the message definition)
  * @param envelope - The full message envelope including metadata
  */
-export type MessageHandler<TData> = (data: TData, envelope: MessageEnvelope<TData>) => void;
+export type MessageHandler<TData> = (
+  data: TData,
+  envelope: MessageEnvelope<TData>,
+) => void;
 
 /**
  * Connection state for the WebSocket client.
  */
-export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+export type ConnectionState =
+  "connecting" | "connected" | "disconnected" | "reconnecting";
 
 /**
  * Options for configuring the SocketClient.
  */
 export interface SocketClientOptions {
-	/**
-	 * Auto-reconnect on disconnect.
-	 * @default true
-	 */
-	reconnect?: boolean;
+  /**
+   * Auto-reconnect on disconnect.
+   * @default true
+   */
+  reconnect?: boolean;
 
-	/**
-	 * Maximum reconnect attempts before giving up.
-	 * Set to Infinity for unlimited retries.
-	 * @default Infinity
-	 */
-	maxReconnectAttempts?: number;
+  /**
+   * Maximum reconnect attempts before giving up.
+   * Set to Infinity for unlimited retries.
+   * @default Infinity
+   */
+  maxReconnectAttempts?: number;
 
-	/**
-	 * Minimum reconnect delay in milliseconds.
-	 * Uses full jitter backoff.
-	 * @default 500
-	 */
-	reconnectDelay?: number;
+  /**
+   * Minimum reconnect delay in milliseconds.
+   * Uses full jitter backoff.
+   * @default 500
+   */
+  reconnectDelay?: number;
 
-	/**
-	 * Maximum reconnect delay in milliseconds.
-	 * Caps the exponential backoff.
-	 * @default 20000
-	 */
-	maxReconnectDelay?: number;
+  /**
+   * Maximum reconnect delay in milliseconds.
+   * Caps the exponential backoff.
+   * @default 20000
+   */
+  maxReconnectDelay?: number;
 
-	/**
-	 * Connection timeout in milliseconds.
-	 * If the WebSocket doesn't connect within this time, the attempt is aborted.
-	 * Set to 0 to disable (not recommended).
-	 * @default 5000
-	 */
-	connectionTimeout?: number;
+  /**
+   * Connection timeout in milliseconds.
+   * If the WebSocket doesn't connect within this time, the attempt is aborted.
+   * Set to 0 to disable (not recommended).
+   * @default 5000
+   */
+  connectionTimeout?: number;
 
-	/**
-	 * Heartbeat interval in milliseconds.
-	 * Sends a ping message to keep the connection alive.
-	 * Set to 0 to disable.
-	 * @default 25000
-	 */
-	heartbeatInterval?: number;
+  /**
+   * Heartbeat interval in milliseconds.
+   * Sends a ping message to keep the connection alive.
+   * Set to 0 to disable.
+   * @default 25000
+   */
+  heartbeatInterval?: number;
 
-	/**
-	 * Heartbeat timeout in milliseconds.
-	 * If no pong is received within this time, the connection is considered dead.
-	 * Set to 0 to disable timeout checking.
-	 * @default 5000
-	 */
-	heartbeatTimeout?: number;
+  /**
+   * Heartbeat timeout in milliseconds.
+   * If no pong is received within this time, the connection is considered dead.
+   * Set to 0 to disable timeout checking.
+   * @default 5000
+   */
+  heartbeatTimeout?: number;
 }
 
 /**

@@ -46,22 +46,39 @@
  */
 
 // Main client
-export { SocketClient, Connected, Disconnected, ReconnectAttempt, ReconnectFailed } from './client';
+export {
+  SocketClient,
+  Connected,
+  Disconnected,
+  ReconnectAttempt,
+  ReconnectFailed,
+} from "./client";
 
 // Control Messages (built-in client-side message definitions)
-export { ClientMessage, JoinRoom, LeaveRoom, Heartbeat, Authenticate } from './control-messages';
-export type { JoinRoomData, LeaveRoomData, HeartbeatData, AuthenticateData } from './control-messages';
+export {
+  ClientMessage,
+  JoinRoom,
+  LeaveRoom,
+  Heartbeat,
+  Authenticate,
+} from "./control-messages";
+export type {
+  JoinRoomData,
+  LeaveRoomData,
+  HeartbeatData,
+  AuthenticateData,
+} from "./control-messages";
 
 // Types
 export type {
-	ClientMessageDefinition,
-	MessageEnvelope,
-	MessageHandler,
-	ConnectionState,
-	SocketClientOptions,
-	ConnectionStateHandler,
-	ErrorHandler
-} from './types';
+  ClientMessageDefinition,
+  MessageEnvelope,
+  MessageHandler,
+  ConnectionState,
+  SocketClientOptions,
+  ConnectionStateHandler,
+  ErrorHandler,
+} from "./types";
 
 // Protocol constants (for server implementations)
-export { PING_FRAME, PONG_FRAME } from './types';
+export { PING_FRAME, PONG_FRAME } from "./types";

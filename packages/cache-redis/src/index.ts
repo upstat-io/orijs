@@ -15,11 +15,11 @@
  */
 
 // Re-export Redis for cases where direct Redis access is needed
-export { Redis } from 'ioredis';
+export { Redis } from "ioredis";
 
 export {
-	RedisCacheProvider,
-	createRedisCacheProvider,
-	type RedisCacheProviderOptions,
-	type RedisConnectionOptions
-} from './redis-cache';
+  RedisCacheProvider,
+  createRedisCacheProvider,
+  type RedisCacheProviderOptions,
+  type RedisConnectionOptions,
+} from "./redis-cache";

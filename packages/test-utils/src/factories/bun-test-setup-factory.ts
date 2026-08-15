@@ -6,12 +6,12 @@
  * This is a standalone version of the test utilities for framework testing.
  */
 
-import type { BunTestSetupOptions } from '../types/container-config.types';
+import type { BunTestSetupOptions } from "../types/container-config.types";
 import {
-	releaseRedisTestDatabase,
-	startRedisTestContainer,
-	stopRedisTestContainer
-} from './redis-test-helper-factory';
+  releaseRedisTestDatabase,
+  startRedisTestContainer,
+  stopRedisTestContainer,
+} from "./redis-test-helper-factory";
 
 /**
  * Create Bun test preload setup function for a package
@@ -27,32 +27,37 @@ import {
  * ```
  */
 export function createBunTestPreload(options: BunTestSetupOptions) {
-	return async function preload() {
-		console.log(`Starting test environment for ${options.packageName}...`);
-		const startTime = Date.now();
+  return async function preload() {
+    console.log(`Starting test environment for ${options.packageName}...`);
+    const startTime = Date.now();
 
-		try {
-			// Start containers in parallel
-			const containerPromises: Promise<void>[] = [];
+    try {
+      // Start containers in parallel
+      const containerPromises: Promise<void>[] = [];
 
-			if (options.dependencies.includes('redis')) {
-				containerPromises.push(startRedisTestContainer(options.packageName));
-			}
+      if (options.dependencies.includes("redis")) {
+        containerPromises.push(startRedisTestContainer(options.packageName));
+      }
 
-			await Promise.all(containerPromises);
+      await Promise.all(containerPromises);
 
-			if (options.dependencies.includes('redis')) {
-				const { afterAll } = await import('bun:test');
-				afterAll(() => releaseRedisTestDatabase(options.packageName));
-			}
+      if (options.dependencies.includes("redis")) {
+        const { afterAll } = await import("bun:test");
+        afterAll(() => releaseRedisTestDatabase(options.packageName));
+      }
 
-			const duration = Date.now() - startTime;
-			console.log(`Test environment ready for ${options.packageName} in ${duration}ms`);
-		} catch (error) {
-			console.error(`Failed to start test environment for ${options.packageName}:`, error);
-			throw error;
-		}
-	};
+      const duration = Date.now() - startTime;
+      console.log(
+        `Test environment ready for ${options.packageName} in ${duration}ms`,
+      );
+    } catch (error) {
+      console.error(
+        `Failed to start test environment for ${options.packageName}:`,
+        error,
+      );
+      throw error;
+    }
+  };
 }
 
 /**
@@ -60,12 +65,12 @@ export function createBunTestPreload(options: BunTestSetupOptions) {
  * Call this in afterAll() to clean up containers
  */
 export async function teardownBunTest(packageName: string): Promise<void> {
-	console.log(`Stopping test environment for ${packageName}...`);
+  console.log(`Stopping test environment for ${packageName}...`);
 
-	try {
-		await Promise.allSettled([stopRedisTestContainer(packageName)]);
-		console.log(`Test environment stopped for ${packageName}`);
-	} catch (error) {
-		console.warn(`Teardown failed for ${packageName}:`, error);
-	}
+  try {
+    await Promise.allSettled([stopRedisTestContainer(packageName)]);
+    console.log(`Test environment stopped for ${packageName}`);
+  } catch (error) {
+    console.warn(`Teardown failed for ${packageName}:`, error);
+  }
 }

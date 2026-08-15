@@ -1,5 +1,5 @@
-import type { RequestContext } from '../controllers/request-context.ts';
-import type { Token } from '../token.ts';
+import type { RequestContext } from "../controllers/request-context.ts";
+import type { Token } from "../token.ts";
 
 /**
  * Generic constructor type for dependency injection.
@@ -28,10 +28,10 @@ export type InjectionToken<T = unknown> = Constructor<T> | Token<T> | string;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TupleToConstructors<T extends readonly unknown[]> = T extends []
-	? []
-	: T extends [infer First, ...infer Rest]
-		? [new (...args: any[]) => First, ...TupleToConstructors<Rest>]
-		: never;
+  ? []
+  : T extends [infer First, ...infer Rest]
+    ? [new (...args: any[]) => First, ...TupleToConstructors<Rest>]
+    : never;
 
 /**
  * Maps constructor parameter types to their constructor types.
@@ -54,9 +54,8 @@ type TupleToConstructors<T extends readonly unknown[]> = T extends []
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ConstructorDeps<T extends new (...args: any[]) => any> = TupleToConstructors<
-	ConstructorParameters<T>
->;
+export type ConstructorDeps<T extends new (...args: any[]) => any> =
+  TupleToConstructors<ConstructorParameters<T>>;
 
 /**
  * Lifecycle hook function type.
@@ -67,7 +66,8 @@ export type LifecycleHook = () => void | Promise<void>;
 /**
  * Lifecycle phases for the application.
  */
-export type LifecyclePhase = 'created' | 'bootstrapped' | 'starting' | 'ready' | 'stopping' | 'stopped';
+export type LifecyclePhase =
+  "created" | "bootstrapped" | "starting" | "ready" | "stopping" | "stopped";
 
 // EventSystem is defined in events/event-system.ts
 // Import from there for the full interface

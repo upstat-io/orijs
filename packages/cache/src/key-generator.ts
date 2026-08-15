@@ -9,16 +9,20 @@
  * - Meta key:  cache:meta:{hash}
  */
 
-import stringify from 'fast-json-stable-stringify';
-import type { CacheConfig } from './types';
-import { CACHE_KEY_PREFIX, META_KEY_PREFIX, TAG_META_KEY_PREFIX } from './types';
+import stringify from "fast-json-stable-stringify";
+import type { CacheConfig } from "./types";
+import {
+  CACHE_KEY_PREFIX,
+  META_KEY_PREFIX,
+  TAG_META_KEY_PREFIX,
+} from "./types";
 
 /**
  * Hash a string using Bun's native hash function.
  * Returns a base36-encoded string for compact representation.
  */
 function hash(material: string): string {
-	return Bun.hash(material).toString(36);
+  return Bun.hash(material).toString(36);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -48,29 +52,33 @@ function hash(material: string): string {
  * // => 'cache:7h5g8k2m4n1p'
  */
 export function generateCacheKey<TParams extends object>(
-	config: CacheConfig<TParams>,
-	params: TParams
+  config: CacheConfig<TParams>,
+  params: TParams,
 ): string {
-	if (!config) {
-		throw new Error('CacheConfig is required');
-	}
-	if (!config.entity) {
-		throw new Error('CacheConfig.entity is required');
-	}
-	if (params === null || params === undefined) {
-		throw new Error('Params must be an object');
-	}
+  if (!config) {
+    throw new Error("CacheConfig is required");
+  }
+  if (!config.entity) {
+    throw new Error("CacheConfig.entity is required");
+  }
+  if (params === null || params === undefined) {
+    throw new Error("Params must be an object");
+  }
 
-	// Extract only the parameters specified in config.params
-	const extractedParams = extractCacheParams(config.params, params, config.entity);
+  // Extract only the parameters specified in config.params
+  const extractedParams = extractCacheParams(
+    config.params,
+    params,
+    config.entity,
+  );
 
-	// Create deterministic material string
-	const material = stringify({ name: config.entity, params: extractedParams });
+  // Create deterministic material string
+  const material = stringify({ name: config.entity, params: extractedParams });
 
-	// Hash with Bun's native hash function
-	const keyHash = hash(material);
+  // Hash with Bun's native hash function
+  const keyHash = hash(material);
 
-	return `${CACHE_KEY_PREFIX}${keyHash}`;
+  return `${CACHE_KEY_PREFIX}${keyHash}`;
 }
 
 /**
@@ -81,31 +89,31 @@ export function generateCacheKey<TParams extends object>(
  * - Throws if any required param is missing to prevent cache collisions
  */
 function extractCacheParams<TParams extends object>(
-	paramKeys: readonly (keyof TParams)[],
-	params: TParams,
-	entityName: string
+  paramKeys: readonly (keyof TParams)[],
+  params: TParams,
+  entityName: string,
 ): Record<string, unknown> {
-	const extractedParams: Record<string, unknown> = {};
-	const missingParams: string[] = [];
+  const extractedParams: Record<string, unknown> = {};
+  const missingParams: string[] = [];
 
-	for (const paramName of paramKeys) {
-		const value = params[paramName];
-		if (value === undefined) {
-			missingParams.push(String(paramName));
-		} else {
-			extractedParams[paramName as string] = value;
-		}
-	}
+  for (const paramName of paramKeys) {
+    const value = params[paramName];
+    if (value === undefined) {
+      missingParams.push(String(paramName));
+    } else {
+      extractedParams[paramName as string] = value;
+    }
+  }
 
-	// Validate all declared params are present to prevent cache key collisions
-	if (missingParams.length > 0) {
-		throw new Error(
-			`Missing required cache params for '${entityName}': ${missingParams.join(', ')}. ` +
-				`All params declared in CacheConfig must be provided to ensure cache isolation.`
-		);
-	}
+  // Validate all declared params are present to prevent cache key collisions
+  if (missingParams.length > 0) {
+    throw new Error(
+      `Missing required cache params for '${entityName}': ${missingParams.join(", ")}. ` +
+        `All params declared in CacheConfig must be provided to ensure cache isolation.`,
+    );
+  }
 
-	return extractedParams;
+  return extractedParams;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -141,34 +149,34 @@ function extractCacheParams<TParams extends object>(
  * generateMetaKey('Tenant', { tenantId: 'xyz' })
  * // => 'cache:meta:tenant123'
  */
-export function generateMetaKey<TEntityName extends string, TParams extends object>(
-	entityType: TEntityName,
-	params: TParams
-): string {
-	if (!entityType) {
-		throw new Error('Entity type is required');
-	}
-	if (params === null || params === undefined) {
-		throw new Error('Params must be an object');
-	}
+export function generateMetaKey<
+  TEntityName extends string,
+  TParams extends object,
+>(entityType: TEntityName, params: TParams): string {
+  if (!entityType) {
+    throw new Error("Entity type is required");
+  }
+  if (params === null || params === undefined) {
+    throw new Error("Params must be an object");
+  }
 
-	// Build meta key data - entity + all provided params
-	const metaKeyData: Record<string, unknown> = {
-		entity: entityType,
-		...params
-	};
+  // Build meta key data - entity + all provided params
+  const metaKeyData: Record<string, unknown> = {
+    entity: entityType,
+    ...params,
+  };
 
-	// Remove undefined values for clean hashing
-	Object.keys(metaKeyData).forEach((key) => {
-		if (metaKeyData[key] === undefined) {
-			delete metaKeyData[key];
-		}
-	});
+  // Remove undefined values for clean hashing
+  Object.keys(metaKeyData).forEach((key) => {
+    if (metaKeyData[key] === undefined) {
+      delete metaKeyData[key];
+    }
+  });
 
-	const material = stringify(metaKeyData);
-	const metaHash = hash(material);
+  const material = stringify(metaKeyData);
+  const metaHash = hash(material);
 
-	return `${META_KEY_PREFIX}${metaHash}`;
+  return `${META_KEY_PREFIX}${metaHash}`;
 }
 
 /**
@@ -184,31 +192,31 @@ export function generateMetaKey<TEntityName extends string, TParams extends obje
  * @throws Error if any declared metaParam is undefined
  */
 export function generateConfigMetaKey<TParams extends object>(
-	config: CacheConfig<TParams>,
-	params: TParams
+  config: CacheConfig<TParams>,
+  params: TParams,
 ): string {
-	// Extract only the meta params specified in config
-	const metaParams: Record<string, unknown> = {};
-	const missingParams: string[] = [];
+  // Extract only the meta params specified in config
+  const metaParams: Record<string, unknown> = {};
+  const missingParams: string[] = [];
 
-	for (const key of config.metaParams) {
-		const value = params[key];
-		if (value === undefined) {
-			missingParams.push(String(key));
-		} else {
-			metaParams[key as string] = value;
-		}
-	}
+  for (const key of config.metaParams) {
+    const value = params[key];
+    if (value === undefined) {
+      missingParams.push(String(key));
+    } else {
+      metaParams[key as string] = value;
+    }
+  }
 
-	// Validate all declared meta params are present for correct invalidation
-	if (missingParams.length > 0) {
-		throw new Error(
-			`Missing required meta params for '${config.entity}': ${missingParams.join(', ')}. ` +
-				`All metaParams declared in CacheConfig must be provided for cascade invalidation.`
-		);
-	}
+  // Validate all declared meta params are present for correct invalidation
+  if (missingParams.length > 0) {
+    throw new Error(
+      `Missing required meta params for '${config.entity}': ${missingParams.join(", ")}. ` +
+        `All metaParams declared in CacheConfig must be provided for cascade invalidation.`,
+    );
+  }
 
-	return generateMetaKey(config.entity, metaParams);
+  return generateMetaKey(config.entity, metaParams);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -219,40 +227,40 @@ export function generateConfigMetaKey<TParams extends object>(
  * Check if a key is a cache key
  */
 export function isCacheKey(key: string): boolean {
-	return key.startsWith(CACHE_KEY_PREFIX) && !key.startsWith(META_KEY_PREFIX);
+  return key.startsWith(CACHE_KEY_PREFIX) && !key.startsWith(META_KEY_PREFIX);
 }
 
 /**
  * Check if a key is a meta key
  */
 export function isMetaKey(key: string): boolean {
-	return key.startsWith(META_KEY_PREFIX);
+  return key.startsWith(META_KEY_PREFIX);
 }
 
 /**
  * Convert a cache key to its corresponding meta key
  */
 export function cacheKeyToMetaKey(cacheKey: string): string {
-	if (!isCacheKey(cacheKey)) {
-		throw new Error(`Not a cache key: ${cacheKey}`);
-	}
-	return cacheKey.replace(CACHE_KEY_PREFIX, META_KEY_PREFIX);
+  if (!isCacheKey(cacheKey)) {
+    throw new Error(`Not a cache key: ${cacheKey}`);
+  }
+  return cacheKey.replace(CACHE_KEY_PREFIX, META_KEY_PREFIX);
 }
 
 /**
  * Extract hash from any key type
  */
 export function extractHash(key: string): string {
-	if (isCacheKey(key)) {
-		return key.substring(CACHE_KEY_PREFIX.length);
-	}
-	if (isMetaKey(key)) {
-		return key.substring(META_KEY_PREFIX.length);
-	}
-	if (isTagMetaKey(key)) {
-		return key.substring(TAG_META_KEY_PREFIX.length);
-	}
-	throw new Error(`Invalid key format: ${key}`);
+  if (isCacheKey(key)) {
+    return key.substring(CACHE_KEY_PREFIX.length);
+  }
+  if (isMetaKey(key)) {
+    return key.substring(META_KEY_PREFIX.length);
+  }
+  if (isTagMetaKey(key)) {
+    return key.substring(TAG_META_KEY_PREFIX.length);
+  }
+  throw new Error(`Invalid key format: ${key}`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -280,15 +288,15 @@ export function extractHash(key: string): string {
  * // => 'cache:tag:xyz789ghi'
  */
 export function generateTagMetaKey(tag: string): string {
-	if (!tag) {
-		throw new Error('Tag is required');
-	}
-	return `${TAG_META_KEY_PREFIX}${hash(tag)}`;
+  if (!tag) {
+    throw new Error("Tag is required");
+  }
+  return `${TAG_META_KEY_PREFIX}${hash(tag)}`;
 }
 
 /**
  * Check if a key is a tag meta key
  */
 export function isTagMetaKey(key: string): boolean {
-	return key.startsWith(TAG_META_KEY_PREFIX);
+  return key.startsWith(TAG_META_KEY_PREFIX);
 }

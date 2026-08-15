@@ -20,42 +20,47 @@
  * ```
  */
 
-export { Mapper } from './mapper';
+export { Mapper } from "./mapper";
 export type {
-	// From mapper.ts
-	TableDefInput,
-	FlattenedTable,
-	FlattenedTableOutput,
-	ResolvedFieldDef,
-	MapperBuilder,
-	BuiltMapper,
-	MapResult,
-	MapOptions,
-	PickBuilder,
-	JsonBuilder,
-	ColBuilder,
-	EmbedBuilder,
-	FieldRenameBuilder,
-	// Re-exported from types.ts via mapper.ts (single source)
-	FieldBuilder,
-	FieldDef,
-	FieldType,
-	FieldValue,
-	TableFieldsInput,
-	TableShape,
-	StringFieldBuilder,
-	NumberFieldBuilder,
-	BooleanFieldBuilder,
-	DateFieldBuilder,
-	ArrayFieldBuilder,
-	AnyFieldBuilder,
-	NullableFieldBuilder
-} from './mapper';
+  // From mapper.ts
+  TableDefInput,
+  FlattenedTable,
+  FlattenedTableOutput,
+  ResolvedFieldDef,
+  MapperBuilder,
+  BuiltMapper,
+  MapResult,
+  MapOptions,
+  PickBuilder,
+  JsonBuilder,
+  ColBuilder,
+  EmbedBuilder,
+  FieldRenameBuilder,
+  // Re-exported from types.ts via mapper.ts (single source)
+  FieldBuilder,
+  FieldDef,
+  FieldType,
+  FieldValue,
+  TableFieldsInput,
+  TableShape,
+  StringFieldBuilder,
+  NumberFieldBuilder,
+  BooleanFieldBuilder,
+  DateFieldBuilder,
+  ArrayFieldBuilder,
+  AnyFieldBuilder,
+  NullableFieldBuilder,
+} from "./mapper";
 
-export type { FieldColumnBuilder } from './types';
+export type { FieldColumnBuilder } from "./types";
 
-export { field } from './field';
+export { field } from "./field";
 
-export { MapperError } from './mapper-error';
+export { MapperError } from "./mapper-error";
 
-export { coerceString, coerceNumber, coerceBoolean, coerceDate } from './coercion';
+export {
+  coerceString,
+  coerceNumber,
+  coerceBoolean,
+  coerceDate,
+} from "./coercion";

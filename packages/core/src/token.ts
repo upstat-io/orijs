@@ -68,7 +68,7 @@ export type Token<T> = symbol & { readonly __type?: T };
  * ```
  */
 export function createToken<T>(name: string): Token<T> {
-	return Symbol(name) as Token<T>;
+  return Symbol(name) as Token<T>;
 }
 
 /**
@@ -78,5 +78,5 @@ export function createToken<T>(name: string): Token<T> {
  * @returns True if the value is a symbol (Token)
  */
 export function isToken(value: unknown): value is Token<unknown> {
-	return typeof value === 'symbol';
+  return typeof value === "symbol";
 }

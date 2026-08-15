@@ -33,12 +33,15 @@
  */
 
 // Import types needed for consumer-related utilities
-import type { EventDefinition, EventContext } from './event-definition';
-import type { WorkflowDefinition, WorkflowContext } from './workflow-definition';
-import type { IEventConsumer, IWorkflowConsumer } from './consumer';
+import type { EventDefinition, EventContext } from "./event-definition";
+import type {
+  WorkflowDefinition,
+  WorkflowContext,
+} from "./workflow-definition";
+import type { IEventConsumer, IWorkflowConsumer } from "./consumer";
 
 // Re-export pure type extractors (no consumer dependencies)
-export type { Data, Result, MessageData } from './type-extractors';
+export type { Data, Result, MessageData } from "./type-extractors";
 
 // ============================================================================
 // Event Consumer Types
@@ -63,7 +66,8 @@ export type { Data, Result, MessageData } from './type-extractors';
  * }
  * ```
  */
-export type EventConsumer<T> = T extends EventDefinition<infer D, infer R> ? IEventConsumer<D, R> : never;
+export type EventConsumer<T> =
+  T extends EventDefinition<infer D, infer R> ? IEventConsumer<D, R> : never;
 
 /**
  * Get the EventContext typed for an EventDefinition.
@@ -78,7 +82,8 @@ export type EventConsumer<T> = T extends EventDefinition<infer D, infer R> ? IEv
  * }
  * ```
  */
-export type EventCtx<T> = T extends EventDefinition<infer D, unknown> ? EventContext<D> : never;
+export type EventCtx<T> =
+  T extends EventDefinition<infer D, unknown> ? EventContext<D> : never;
 
 // ============================================================================
 // Workflow Consumer Types
@@ -121,7 +126,9 @@ export type EventCtx<T> = T extends EventDefinition<infer D, unknown> ? EventCon
  * ```
  */
 export type WorkflowConsumer<T> =
-	T extends WorkflowDefinition<infer D, infer R, infer S> ? IWorkflowConsumer<D, R, S> : never;
+  T extends WorkflowDefinition<infer D, infer R, infer S>
+    ? IWorkflowConsumer<D, R, S>
+    : never;
 
 /**
  * Get the WorkflowContext typed for a WorkflowDefinition.
@@ -136,4 +143,7 @@ export type WorkflowConsumer<T> =
  * }
  * ```
  */
-export type WorkflowCtx<T> = T extends WorkflowDefinition<infer D, unknown, infer S> ? WorkflowContext<D, S> : never;
+export type WorkflowCtx<T> =
+  T extends WorkflowDefinition<infer D, unknown, infer S>
+    ? WorkflowContext<D, S>
+    : never;

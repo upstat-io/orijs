@@ -57,7 +57,10 @@
  * ```
  */
 
-import type { EventRegistryBuilder, BuiltEventRegistry } from './event-registry.types';
+import type {
+  EventRegistryBuilder,
+  BuiltEventRegistry,
+} from "./event-registry.types";
 
 // --- BUILDER IMPLEMENTATION ---
 
@@ -66,59 +69,65 @@ import type { EventRegistryBuilder, BuiltEventRegistry } from './event-registry.
  * Accumulates event names, then builds the final registry.
  */
 class EventRegistryBuilderInternal<
-	TEventNames extends string = never
+  TEventNames extends string = never,
 > implements EventRegistryBuilder<TEventNames> {
-	/** Accumulated event names */
-	private readonly eventNames: Set<string> = new Set();
+  /** Accumulated event names */
+  private readonly eventNames: Set<string> = new Set();
 
-	/**
-	 * Register a new event by name.
-	 */
-	public event<N extends string>(name: N): EventRegistryBuilder<TEventNames | N> {
-		// Check for duplicate event
-		if (this.eventNames.has(name)) {
-			throw new Error(`Event '${name}' already defined`);
-		}
+  /**
+   * Register a new event by name.
+   */
+  public event<N extends string>(
+    name: N,
+  ): EventRegistryBuilder<TEventNames | N> {
+    // Check for duplicate event
+    if (this.eventNames.has(name)) {
+      throw new Error(`Event '${name}' already defined`);
+    }
 
-		this.eventNames.add(name);
+    this.eventNames.add(name);
 
-		// Type assertion is safe: same builder instance returned with expanded type params.
-		// Standard TypeScript pattern for fluent builders with accumulating generics.
-		return this as unknown as EventRegistryBuilder<TEventNames | N>;
-	}
+    // Type assertion is safe: same builder instance returned with expanded type params.
+    // Standard TypeScript pattern for fluent builders with accumulating generics.
+    return this as unknown as EventRegistryBuilder<TEventNames | N>;
+  }
 
-	/**
-	 * Apply a composition function to add multiple events.
-	 */
-	public use<TNewNames extends string>(
-		fn: (builder: EventRegistryBuilder<TEventNames>) => EventRegistryBuilder<TNewNames>
-	): EventRegistryBuilder<TNewNames> {
-		return fn(this);
-	}
+  /**
+   * Apply a composition function to add multiple events.
+   */
+  public use<TNewNames extends string>(
+    fn: (
+      builder: EventRegistryBuilder<TEventNames>,
+    ) => EventRegistryBuilder<TNewNames>,
+  ): EventRegistryBuilder<TNewNames> {
+    return fn(this);
+  }
 
-	/**
-	 * Build the final immutable event registry.
-	 */
-	public build(): BuiltEventRegistry<TEventNames> {
-		// Copy set for immutability (original builder can continue to be used)
-		const eventSet = new Set(this.eventNames);
+  /**
+   * Build the final immutable event registry.
+   */
+  public build(): BuiltEventRegistry<TEventNames> {
+    // Copy set for immutability (original builder can continue to be used)
+    const eventSet = new Set(this.eventNames);
 
-		// Freeze the event names array
-		const eventNames = Object.freeze(Array.from(eventSet)) as readonly TEventNames[];
+    // Freeze the event names array
+    const eventNames = Object.freeze(
+      Array.from(eventSet),
+    ) as readonly TEventNames[];
 
-		// Create the registry object with closure over the set
-		const registry: BuiltEventRegistry<TEventNames> = {
-			getEventNames(): readonly TEventNames[] {
-				return eventNames;
-			},
+    // Create the registry object with closure over the set
+    const registry: BuiltEventRegistry<TEventNames> = {
+      getEventNames(): readonly TEventNames[] {
+        return eventNames;
+      },
 
-			hasEvent(name: string): name is TEventNames {
-				return eventSet.has(name);
-			}
-		};
+      hasEvent(name: string): name is TEventNames {
+        return eventSet.has(name);
+      },
+    };
 
-		return Object.freeze(registry);
-	}
+    return Object.freeze(registry);
+  }
 }
 
 // --- PUBLIC FACTORY ---
@@ -141,12 +150,12 @@ class EventRegistryBuilderInternal<
  * ```
  */
 export const EventRegistry = {
-	/**
-	 * Create a new event registry builder.
-	 *
-	 * @returns A new builder instance
-	 */
-	create(): EventRegistryBuilder<never> {
-		return new EventRegistryBuilderInternal();
-	}
+  /**
+   * Create a new event registry builder.
+   *
+   * @returns A new builder instance
+   */
+  create(): EventRegistryBuilder<never> {
+    return new EventRegistryBuilderInternal();
+  },
 };

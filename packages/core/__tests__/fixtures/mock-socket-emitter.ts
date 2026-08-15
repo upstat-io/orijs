@@ -5,8 +5,8 @@
  * to avoid repetition in test files.
  */
 
-import { mock } from 'bun:test';
-import type { SocketEmitter } from '../../src/types/emitter';
+import { mock } from "bun:test";
+import type { SocketEmitter } from "../../src/types/emitter";
 
 /**
  * Creates a mock SocketEmitter with all methods mocked.
@@ -23,17 +23,17 @@ import type { SocketEmitter } from '../../src/types/emitter';
  * ```
  */
 export function createMockSocketEmitter(): SocketEmitter & {
-	publish: ReturnType<typeof mock>;
-	send: ReturnType<typeof mock>;
-	broadcast: ReturnType<typeof mock>;
-	emit: ReturnType<typeof mock>;
+  publish: ReturnType<typeof mock>;
+  send: ReturnType<typeof mock>;
+  broadcast: ReturnType<typeof mock>;
+  emit: ReturnType<typeof mock>;
 } {
-	return {
-		publish: mock(() => Promise.resolve()),
-		send: mock(() => true),
-		broadcast: mock(() => {}),
-		emit: mock(() => Promise.resolve())
-	};
+  return {
+    publish: mock(() => Promise.resolve()),
+    send: mock(() => true),
+    broadcast: mock(() => {}),
+    emit: mock(() => Promise.resolve()),
+  };
 }
 
 /**
@@ -42,10 +42,10 @@ export function createMockSocketEmitter(): SocketEmitter & {
  * @returns A SocketEmitter with simple implementations
  */
 export function createSimpleSocketEmitter(): SocketEmitter {
-	return {
-		publish: () => Promise.resolve(),
-		send: () => true,
-		broadcast: () => {},
-		emit: () => Promise.resolve()
-	};
+  return {
+    publish: () => Promise.resolve(),
+    send: () => true,
+    broadcast: () => {},
+    emit: () => Promise.resolve(),
+  };
 }

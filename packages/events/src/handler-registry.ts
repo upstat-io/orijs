@@ -7,41 +7,41 @@
  * @module events/handler-registry
  */
 
-import type { EventHandlerFn } from './event-provider.types';
+import type { EventHandlerFn } from "./event-provider.types";
 
 /**
  * Internal handler registration with type information.
  */
 export interface HandlerRegistration {
-	readonly handler: EventHandlerFn<unknown, unknown>;
+  readonly handler: EventHandlerFn<unknown, unknown>;
 }
 
 /**
  * Interface for handler registry operations.
  */
 export interface IHandlerRegistry {
-	/**
-	 * Registers a handler for an event.
-	 */
-	subscribe<TPayload = unknown, TReturn = void>(
-		eventName: string,
-		handler: EventHandlerFn<TPayload, TReturn>
-	): void;
+  /**
+   * Registers a handler for an event.
+   */
+  subscribe<TPayload = unknown, TReturn = void>(
+    eventName: string,
+    handler: EventHandlerFn<TPayload, TReturn>,
+  ): void;
 
-	/**
-	 * Gets all handlers for an event.
-	 */
-	getHandlers(eventName: string): readonly HandlerRegistration[];
+  /**
+   * Gets all handlers for an event.
+   */
+  getHandlers(eventName: string): readonly HandlerRegistration[];
 
-	/**
-	 * Returns the count of registered handlers for an event.
-	 */
-	getHandlerCount(eventName: string): number;
+  /**
+   * Returns the count of registered handlers for an event.
+   */
+  getHandlerCount(eventName: string): number;
 
-	/**
-	 * Clears all registered handlers.
-	 */
-	clear(): void;
+  /**
+   * Clears all registered handlers.
+   */
+  clear(): void;
 }
 
 /**
@@ -60,38 +60,38 @@ export interface IHandlerRegistry {
  * ```
  */
 export class HandlerRegistry implements IHandlerRegistry {
-	private readonly handlers: Map<string, HandlerRegistration[]> = new Map();
+  private readonly handlers: Map<string, HandlerRegistration[]> = new Map();
 
-	/**
-	 * Registers a handler for an event.
-	 */
-	public subscribe<TPayload = unknown, TReturn = void>(
-		eventName: string,
-		handler: EventHandlerFn<TPayload, TReturn>
-	): void {
-		const handlers = this.handlers.get(eventName) ?? [];
-		handlers.push({ handler: handler as EventHandlerFn<unknown, unknown> });
-		this.handlers.set(eventName, handlers);
-	}
+  /**
+   * Registers a handler for an event.
+   */
+  public subscribe<TPayload = unknown, TReturn = void>(
+    eventName: string,
+    handler: EventHandlerFn<TPayload, TReturn>,
+  ): void {
+    const handlers = this.handlers.get(eventName) ?? [];
+    handlers.push({ handler: handler as EventHandlerFn<unknown, unknown> });
+    this.handlers.set(eventName, handlers);
+  }
 
-	/**
-	 * Gets all handlers for an event.
-	 */
-	public getHandlers(eventName: string): readonly HandlerRegistration[] {
-		return this.handlers.get(eventName) ?? [];
-	}
+  /**
+   * Gets all handlers for an event.
+   */
+  public getHandlers(eventName: string): readonly HandlerRegistration[] {
+    return this.handlers.get(eventName) ?? [];
+  }
 
-	/**
-	 * Returns the count of registered handlers for an event.
-	 */
-	public getHandlerCount(eventName: string): number {
-		return this.handlers.get(eventName)?.length ?? 0;
-	}
+  /**
+   * Returns the count of registered handlers for an event.
+   */
+  public getHandlerCount(eventName: string): number {
+    return this.handlers.get(eventName)?.length ?? 0;
+  }
 
-	/**
-	 * Clears all registered handlers.
-	 */
-	public clear(): void {
-		this.handlers.clear();
-	}
+  /**
+   * Clears all registered handlers.
+   */
+  public clear(): void {
+    this.handlers.clear();
+  }
 }

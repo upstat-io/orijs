@@ -1,4 +1,4 @@
-import type { Logger } from '@orijs/logging';
+import type { Logger } from "@orijs/logging";
 
 /**
  * Base context with shared properties available to all context types.
@@ -9,6 +9,6 @@ import type { Logger } from '@orijs/logging';
  * Both AppContext and RequestContext have access to these shared properties.
  */
 export interface BaseContext {
-	/** Logger instance for structured logging */
-	readonly log: Logger;
+  /** Logger instance for structured logging */
+  readonly log: Logger;
 }

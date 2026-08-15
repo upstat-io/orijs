@@ -1,4 +1,4 @@
-import { Kind, type TSchema } from '@sinclair/typebox';
+import { Kind, type TSchema } from "@sinclair/typebox";
 
 /**
  * Classifies an event definition's result schema into a transport delivery hint.
@@ -11,6 +11,8 @@ import { Kind, type TSchema } from '@sinclair/typebox';
  * An absent schema reports `true` so callers emitting without a definition keep
  * request-response semantics.
  */
-export function expectsResultFromSchema(resultSchema: TSchema | undefined): boolean {
-	return resultSchema?.[Kind] !== 'Void';
+export function expectsResultFromSchema(
+  resultSchema: TSchema | undefined,
+): boolean {
+  return resultSchema?.[Kind] !== "Void";
 }
