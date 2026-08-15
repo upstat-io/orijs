@@ -802,7 +802,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
 
 	private async getJobById(queueName: string, jobId: string): Promise<{ job?: Job; queue: Queue }> {
 		const queue = this.createLookupQueue(queueName);
-		return { job: (await Job.fromId(queue, jobId)) ?? undefined, queue };
+		const job = (await Job.fromId(queue, jobId)) ?? undefined;
+		return { ...(job !== undefined && { job }), queue };
 	}
 
 	private createDurableHandle<TResult>(job: Job, queueName: string, jobId: string): FlowHandle<TResult> {
