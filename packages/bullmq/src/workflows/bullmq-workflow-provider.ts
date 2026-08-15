@@ -744,7 +744,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
 		const stepJobOpts: StepJobRetryOpts = {
 			attempts: workflowPolicy?.attempts ?? DEFAULT_STEP_ATTEMPTS,
 			backoff: workflowPolicy?.backoff ?? DEFAULT_STEP_BACKOFF,
-			priority: workflowPolicy?.priority
+			...(workflowPolicy?.priority !== undefined && { priority: workflowPolicy.priority })
 		};
 
 		// Build job structure (without adding to queue yet)
@@ -755,8 +755,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
 					queueName,
 					stepGroups: stepGroups as StepGroup[],
 					data,
-					meta,
-					executeOptions: options,
+					...(meta !== undefined && { meta }),
+					...(options !== undefined && { executeOptions: options }),
 					stepJobOpts
 				})
 			: this.buildSimpleJob({
@@ -764,8 +764,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
 					flowId,
 					queueName,
 					data,
-					meta,
-					executeOptions: options,
+					...(meta !== undefined && { meta }),
+					...(options !== undefined && { executeOptions: options }),
 					jobOptions: stepJobOpts
 				});
 
