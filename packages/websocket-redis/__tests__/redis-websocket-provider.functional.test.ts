@@ -65,8 +65,9 @@ describe('RedisWsProvider (functional)', () => {
 	): RedisWsProvider {
 		const config = redisHelper.getConnectionConfig();
 		const trackedProvider = new RedisWsProvider({
-			connection: { host: config.host, port: config.port },
-			...options
+			connection: { host: config.host, port: config.port, db: config.db },
+			...options,
+			keyPrefix: `${config.namespace}:${options?.keyPrefix ?? 'ws'}`
 		});
 		allProviders.push(trackedProvider);
 		return trackedProvider;

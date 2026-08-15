@@ -11,6 +11,82 @@ import { describe, it, expect, mock } from 'bun:test';
 
 describe('BullMQEventProvider', () => {
 	describe('emit', () => {
+		it('should establish completion ownership before enqueueing a request-response job', async () => {
+			let releaseReady!: () => void;
+			const ready = new Promise<void>((resolve) => {
+				releaseReady = resolve;
+			});
+			let acknowledgeAdd!: () => void;
+			const added = new Promise<void>((resolve) => {
+				acknowledgeAdd = resolve;
+			});
+			const mockQueueManager = {
+				addJob: mock(() => {
+					acknowledgeAdd();
+					return Promise.resolve({ id: 'job-123' });
+				}),
+				getQueueName: mock((eventName: string) => `event.${eventName}`)
+			};
+			const mockCompletionTracker = {
+				register: mock(() => {}),
+				waitUntilReady: mock(() => ready),
+				mapJobId: mock(() => {}),
+				fail: mock(() => {})
+			};
+
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any
+			});
+
+			provider.emit('fast.void', {}, {});
+
+			expect(mockCompletionTracker.waitUntilReady).toHaveBeenCalledWith('event.fast.void');
+			expect(mockQueueManager.addJob).not.toHaveBeenCalled();
+
+			releaseReady();
+			await added;
+			expect(mockQueueManager.addJob).toHaveBeenCalledTimes(1);
+		});
+
+		it('should attach to a retained completed request-response job', async () => {
+			const MockQueueEvents = mock(() => ({
+				on: mock(() => {}),
+				waitUntilReady: mock(() => Promise.resolve()),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } }
+			}));
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const completionTracker = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+			const mockQueueManager = {
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				addJob: mock((_eventName: string, _data: unknown, options: { jobId: string }) =>
+					Promise.resolve({
+						id: options.jobId,
+						returnvalue: { retained: true },
+						getState: () => Promise.resolve('completed')
+					})
+				)
+			};
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker
+			});
+
+			const result = await provider
+				.emit<{ retained: boolean }>('retained.event', {}, {}, { idempotencyKey: 'stable-key' })
+				.toPromise();
+
+			expect(result).toEqual({ retained: true });
+		});
+
 		it('should emit event via QueueManager', async () => {
 			const mockQueueManager = {
 				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
@@ -54,7 +130,7 @@ describe('BullMQEventProvider', () => {
 					payload: { monitorId: '123' },
 					meta: { request_id: 'req-1' }
 				}),
-				{} // Empty options object when no delay or idempotencyKey
+				expect.objectContaining({ jobId: expect.any(String) })
 			);
 		});
 
@@ -87,7 +163,8 @@ describe('BullMQEventProvider', () => {
 			provider.emit('alert.notify', { alertId: '456' }, {}, { delay: 5000 });
 
 			expect(mockQueueManager.addJob).toHaveBeenCalledWith('alert.notify', expect.anything(), {
-				delay: 5000
+				delay: 5000,
+				jobId: expect.any(String)
 			});
 		});
 
@@ -124,20 +201,21 @@ describe('BullMQEventProvider', () => {
 				// Result callback
 			});
 
-			// Wait for async job addition to complete
-			await new Promise((resolve) => setTimeout(resolve, 10));
-
 			// Should have registered with CompletionTracker
 			expect(mockCompletionTracker.register).toHaveBeenCalledTimes(1);
 			expect(mockCompletionTracker.mapJobId).toHaveBeenCalledWith(
 				'event.monitor.check',
-				'job-123',
+				expect.any(String),
 				expect.any(String)
 			);
 		});
 
 		it('should clean up completion tracker when job creation fails', async () => {
 			const jobCreationError = new Error('Redis connection failed');
+			let acknowledgeFailure!: () => void;
+			const failed = new Promise<void>((resolve) => {
+				acknowledgeFailure = resolve;
+			});
 			const mockQueueManager = {
 				addJob: mock(() => Promise.reject(jobCreationError)),
 				registerWorker: mock(() => {}),
@@ -148,7 +226,7 @@ describe('BullMQEventProvider', () => {
 			const mockCompletionTracker = {
 				register: mock(() => {}),
 				mapJobId: mock(() => {}),
-				fail: mock(() => {}),
+				fail: mock(() => acknowledgeFailure()),
 				stop: mock(() => Promise.resolve())
 			};
 
@@ -166,8 +244,7 @@ describe('BullMQEventProvider', () => {
 
 			const subscription = provider.emit('test.event', { data: 'test' }, {});
 
-			// Wait for async job addition to fail
-			await new Promise((resolve) => setTimeout(resolve, 10));
+			await failed;
 
 			// Should have called completionTracker.fail to clean up
 			expect(mockCompletionTracker.fail).toHaveBeenCalledTimes(1);
@@ -177,8 +254,8 @@ describe('BullMQEventProvider', () => {
 				jobCreationError
 			);
 
-			// mapJobId should NOT have been called since job creation failed
-			expect(mockCompletionTracker.mapJobId).not.toHaveBeenCalled();
+			// Ownership is mapped before enqueue and fail() releases it on rejection.
+			expect(mockCompletionTracker.mapJobId).toHaveBeenCalledTimes(1);
 		});
 
 		it('should propagate job creation error to subscription catch callback', async () => {
@@ -504,6 +581,7 @@ describe('BullMQEventProvider', () => {
 				expect.anything(),
 				{
 					delay: 5000,
+					jobId: expect.any(String),
 					removeOnFail: { age: 30 }
 				}
 			);
@@ -545,7 +623,7 @@ describe('BullMQEventProvider', () => {
 			expect(mockQueueManager.addJob).toHaveBeenCalledWith(
 				'normal.event',
 				expect.anything(),
-				{} // No removeOnFail
+				expect.objectContaining({ jobId: expect.any(String) })
 			);
 		});
 
@@ -672,16 +750,23 @@ describe('BullMQEventProvider', () => {
 			provider.subscribe('monitor.check', handler);
 
 			expect(mockQueueManager.registerWorker).toHaveBeenCalledTimes(1);
-			expect(mockQueueManager.registerWorker).toHaveBeenCalledWith('monitor.check', expect.any(Function));
+			expect(mockQueueManager.registerWorker).toHaveBeenCalledWith(
+				'monitor.check',
+				expect.any(Function),
+				expect.any(Function)
+			);
 		});
 
 		it('should wrap handler to extract EventMessage from job data', async () => {
 			let capturedWorkerHandler: ((job: any) => Promise<any>) | null = null;
+			let capturedCompletedHandler: ((jobId: string, result: any) => void) | null = null;
 
 			const mockQueueManager = {
 				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
-				registerWorker: mock((_eventName: string, handler: any) => {
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				registerWorker: mock((_eventName: string, handler: any, onCompleted: any) => {
 					capturedWorkerHandler = handler;
+					capturedCompletedHandler = onCompleted;
 				}),
 				stop: mock(() => Promise.resolve())
 			};
@@ -689,6 +774,7 @@ describe('BullMQEventProvider', () => {
 			const mockCompletionTracker = {
 				register: mock(() => {}),
 				mapJobId: mock(() => {}),
+				completeJob: mock(() => {}),
 				stop: mock(() => Promise.resolve())
 			};
 
@@ -724,6 +810,8 @@ describe('BullMQEventProvider', () => {
 			};
 
 			const result = await capturedWorkerHandler!(mockJob);
+			expect(mockCompletionTracker.completeJob).not.toHaveBeenCalled();
+			capturedCompletedHandler!('job-1', result);
 
 			expect(handler).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -734,6 +822,11 @@ describe('BullMQEventProvider', () => {
 				})
 			);
 			expect(result).toEqual({ processed: true, monitorId: '123' });
+			expect(mockCompletionTracker.completeJob).toHaveBeenCalledWith(
+				'event.monitor.check',
+				'job-1',
+				{ processed: true, monitorId: '123' }
+			);
 		});
 	});
 
@@ -811,6 +904,39 @@ describe('BullMQEventProvider', () => {
 	});
 
 	describe('lifecycle', () => {
+		it('should cancel a readiness-blocked enqueue before stopping queue ownership', async () => {
+			const neverReady = new Promise<void>(() => {});
+			const mockQueueManager = {
+				addJob: mock(() => Promise.resolve({ id: 'job-1' })),
+				getQueueName: mock((eventName: string) => `event.${eventName}`),
+				stop: mock(() => Promise.resolve())
+			};
+			const mockCompletionTracker = {
+				start: mock(() => {}),
+				register: mock(() => {}),
+				waitUntilReady: mock(() => neverReady),
+				mapJobId: mock(() => {}),
+				fail: mock(() => {}),
+				stop: mock(() => Promise.resolve())
+			};
+			const mockScheduledManager = { stop: mock(() => Promise.resolve()) };
+			const { BullMQEventProvider } = await import('../../src/events/bullmq-event-provider.ts');
+			const provider = new BullMQEventProvider({
+				connection: { host: 'localhost', port: 6379 },
+				queueManager: mockQueueManager as any,
+				completionTracker: mockCompletionTracker as any,
+				scheduledEventManager: mockScheduledManager as any
+			});
+
+			await provider.start();
+			provider.emit('blocked.event', {}, {});
+			await provider.stop();
+
+			expect(mockQueueManager.addJob).not.toHaveBeenCalled();
+			expect(mockCompletionTracker.mapJobId).not.toHaveBeenCalled();
+			expect(mockQueueManager.stop).toHaveBeenCalledTimes(1);
+		});
+
 		it('should start all components', async () => {
 			const mockQueueManager = {
 				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
@@ -976,7 +1102,7 @@ describe('BullMQEventProvider', () => {
 			});
 		});
 
-		it('should not pass jobId when no idempotencyKey provided', async () => {
+		it('should use eventId as jobId when no idempotencyKey is provided', async () => {
 			const mockQueueManager = {
 				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
 				registerWorker: mock(() => {}),
@@ -1004,11 +1130,12 @@ describe('BullMQEventProvider', () => {
 
 			provider.emit('order.created', { orderId: '456' }, {});
 
-			// Job options should be empty object (no jobId)
-			expect(mockQueueManager.addJob).toHaveBeenCalledWith('order.created', expect.anything(), {});
+			expect(mockQueueManager.addJob).toHaveBeenCalledWith('order.created', expect.anything(), {
+				jobId: expect.any(String)
+			});
 		});
 
-		it('should pass empty object when only delay is 0', async () => {
+		it('should omit zero delay while retaining the eventId jobId', async () => {
 			const mockQueueManager = {
 				addJob: mock(() => Promise.resolve({ id: 'job-123' })),
 				registerWorker: mock(() => {}),
@@ -1037,7 +1164,9 @@ describe('BullMQEventProvider', () => {
 			// delay: 0 should not be included (falsy)
 			provider.emit('order.created', { orderId: '456' }, {}, { delay: 0 });
 
-			expect(mockQueueManager.addJob).toHaveBeenCalledWith('order.created', expect.anything(), {});
+			expect(mockQueueManager.addJob).toHaveBeenCalledWith('order.created', expect.anything(), {
+				jobId: expect.any(String)
+			});
 		});
 	});
 });

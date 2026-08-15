@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { Workflow, type WorkflowContext } from '@orijs/core';
 import { Type } from '@orijs/validation';
+import { WorkflowRollbackError, WorkflowStepError } from '@orijs/workflows';
 import {
 	BullMQWorkflowProvider,
 	createBullMQWorkflowProvider,
@@ -1301,6 +1302,38 @@ describe('pending result not-found paths', () => {
 		// This is expected - in production, the workflow would complete via QueueEvents
 		void executePromise.catch(() => {}); // Suppress unhandled rejection
 	});
+
+	it('owns non-Error Redis close signals without turning teardown into an uncaught failure', async () => {
+		const closeErrorHandlers: Array<(error: unknown) => void> = [];
+		const connection = {
+			_client: {
+				on: mock((event: string, handler: (error: unknown) => void) => {
+					if (event === 'error') closeErrorHandlers.push(handler);
+				})
+			}
+		};
+		const provider = new BullMQWorkflowProvider({
+			connection: { host: 'localhost', port: 6379 },
+			queuePrefix: 'test-non-error-close',
+			FlowProducerClass: createMockFlowProducerClass({
+				add: mock(() => Promise.resolve({ job: { id: 'flow-close' } })),
+				close: mock(() => Promise.resolve())
+			}) as any,
+			WorkerClass: createMockWorkerClass({
+				on: mock(() => ({})),
+				connection,
+				blockingConnection: connection,
+				close: mock(async () => {
+					for (const handler of closeErrorHandlers) handler(undefined);
+				})
+			}) as any
+		});
+		provider.registerDefinitionConsumer('CloseSignalWorkflow', async () => {}, [], {});
+		await provider.start();
+
+		await expect(provider.stop()).resolves.toBeUndefined();
+		expect(closeErrorHandlers.length).toBeGreaterThan(0);
+	});
 });
 
 describe('createBullMQWorkflowProvider', () => {
@@ -1360,16 +1393,18 @@ describe('rollback error logging', () => {
 		});
 
 		// Step handlers: step-one succeeds with rollback, step-two fails
+		const primaryError = new Error('Step execution failed');
+		const rollbackError = new Error('Rollback failed intentionally');
 		const stepHandlers = {
 			'step-one': {
 				execute: async () => ({ done: true }),
 				rollback: async () => {
-					throw new Error('Rollback failed intentionally');
+					throw rollbackError;
 				}
 			},
 			'step-two': {
 				execute: async () => {
-					throw new Error('Step execution failed');
+					throw primaryError;
 				}
 			}
 		};
@@ -1409,7 +1444,11 @@ describe('rollback error logging', () => {
 		};
 
 		// Execute - will throw step execution error after rollback attempt
-		await expect(capturedStepProcessor!(mockJob)).rejects.toThrow('Step execution failed');
+		const failure = await capturedStepProcessor!(mockJob).catch((error: Error) => error);
+		expect(failure).toBeInstanceOf(WorkflowRollbackError);
+		expect((failure as WorkflowRollbackError).primaryError).toBeInstanceOf(WorkflowStepError);
+		expect(((failure as WorkflowRollbackError).primaryError as WorkflowStepError).cause).toBe(primaryError);
+		expect((failure as WorkflowRollbackError).rollbackErrors).toEqual([rollbackError]);
 
 		// Find the rollback error log
 		const rollbackErrorLog = errorLogCalls.find((call) => call.message === 'Rollback failed');
@@ -1443,23 +1482,35 @@ describe('step execution timeout', () => {
 			close: mock(() => Promise.resolve())
 		};
 
-		// Configure provider with short step timeout (100ms)
+		// Configure provider with the minimum timeout; synchronization is signal-driven.
 		const provider = new BullMQWorkflowProvider({
 			connection: { host: 'localhost', port: 6379 },
 			queuePrefix: 'test-step-timeout',
-			stepTimeout: 100, // 100ms step timeout
+			stepTimeout: 1,
 			FlowProducerClass: createMockFlowProducerClass(mockFlowProducer) as any,
 			WorkerClass: createCapturingWorkerClass((processor) => {
 				capturedStepProcessor = processor;
 			}) as any
 		});
 
-		// Step handler that takes longer than the timeout
+		let resolveAborted!: () => void;
+		const aborted = new Promise<void>((resolve) => (resolveAborted = resolve));
+		let releaseSettlement!: () => void;
+		const settlement = new Promise<void>((resolve) => (releaseSettlement = resolve));
+		const effects: string[] = [];
+		const rollbackEffects: string[] = [];
 		const slowStepHandlers = {
+			'completed-step': {
+				execute: async () => ({ completed: true }),
+				rollback: async () => {
+					rollbackEffects.push('rolled-back');
+				}
+			},
 			'slow-step': {
-				execute: async () => {
-					// Simulate a step that takes too long (500ms > 100ms timeout)
-					await new Promise((resolve) => globalThis.setTimeout(resolve, 500));
+				execute: async (ctx: { signal: AbortSignal }) => {
+					ctx.signal.addEventListener('abort', resolveAborted, { once: true });
+					await settlement;
+					if (!ctx.signal.aborted) effects.push('late-effect');
 					return { completed: true };
 				}
 			}
@@ -1468,7 +1519,7 @@ describe('step execution timeout', () => {
 		const stepGroups = [
 			{
 				type: 'sequential' as const,
-				definitions: [{ name: 'slow-step' }]
+				definitions: [{ name: 'completed-step' }, { name: 'slow-step' }]
 			}
 		];
 
@@ -1486,11 +1537,25 @@ describe('step execution timeout', () => {
 				workflowData: { test: true },
 				meta: {}
 			},
-			getChildrenValues: mock(() => Promise.resolve({}))
+			getChildrenValues: mock(() =>
+				Promise.resolve({
+					'completed-job': {
+						__version: '1',
+						__stepName: 'completed-step',
+						__stepResult: { completed: true },
+						__priorResults: {}
+					}
+				})
+			)
 		};
 
-		// Step should timeout and throw an error
-		await expect(capturedStepProcessor!(mockJob)).rejects.toThrow(/timed out/i);
+		const processing = capturedStepProcessor!(mockJob);
+		await aborted;
+		expect(rollbackEffects).toEqual([]);
+		releaseSettlement();
+		await expect(processing).rejects.toThrow(/timed out/i);
+		expect(effects).toEqual([]);
+		expect(rollbackEffects).toEqual(['rolled-back']);
 
 		await provider.stop();
 	});

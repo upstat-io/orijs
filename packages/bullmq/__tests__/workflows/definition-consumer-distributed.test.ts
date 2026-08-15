@@ -27,7 +27,8 @@ import { BullMQWorkflowProvider } from '../../src/workflows/bullmq-workflow-prov
 import { Type } from '@orijs/validation';
 import type { WorkflowDefinition } from '@orijs/core';
 import type { PropagationMeta } from '@orijs/logging';
-import type { WorkflowContext } from '@orijs/workflows';
+import { WorkflowRollbackError, WorkflowStepError, type WorkflowContext } from '@orijs/workflows';
+import { FlowProducer } from 'bullmq';
 
 /**
  * Test timeout constants
@@ -101,13 +102,18 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 		// Create EMITTER provider (no consumers registered)
 		emitterProvider = new BullMQWorkflowProvider({
 			connection,
-			queuePrefix
+			queuePrefix,
+			workflowOptions: { 'remote-rollback-failure': { attempts: 1 } }
 		});
 
 		// Create CONSUMER provider (will register consumers)
 		consumerProvider = new BullMQWorkflowProvider({
 			connection,
-			queuePrefix
+			queuePrefix,
+			workflowOptions: {
+				'counter-workflow': { concurrency: 3 },
+				'remote-rollback-failure': { attempts: 1 }
+			}
 		});
 	});
 
@@ -117,6 +123,46 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 	});
 
 	describe('Basic Handler Flow (Current Implementation)', () => {
+		it('should reconstruct structured rollback failure for a remote emitter', async () => {
+			const primary = new Error('remote primary');
+			const rollback = new Error('remote rollback');
+			const stepGroups = [
+				{ type: 'sequential' as const, definitions: [{ name: 'first' }] },
+				{ type: 'sequential' as const, definitions: [{ name: 'second' }] }
+			];
+			const definition = {
+				...createWorkflowDefinition<{ value: number }, void>(
+					'remote-rollback-failure',
+					Type.Object({ value: Type.Number() }),
+					Type.Void()
+				),
+				stepGroups
+			};
+
+			consumerProvider.registerDefinitionConsumer(
+				definition.name,
+				async () => {},
+				stepGroups,
+				{
+					first: { execute: async () => 'done', rollback: async () => Promise.reject(rollback) },
+					second: { execute: async () => Promise.reject(primary) }
+				}
+			);
+			emitterProvider.registerEmitterWorkflow(definition.name);
+			await consumerProvider.start();
+			await emitterProvider.start();
+
+			const handle = await emitterProvider.execute(definition, { value: 1 });
+			const failure = await withTimeout(handle.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION).catch(
+				(error: Error) => error
+			);
+			expect(failure).toBeInstanceOf(WorkflowRollbackError);
+			const structured = failure as WorkflowRollbackError;
+			expect(structured.primaryError).toBeInstanceOf(WorkflowStepError);
+			expect((structured.primaryError as WorkflowStepError).stepName).toBe('second');
+			expect(structured.primaryError.message).toContain('remote primary');
+			expect(structured.rollbackErrors.map((error) => error.message)).toEqual(['remote rollback']);
+		});
 		/**
 		 * These tests verify the CURRENT implementation where only the handler
 		 * callback is invoked. Steps configured via configure() are NOT executed.
@@ -259,8 +305,7 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 				},
 				[], // No steps (handler-only)
 				undefined, // No step handlers
-				undefined, // No onError
-				{ concurrency: 3 } // Allow concurrent processing
+				undefined // No onError
 			);
 
 			emitterProvider.registerEmitterWorkflow('counter-workflow');
@@ -289,17 +334,6 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 		});
 
 		it('should use idempotency key to prevent duplicate execution', async () => {
-			/**
-			 * KNOWN LIMITATION: The current definition-based workflow idempotency implementation
-			 * has a bug where the second submission with the same idempotencyKey creates a
-			 * new pendingResults entry that never gets resolved (BullMQ silently deduplicates).
-			 *
-			 * This test verifies that:
-			 * 1. The first execution works correctly
-			 * 2. The second execution is deduplicated (handler only called once)
-			 *
-			 * The fix would be to check for existing jobs before adding pendingResults.
-			 */
 			const IdempotentWorkflow = createWorkflowDefinition<{ value: number }, { computed: number }>(
 				'idempotent-workflow',
 				Type.Object({ value: Type.Number() }),
@@ -313,39 +347,54 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 				return { computed: (data as { value: number }).value };
 			});
 
-			emitterProvider.registerEmitterWorkflow('idempotent-workflow');
+			let arrivals = 0;
+			let releaseAdds!: () => void;
+			const bothAdding = new Promise<void>((resolve) => (releaseAdds = resolve));
+			class BarrierFlowProducer extends FlowProducer {
+				public constructor(options: ConstructorParameters<typeof FlowProducer>[0]) {
+					super(options);
+				}
+				public override async add(flow: Parameters<FlowProducer['add']>[0]): ReturnType<FlowProducer['add']> {
+					arrivals++;
+					if (arrivals === 2) releaseAdds();
+					await bothAdding;
+					return super.add(flow);
+				}
+			}
+			const firstEmitter = new BullMQWorkflowProvider({
+				connection: getRedisConnectionOptions(),
+				queuePrefix,
+				FlowProducerClass: BarrierFlowProducer as any
+			});
+			const secondEmitter = new BullMQWorkflowProvider({
+				connection: getRedisConnectionOptions(),
+				queuePrefix,
+				FlowProducerClass: BarrierFlowProducer as any
+			});
+			firstEmitter.registerEmitterWorkflow('idempotent-workflow');
+			secondEmitter.registerEmitterWorkflow('idempotent-workflow');
 
 			await consumerProvider.start();
-			await emitterProvider.start();
-			await new Promise((r) => setTimeout(r, TEST_TIMEOUTS.WORKER_STARTUP));
+			await firstEmitter.start();
+			await secondEmitter.start();
 
 			// Execute with same idempotency key twice
 			const idempotencyKey = `idem-${Date.now()}`;
 
-			const handle1 = await emitterProvider.execute(
-				IdempotentWorkflow as any,
-				{ value: 100 },
-				{ idempotencyKey }
-			);
-
-			const result1 = await withTimeout(handle1.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION);
-			expect(result1).toEqual({ computed: 100 });
-
-			// Second execution with same key - BullMQ deduplicates
-			await emitterProvider.execute(
-				IdempotentWorkflow as any,
-				{ value: 200 }, // Different data
-				{ idempotencyKey } // Same key
-			);
-
-			// Wait a bit for any potential duplicate execution
-			await new Promise((r) => setTimeout(r, 200));
-
-			// Should only have executed once (deduplication worked)
+			const [handle1, handle2] = await Promise.all([
+				firstEmitter.execute(IdempotentWorkflow as any, { value: 100 }, { idempotencyKey }),
+				secondEmitter.execute(IdempotentWorkflow as any, { value: 200 }, { idempotencyKey })
+			]);
+			const [result1, result2] = await Promise.all([
+				withTimeout(handle1.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION),
+				withTimeout(handle2.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION)
+			]);
+			expect(result1).toEqual(result2);
+			expect(handle2.id).toBe(handle1.id);
 			expect(executionCount).toBe(1);
-
-			// Note: Getting result from handle2 would timeout because the duplicate
-			// pendingResults entry never gets resolved. This is a known limitation.
+			expect(arrivals).toBe(2);
+			await firstEmitter.stop();
+			await secondEmitter.stop();
 		});
 	});
 
@@ -488,8 +537,7 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			expect(stepExecutionLog).toContainEqual(expect.objectContaining({ step: 'onComplete' }));
 		});
 
-		// SKIPPED: Waiting for implementation of rollback flow creation (task 4.2.17)
-		it.skip('should execute step rollbacks on failure through BullMQ', async () => {
+		it('should execute step rollbacks on failure through BullMQ', async () => {
 			/**
 			 * Tests that when a step fails, rollback handlers for completed steps are executed.
 			 *
@@ -671,16 +719,7 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			expect(timeDiff).toBeLessThan(200); // Both started within 200ms of each other
 		});
 
-		/**
-		 * SKIPPED: Distributed emitter/consumer step execution
-		 *
-		 * In distributed deployments, the emitter needs step structure to create child jobs.
-		 * The step structure should be shared via WorkflowDefinition.steps().
-		 *
-		 * This test documents the expected behavior when both emitter and consumer
-		 * have access to the same step structure.
-		 */
-		it.skip('should pass step results to onComplete in distributed emitter/consumer setup', async () => {
+		it('should pass step results to onComplete in distributed emitter/consumer setup', async () => {
 			/**
 			 * Tests distributed step execution where:
 			 * - Emitter knows step structure (from WorkflowDefinition)
@@ -688,12 +727,6 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			 *
 			 * This requires both providers to have step structure registered.
 			 */
-
-			const DistributedStepWorkflow = createWorkflowDefinition<{ userId: string }, { processedAt: number }>(
-				'distributed-step-workflow',
-				Type.Object({ userId: Type.String() }),
-				Type.Object({ processedAt: Type.Number() })
-			);
 
 			const connection = getRedisConnectionOptions();
 			const prefix = `dist-step-${testFileId}-${++testCounter}`;
@@ -715,6 +748,14 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 				{ type: 'sequential' as const, definitions: [{ name: 'validate' }] },
 				{ type: 'sequential' as const, definitions: [{ name: 'process' }] }
 			];
+			const DistributedStepWorkflow = {
+				...createWorkflowDefinition<{ userId: string }, { processedAt: number }>(
+					'distributed-step-workflow',
+					Type.Object({ userId: Type.String() }),
+					Type.Object({ processedAt: Type.Number() })
+				),
+				stepGroups
+			};
 
 			// Define step HANDLERS (consumer-only)
 			const stepHandlers = {
@@ -773,14 +814,7 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			expect((result as { processedAt: number }).processedAt).toBeGreaterThan(0);
 		});
 
-		it.skip('should distribute step execution across multiple consumer instances', async () => {
-			/**
-			 * SKIPPED: This test documents distributed step execution.
-			 *
-			 * Current behavior: All work happens in one handler call.
-			 * Expected behavior: Steps are distributed via BullMQ to multiple consumers.
-			 */
-
+		it('should distribute step execution across multiple consumer instances', async () => {
 			const DistributedWorkflow = createWorkflowDefinition<{ items: number[] }, { processed: number }>(
 				'distributed-workflow',
 				Type.Object({ items: Type.Array(Type.Number()) }),
@@ -812,11 +846,11 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			await new Promise((r) => setTimeout(r, TEST_TIMEOUTS.WORKER_STARTUP));
 
 			// Execute multiple workflows
-			const handles = await Promise.all([
-				emitterProvider.execute(DistributedWorkflow as any, { items: [1, 2, 3] }),
-				emitterProvider.execute(DistributedWorkflow as any, { items: [4, 5, 6] }),
-				emitterProvider.execute(DistributedWorkflow as any, { items: [7, 8, 9] })
-			]);
+			const handles = await Promise.all(
+				Array.from({ length: 12 }, (_, index) =>
+					emitterProvider.execute(DistributedWorkflow as any, { items: [index] })
+				)
+			);
 
 			await Promise.all(handles.map((h) => withTimeout(h.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION)));
 
@@ -824,9 +858,9 @@ describe('Definition-Based Consumer Distributed Workflow (E2E)', () => {
 			const consumer1Work = stepExecutionLog.filter((e) => e.instance === 'consumer1');
 			const consumer2Work = stepExecutionLog.filter((e) => e.instance === 'consumer2');
 
-			// In a distributed system, work should spread across consumers
-			// (exact distribution depends on BullMQ scheduling)
-			expect(consumer1Work.length + consumer2Work.length).toBe(3);
+			expect(consumer1Work.length).toBeGreaterThan(0);
+			expect(consumer2Work.length).toBeGreaterThan(0);
+			expect(consumer1Work.length + consumer2Work.length).toBe(12);
 
 			await consumer2Provider.stop();
 		});

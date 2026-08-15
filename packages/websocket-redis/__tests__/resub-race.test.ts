@@ -30,7 +30,8 @@ describe('RedisWsProvider resub race conditions', () => {
 	function createTrackedProvider(): RedisWsProvider {
 		const config = redisHelper.getConnectionConfig();
 		const provider = new RedisWsProvider({
-			connection: { host: config.host, port: config.port }
+			connection: { host: config.host, port: config.port, db: config.db },
+			keyPrefix: `${config.namespace}:ws`
 		});
 		allProviders.push(provider);
 		return provider;

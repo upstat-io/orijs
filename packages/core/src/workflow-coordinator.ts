@@ -5,6 +5,7 @@ import {
 	type WorkflowExecutor,
 	type FlowHandle,
 	type FlowStatus,
+	type WorkflowExecuteOptions,
 	type StepGroup as WorkflowsStepGroup
 } from '@orijs/workflows';
 import { capturePropagationMeta, Logger } from '@orijs/logging';
@@ -329,7 +330,8 @@ export class WorkflowCoordinator {
 		return {
 			async execute<TData, TResult>(
 				workflow: WorkflowDefinition<TData, TResult>,
-				data: TData
+				data: TData,
+				options?: WorkflowExecuteOptions
 			): Promise<FlowHandle<TResult>> {
 				if (!isWorkflowDefinition(workflow)) {
 					throw new Error('Expected WorkflowDefinition. Class-based workflows are no longer supported.');
@@ -337,6 +339,14 @@ export class WorkflowCoordinator {
 
 				const workflowName = workflow.name;
 				const registered = coordinator.getConsumer(workflowName);
+				if (registered && provider && options?.id) {
+					if (!Value.Check(workflow.dataSchema, data)) {
+						const errors = [...Value.Errors(workflow.dataSchema, data)];
+						const errorDetails = errors.map((e) => `${e.path}: ${e.message}`).join(', ');
+						throw new Error(`Workflow "${workflowName}" data validation failed: ${errorDetails}`);
+					}
+					return provider.execute(workflow, data, options);
+				}
 
 				// If no consumer registered, delegate to provider (emitter-only mode)
 				if (!registered) {
@@ -354,7 +364,7 @@ export class WorkflowCoordinator {
 						throw new Error(`Workflow "${workflowName}" data validation failed: ${errorDetails}`);
 					}
 					// Delegate to provider - emitter-only, workflow will be consumed elsewhere
-					return provider.execute(workflow, data);
+					return provider.execute(workflow, data, options);
 				}
 
 				const { definition, consumer } = registered;
@@ -367,7 +377,7 @@ export class WorkflowCoordinator {
 				}
 
 				// Generate workflow ID
-				const flowId = `wf-${crypto.randomUUID()}`;
+				const flowId = options?.id ?? `wf-${crypto.randomUUID()}`;
 
 				// Get propagation metadata from AsyncLocalStorage context
 				// This captures correlationId from the current request context (if within one)

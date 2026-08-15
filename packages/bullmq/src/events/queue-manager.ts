@@ -43,6 +43,8 @@ export type JobHandler<TResult = unknown> = (job: Job) => Promise<TResult>;
  */
 interface IRedisClient {
 	on(event: string, handler: (...args: unknown[]) => void): this;
+	exists(...keys: string[]): Promise<number>;
+	eval(script: string, numberOfKeys: number, ...args: string[]): Promise<unknown>;
 }
 
 /**
@@ -56,7 +58,7 @@ interface IRedisConnection {
  * Interface for queue operations (for testing).
  */
 export interface IQueueLike {
-	add(name: string, data: unknown, opts?: JobsOptions): Promise<{ id: string }>;
+	add(name: string, data: unknown, opts?: JobsOptions): Promise<EventJobReference>;
 	on(event: string, callback: (...args: unknown[]) => void): void;
 	close(): Promise<void>;
 	/** Main ioredis connection - exposed for adding error handlers that persist through close() */
@@ -64,7 +66,19 @@ export interface IQueueLike {
 	/** Clean jobs by grace period and status. Optional — not all queue implementations support this. */
 	clean?(grace: number, limit: number, type: string): Promise<string[]>;
 	/** Get a job by its ID. Optional — not all queue implementations support this. */
-	getJob?(jobId: string): Promise<{ remove(): Promise<void> } | undefined>;
+	getJob?(
+		jobId: string
+	): Promise<
+		| (EventJobReference & { remove(): Promise<void>; getState(): Promise<string> })
+		| undefined
+	>;
+}
+
+export interface EventJobReference {
+	readonly id: string;
+	readonly returnvalue?: unknown;
+	readonly failedReason?: string;
+	getState?(): Promise<string>;
 }
 
 /**
@@ -190,15 +204,32 @@ export interface IQueueManager {
 	/** Get or create a queue for an event type */
 	getQueue(eventName: string): IQueueLike;
 	/** Add a job to an event queue */
-	addJob<TData = unknown>(eventName: string, data: TData, options?: JobsOptions): Promise<{ id: string }>;
+	addJob<TData = unknown>(
+		eventName: string,
+		data: TData,
+		options?: JobsOptions
+	): Promise<EventJobReference>;
+	/** Reload a job so retained terminal state includes its durable result. */
+	getJob?(eventName: string, jobId: string): Promise<EventJobReference | undefined>;
 	/** Register a worker for an event type */
-	registerWorker<TResult = unknown>(eventName: string, handler: JobHandler<TResult>): Promise<void>;
+	registerWorker<TResult = unknown>(
+		eventName: string,
+		handler: JobHandler<TResult>,
+		onCompleted?: (jobId: string, result: TResult) => void
+	): Promise<void>;
 	/** Stop all queues and workers */
 	stop(): Promise<void>;
 	/** Clean jobs from a queue by grace period and status type. Returns cleaned job IDs. */
 	cleanJobs(eventName: string, graceMs: number, limit: number, type: string): Promise<string[]>;
 	/** Remove a specific job by its ID. Returns true if the job was found and removed. */
 	removeJob(eventName: string, jobId: string): Promise<boolean>;
+	hasCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<boolean>;
+	hasSuccessfulCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<boolean>;
+	recordCompletionReceipt?(eventName: string, idempotencyKey: string): Promise<void>;
+	prepareCompletionReceiptRetirement?(eventName: string, idempotencyKey: string): Promise<void>;
+	finalizeCompletionReceiptRetirement?(eventName: string, idempotencyKey: string): Promise<void>;
+	hasJob?(eventName: string, jobId: string): Promise<boolean>;
+	isJobRetryable?(eventName: string, jobId: string): Promise<boolean>;
 }
 
 /**
@@ -281,6 +312,63 @@ export class QueueManager implements IQueueManager {
 		return `${this.queuePrefix}.${eventName}`;
 	}
 
+	private getReceiptKeys(eventName: string, idempotencyKey: string): [string, string] {
+		const digest = Buffer.from(idempotencyKey).toString('base64url');
+		const prefix = `${this.getQueueName(eventName)}:receipt:${digest}`;
+		return [prefix, `${prefix}:retired`];
+	}
+
+	public async hasCompletionReceipt(eventName: string, idempotencyKey: string): Promise<boolean> {
+		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
+		return (await this.getQueue(eventName).connection._client.exists(receiptKey, retiredKey)) > 0;
+	}
+
+	public async hasSuccessfulCompletionReceipt(eventName: string, idempotencyKey: string): Promise<boolean> {
+		const [receiptKey] = this.getReceiptKeys(eventName, idempotencyKey);
+		return (await this.getQueue(eventName).connection._client.exists(receiptKey)) > 0;
+	}
+
+	public async hasJob(eventName: string, jobId: string): Promise<boolean> {
+		return (await this.getQueue(eventName).getJob?.(jobId)) != null;
+	}
+
+	public async isJobRetryable(eventName: string, jobId: string): Promise<boolean> {
+		const job = await this.getQueue(eventName).getJob?.(jobId);
+		if (!job) return false;
+		const state = await job.getState();
+		return state !== 'failed' && state !== 'completed';
+	}
+
+	public async recordCompletionReceipt(eventName: string, idempotencyKey: string): Promise<void> {
+		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
+		await this.getQueue(eventName).connection._client.eval(
+			"if redis.call('GET', KEYS[2]) == '2' then redis.call('DEL', KEYS[2]); return 0 end; redis.call('SET', KEYS[1], '1'); return 1",
+			2,
+			receiptKey,
+			retiredKey
+		);
+	}
+
+	public async prepareCompletionReceiptRetirement(eventName: string, idempotencyKey: string): Promise<void> {
+		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
+		await this.getQueue(eventName).connection._client.eval(
+			"redis.call('SET', KEYS[2], '1'); return redis.call('EXISTS', KEYS[1])",
+			2,
+			receiptKey,
+			retiredKey
+		);
+	}
+
+	public async finalizeCompletionReceiptRetirement(eventName: string, idempotencyKey: string): Promise<void> {
+		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, idempotencyKey);
+		await this.getQueue(eventName).connection._client.eval(
+			"local state = redis.call('GET', KEYS[2]); if not state then return 0 end; if redis.call('DEL', KEYS[1]) == 1 then redis.call('DEL', KEYS[2]); return 0 end; if state == '1' then redis.call('SET', KEYS[2], '2') end; return 1",
+			2,
+			receiptKey,
+			retiredKey
+		);
+	}
+
 	/**
 	 * Gets or creates a queue for an event type.
 	 *
@@ -321,7 +409,7 @@ export class QueueManager implements IQueueManager {
 		eventName: string,
 		data: TData,
 		options?: JobsOptions
-	): Promise<{ id: string }> {
+	): Promise<EventJobReference> {
 		const queue = this.getQueue(eventName);
 
 		// Merge options: defaultRetry (base) -> defaultJobOptions -> caller options (highest precedence)
@@ -340,7 +428,11 @@ export class QueueManager implements IQueueManager {
 		// Call metrics hook if configured
 		this.metrics?.onJobAdded?.(eventName, job.id);
 
-		return { id: job.id };
+		return job;
+	}
+
+	public async getJob(eventName: string, jobId: string): Promise<EventJobReference | undefined> {
+		return this.getQueue(eventName).getJob?.(jobId);
 	}
 
 	/**
@@ -354,7 +446,8 @@ export class QueueManager implements IQueueManager {
 	 */
 	public async registerWorker<TResult = unknown>(
 		eventName: string,
-		handler: JobHandler<TResult>
+		handler: JobHandler<TResult>,
+		onCompleted?: (jobId: string, result: TResult) => void
 	): Promise<void> {
 		const queueName = this.getQueueName(eventName);
 
@@ -379,17 +472,20 @@ export class QueueManager implements IQueueManager {
 			this.logger?.error('Worker error', { eventName, error: message });
 		});
 
-		// Add metrics event listeners if configured
-		if (this.metrics) {
+		if (this.metrics || onCompleted) {
 			worker.on('completed', (...args: unknown[]) => {
 				const arg = args[0] as { id?: string };
+				const result = args[1] as TResult;
 				const jobId = arg?.id ?? 'unknown';
 				const startTime = jobStartTimes.get(jobId);
 				const duration = startTime ? Date.now() - startTime : 0;
 				jobStartTimes.delete(jobId);
 				this.metrics?.onJobCompleted?.(eventName, jobId, duration);
+				onCompleted?.(jobId, result);
 			});
+		}
 
+		if (this.metrics) {
 			worker.on('failed', (...args: unknown[]) => {
 				const arg = args[0] as { id?: string };
 				const err = args[1] as Error | undefined;
@@ -451,14 +547,25 @@ export class QueueManager implements IQueueManager {
 	 */
 	public async removeJob(eventName: string, jobId: string): Promise<boolean> {
 		const queue = this.getQueue(eventName);
+		const [receiptKey, retiredKey] = this.getReceiptKeys(eventName, jobId);
+		const discardReceiptState = () =>
+			queue.connection._client.eval(
+				"return redis.call('DEL', KEYS[1], KEYS[2])",
+				2,
+				receiptKey,
+				retiredKey
+			);
 		if (!queue.getJob) {
+			await discardReceiptState();
 			return false;
 		}
 		const job = await queue.getJob(jobId);
 		if (!job) {
+			await discardReceiptState();
 			return false;
 		}
 		await job.remove();
+		await discardReceiptState();
 		return true;
 	}
 

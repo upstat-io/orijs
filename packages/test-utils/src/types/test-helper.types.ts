@@ -33,7 +33,7 @@ export interface RedisTestHelper {
 	 * Sets SECRET_REDIS_HOST and SECRET_REDIS_PORT
 	 * Matches Postgres setupNestJSEnvironment() pattern
 	 */
-	setupNestJSEnvironment(): { host: string; port: number };
+	setupNestJSEnvironment(): { host: string; port: number; db: number };
 
 	/**
 	 * Flush all Redis data

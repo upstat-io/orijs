@@ -431,3 +431,55 @@ export class WorkflowStepError extends Error {
 		}
 	}
 }
+
+/** Preserves the primary workflow failure and every rollback failure by identity. */
+export class WorkflowRollbackError extends AggregateError {
+	public readonly primaryError: Error;
+	public readonly rollbackErrors: readonly Error[];
+
+	public constructor(primaryError: Error, rollbackErrors: readonly Error[]) {
+		super([primaryError, ...rollbackErrors], encodeWorkflowFailure(primaryError, rollbackErrors), {
+			cause: primaryError
+		});
+		this.name = 'WorkflowRollbackError';
+		this.primaryError = primaryError;
+		this.rollbackErrors = rollbackErrors;
+	}
+}
+
+const WORKFLOW_FAILURE_PREFIX = 'ORIJSError:';
+
+function errorRecord(error: Error): { name: string; message: string; stepName?: string } {
+	return {
+		name: error.name,
+		message: error.message,
+		...(error instanceof WorkflowStepError && { stepName: error.stepName })
+	};
+}
+
+function encodeWorkflowFailure(primaryError: Error, rollbackErrors: readonly Error[]): string {
+	return `${WORKFLOW_FAILURE_PREFIX}${JSON.stringify({
+		primary: errorRecord(primaryError),
+		rollbacks: rollbackErrors.map(errorRecord)
+	})}`;
+}
+
+/** Reconstructs structured workflow failure details received through a queue transport. */
+export function decodeWorkflowFailure(failedReason: string): Error {
+	if (!failedReason.startsWith(WORKFLOW_FAILURE_PREFIX)) return new Error(failedReason);
+	try {
+		const value = JSON.parse(failedReason.slice(WORKFLOW_FAILURE_PREFIX.length)) as {
+			primary: { name: string; message: string; stepName?: string };
+			rollbacks: Array<{ name: string; message: string }>;
+		};
+		const original = new Error(value.primary.message);
+		original.name = value.primary.name;
+		const primary = value.primary.stepName
+			? new WorkflowStepError(value.primary.stepName, original)
+			: original;
+		const rollbacks = value.rollbacks.map((item) => Object.assign(new Error(item.message), { name: item.name }));
+		return new WorkflowRollbackError(primary, rollbacks);
+	} catch {
+		return new Error(failedReason);
+	}
+}

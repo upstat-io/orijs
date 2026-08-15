@@ -47,11 +47,13 @@ const redisHelper = createRedisTestHelper(PACKAGE_NAME);
  * Get Redis connection options for BullMQ.
  * Throws if container not started.
  */
-export function getRedisConnectionOptions(): { host: string; port: number } {
+export function getRedisConnectionOptions(): { host: string; port: number; db: number } {
 	if (!redisHelper.isReady()) {
 		throw new Error('Redis container not started. Run preload first.');
 	}
-	return redisHelper.getConnectionConfig();
+	const config = redisHelper.getConnectionConfig();
+	if (config.db === undefined) throw new Error('Redis test database lease is unavailable');
+	return { host: config.host, port: config.port, db: config.db };
 }
 
 /**

@@ -179,6 +179,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	private _corsConfig: CorsConfig | null = null;
 	// Pre-computed static CORS headers (computed once at startup)
 	private _staticCorsHeaders: Record<string, string> | null = null;
+	private _securityHeaders: Record<string, string> | null = null;
 
 	constructor(options?: ApplicationOptions) {
 		// Logger must be created first so all components can use it
@@ -245,6 +246,26 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 */
 	public cors(config: CorsConfig): this {
 		this._corsConfig = config;
+		return this;
+	}
+
+	/**
+	 * Configures response headers stamped onto every matched-route response.
+	 *
+	 * Interceptors cannot carry security headers on their own: guards run before
+	 * the interceptor chain, so a guard rejection (401/403/429) returns without
+	 * ever reaching an interceptor and ships bare. These headers join the same
+	 * pre-computed static map CORS uses, which every matched route emits
+	 * regardless of whether a guard short-circuited the request.
+	 *
+	 * A handler or interceptor may still override any individual header on its
+	 * own response — useful when one route serves a document that needs a
+	 * different Content-Security-Policy than the API default.
+	 *
+	 * @param headers - Header name/value pairs to apply to every response
+	 */
+	public securityHeaders(headers: Record<string, string>): this {
+		this._securityHeaders = { ...headers };
 		return this;
 	}
 
@@ -993,8 +1014,10 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 		await this.startSystems();
 		this.logSummary(startTime);
 
-		// Pre-compute static CORS headers before route generation
-		if (this._corsConfig) {
+		// Pre-compute the static response-header map before route generation.
+		// Built when either CORS or security headers are configured, so a service
+		// that sets only security headers still gets them on every response.
+		if (this._corsConfig || this._securityHeaders) {
 			this._staticCorsHeaders = this.buildStaticCorsHeaders();
 		}
 
@@ -1069,9 +1092,12 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 * Called during listen() after config is set.
 	 */
 	private buildStaticCorsHeaders(): Record<string, string> {
-		if (!this._corsConfig) return {};
+		// Security headers apply whether or not CORS is configured — a service with
+		// no browser origin allowlist still answers browsers.
+		if (!this._corsConfig) return { ...(this._securityHeaders ?? {}) };
 
 		const headers: Record<string, string> = {
+			...(this._securityHeaders ?? {}),
 			'Access-Control-Allow-Methods': (
 				this._corsConfig.methods ?? ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 			).join(', '),
@@ -1103,7 +1129,10 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 	 * Uses pre-computed static headers, only computing origin dynamically for array origins.
 	 */
 	private getCorsHeadersForRequest(request: Request): Record<string, string> {
-		if (!this._staticCorsHeaders || !this._corsConfig) return {};
+		if (!this._staticCorsHeaders) return {};
+
+		// Security-headers-only configuration: the map carries no origin to resolve.
+		if (!this._corsConfig) return this._staticCorsHeaders;
 
 		// If origin is not an array, static headers already include it
 		if (!Array.isArray(this._corsConfig.origin)) {

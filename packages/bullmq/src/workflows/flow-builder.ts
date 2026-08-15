@@ -32,6 +32,11 @@ export interface FlowJobOpts {
 	 * This enables failure cascading up the job hierarchy.
 	 */
 	readonly failParentOnFailure?: boolean;
+	readonly removeOnComplete?: { readonly age: number; readonly count: number };
+	readonly removeOnFail?: { readonly age: number; readonly count: number };
+	readonly attempts?: number;
+	readonly backoff?: { readonly type: string; readonly delay?: number };
+	readonly priority?: number;
 }
 
 /**
@@ -55,6 +60,11 @@ export interface FlowJobDefinition {
 
 /** Current job data schema version */
 export const JOB_DATA_VERSION = '1';
+const BOUNDED_COMPLETED_JOBS = {
+	age: 7 * 24 * 60 * 60,
+	count: 10_000
+} as const;
+const BOUNDED_FAILED_JOBS = { age: 30 * 24 * 60 * 60, count: 10_000 } as const;
 
 /**
  * Data payload for workflow parent job.
@@ -112,6 +122,8 @@ export interface StepJobRetryOpts {
 		readonly type: string;
 		readonly delay?: number;
 	};
+	/** BullMQ priority applied consistently to the workflow and its step jobs. */
+	readonly priority?: number;
 }
 
 /**
@@ -198,7 +210,14 @@ export class FlowBuilder {
 		// idempotencyKey is provided, use flowId as the jobId. This allows
 		// pendingResults to be registered BEFORE calling flowProducer.add().
 		const jobId = this.idempotencyKey ?? this.flowId;
-		const opts: FlowJobOpts = { jobId };
+		const opts: FlowJobOpts = {
+			jobId,
+			...(this.stepJobOpts?.priority !== undefined && {
+				priority: this.stepJobOpts.priority
+			}),
+			removeOnComplete: BOUNDED_COMPLETED_JOBS,
+			removeOnFail: BOUNDED_FAILED_JOBS
+		};
 
 		// Parent job (workflow itself)
 		const parentJob: FlowJobDefinition = {
@@ -343,10 +362,19 @@ export class FlowBuilder {
 					...(this.meta && { meta: this.meta })
 				},
 				opts: {
+					...(this.stepJobOpts?.priority !== undefined && {
+						priority: this.stepJobOpts.priority
+					}),
 					failParentOnFailure: true,
+					removeOnComplete: BOUNDED_COMPLETED_JOBS,
+					removeOnFail: BOUNDED_FAILED_JOBS,
 					...(parallelJobId && { jobId: parallelJobId }),
-					...(this.stepJobOpts?.attempts !== undefined && { attempts: this.stepJobOpts.attempts }),
-					...(this.stepJobOpts?.backoff && { backoff: this.stepJobOpts.backoff })
+					...(this.stepJobOpts?.attempts !== undefined && {
+						attempts: this.stepJobOpts.attempts
+					}),
+					...(this.stepJobOpts?.backoff && {
+						backoff: this.stepJobOpts.backoff
+					})
 				},
 				...(innerChildren.length > 0 && { children: innerChildren })
 			};
@@ -403,9 +431,16 @@ export class FlowBuilder {
 				...(this.meta && { meta: this.meta })
 			},
 			opts: {
+				...(this.stepJobOpts?.priority !== undefined && {
+					priority: this.stepJobOpts.priority
+				}),
 				failParentOnFailure: true,
+				removeOnComplete: BOUNDED_COMPLETED_JOBS,
+				removeOnFail: BOUNDED_FAILED_JOBS,
 				...(stepJobId && { jobId: stepJobId }),
-				...(this.stepJobOpts?.attempts !== undefined && { attempts: this.stepJobOpts.attempts }),
+				...(this.stepJobOpts?.attempts !== undefined && {
+					attempts: this.stepJobOpts.attempts
+				}),
 				...(this.stepJobOpts?.backoff && { backoff: this.stepJobOpts.backoff })
 			},
 			...(children.length > 0 && { children })

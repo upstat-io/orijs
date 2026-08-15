@@ -180,15 +180,28 @@ export class RedisCacheProvider implements CacheProvider {
 			pipeline.set(key, serialized);
 		}
 
-		// Add cache key to each meta key set
-		// Also set TTL on meta keys to prevent orphaned sets
+		// Add cache key to each meta key set.
+		//
+		// A meta key is shared by every entry written against that entity, and those
+		// entries can carry different TTLs. Its expiry must therefore track the
+		// LONGEST-lived member: a meta key that expires while an entry it tracks is
+		// still alive orphans that entry, because invalidation walks the meta key to
+		// find what to delete. The orphaned value then survives every invalidate
+		// until its own TTL — silently, since invalidation still reports success.
+		//
+		// NX sets the expiry when the key has none yet; GT raises it when the new
+		// value is longer than what is already set. Both are no-ops otherwise, so a
+		// shorter-lived entry can never pull the ceiling down.
 		for (const metaKey of metaKeys) {
 			pipeline.sadd(metaKey, key);
 			if (ttlSeconds > 0) {
-				// Give meta keys slightly longer TTL to outlive cache entries
 				// Meta keys use integer seconds (ceiling + buffer is always >= 1 second)
 				const metaTtlSeconds = Math.ceil(ttlSeconds) + META_KEY_TTL_BUFFER_SECONDS;
-				pipeline.expire(metaKey, metaTtlSeconds);
+				pipeline.expire(metaKey, metaTtlSeconds, 'NX');
+				pipeline.expire(metaKey, metaTtlSeconds, 'GT');
+			} else {
+				// A non-expiring entry must not be tracked by an expiring meta key.
+				pipeline.persist(metaKey);
 			}
 		}
 

@@ -390,6 +390,27 @@ describe('WorkflowCoordinator', () => {
 			await coordinator.stop();
 		});
 
+		it('uses the caller workflow id for registered consumer execution', async () => {
+			const coordinator = new WorkflowCoordinator(logger, container);
+			coordinator.registerWorkflowDefinition(SequentialWorkflow);
+			coordinator.addWorkflowConsumer(SequentialWorkflow, SequentialWorkflowConsumer, []);
+			coordinator.registerConsumers();
+			await coordinator.start();
+
+			const handle = await coordinator
+				.createExecutor()
+				.execute(SequentialWorkflow, { value: 5 }, { id: 'stable-notification-flow' });
+			const duplicate = await coordinator
+				.createExecutor()
+				.execute(SequentialWorkflow, { value: 5 }, { id: 'stable-notification-flow' });
+			await Promise.all([handle.result(), duplicate.result()]);
+
+			expect(handle.id).toBe('stable-notification-flow');
+			expect(duplicate.id).toBe('stable-notification-flow');
+			expect(executionLog.filter((entry) => entry === 'onComplete')).toHaveLength(1);
+			await coordinator.stop();
+		});
+
 		it('should validate workflow data against schema', async () => {
 			const coordinator = new WorkflowCoordinator(logger, container);
 

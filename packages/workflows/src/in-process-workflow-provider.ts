@@ -16,6 +16,7 @@
 
 import {
 	WorkflowStepError,
+	WorkflowRollbackError,
 	type WorkflowProvider,
 	type WorkflowDefinitionLike,
 	type WorkflowExecuteOptions,
@@ -100,6 +101,7 @@ interface FlowState<TResult> {
 	error?: Error;
 	resolve?: (value: TResult) => void;
 	reject?: (error: Error) => void;
+	resultPromise?: Promise<TResult>;
 }
 
 /**
@@ -224,9 +226,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				`Workflow '${workflowName}' not registered. ` + `Call registerDefinitionConsumer() first.`
 			);
 		}
-		// In-process provider honors `timeout` (legacy behavior). `id`/`priority`/
-		// `delay` are no-ops — in-memory execution has no dedup/priority/delay queue.
-		return this.executeDefinitionWorkflow(workflowName, data, options?.timeout);
+		return this.executeDefinitionWorkflow(workflowName, data, options?.timeout, options?.id);
 	}
 
 	/**
@@ -348,9 +348,10 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 	private async runRollbacks<TData>(
 		ctx: StepExecutionContext<TData>,
 		completedStepsWithRollback: Array<{ name: string; rollback: RollbackHandler }>
-	): Promise<void> {
+	): Promise<Error[]> {
 		// Run rollbacks in reverse order (last completed first)
 		const stepsToRollback = [...completedStepsWithRollback].reverse();
+		const failures: Error[] = [];
 
 		for (const step of stepsToRollback) {
 			const rollbackCtx = createWorkflowContext(ctx.flowId, ctx.data, ctx.results, ctx.log, ctx.meta, {
@@ -364,6 +365,8 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				const durationMs = Math.round(performance.now() - startTime);
 				rollbackCtx.log.info('Rollback Completed', { step: step.name, durationMs });
 			} catch (rollbackError) {
+				const error = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+				failures.push(error);
 				const durationMs = Math.round(performance.now() - startTime);
 				// Log error but continue with other rollbacks
 				rollbackCtx.log.error('Rollback Failed', {
@@ -373,6 +376,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				});
 			}
 		}
+		return failures;
 	}
 
 	/**
@@ -401,9 +405,22 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 	private async executeDefinitionWorkflow<TData, TResult>(
 		workflowName: string,
 		data: TData,
-		timeout?: number
+		timeout?: number,
+		requestedFlowId?: string
 	): Promise<FlowHandle<TResult>> {
-		const flowId = generateFlowId();
+		const flowId = requestedFlowId ?? generateFlowId();
+		const existing = this.flowStates.get(flowId) as FlowState<TResult> | undefined;
+		if (existing) {
+			return {
+				id: flowId,
+				status: async () => existing.status,
+				result: async () => {
+					if (existing.error) throw existing.error;
+					if (existing.status === 'completed') return existing.result as TResult;
+					return existing.resultPromise as Promise<TResult>;
+				}
+			};
+		}
 		const flowState: FlowState<TResult> = {
 			id: flowId,
 			status: 'pending'
@@ -415,6 +432,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 			flowState.resolve = resolve;
 			flowState.reject = reject;
 		});
+		flowState.resultPromise = resultPromise;
 
 		// Determine effective timeout (parameter overrides default, 0 disables)
 		const effectiveTimeout = timeout !== undefined ? timeout : this.defaultTimeout;
@@ -510,7 +528,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 				const durationMs = Math.round(performance.now() - workflowStartTime);
 				workflowLog.error('Workflow Failed', {
 					durationMs,
-					step: stepError.stepName,
+					step: stepError instanceof WorkflowStepError ? stepError.stepName : undefined,
 					error: stepError.message
 				});
 
@@ -575,7 +593,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 		ctx: StepExecutionContext<TData>,
 		state: StepExecutionState,
 		stepHandlers: Record<string, { execute: StepHandler; rollback?: RollbackHandler }>
-	): Promise<WorkflowStepError | undefined> {
+	): Promise<Error | undefined> {
 		if (group.type === 'sequential') {
 			return this.executeDefinitionSequentialGroup(group.definitions, ctx, state, stepHandlers);
 		} else {
@@ -591,7 +609,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 		ctx: StepExecutionContext<TData>,
 		state: StepExecutionState,
 		stepHandlers: Record<string, { execute: StepHandler; rollback?: RollbackHandler }>
-	): Promise<WorkflowStepError | undefined> {
+	): Promise<Error | undefined> {
 		for (const stepDef of definitions) {
 			const handler = stepHandlers[stepDef.name];
 			if (!handler) {
@@ -611,8 +629,8 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 			if (stepError) {
 				// Use current results for rollback context
 				const rollbackCtx: StepExecutionContext<TData> = { ...ctx, results: state.results };
-				await this.runRollbacks(rollbackCtx, state.completedStepsWithRollback);
-				return stepError;
+				const rollbackErrors = await this.runRollbacks(rollbackCtx, state.completedStepsWithRollback);
+				return rollbackErrors.length > 0 ? new WorkflowRollbackError(stepError, rollbackErrors) : stepError;
 			}
 
 			if (handler.rollback) {
@@ -633,7 +651,7 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 		ctx: StepExecutionContext<TData>,
 		state: StepExecutionState,
 		stepHandlers: Record<string, { execute: StepHandler; rollback?: RollbackHandler }>
-	): Promise<WorkflowStepError | undefined> {
+	): Promise<Error | undefined> {
 		type StepSuccess = { name: string; result: unknown; durationMs: number; rollback?: RollbackHandler };
 		type StepFailure = { name: string; error: Error; durationMs: number };
 		type StepOutcome = StepSuccess | StepFailure;
@@ -707,8 +725,8 @@ export class InProcessWorkflowProvider implements WorkflowProvider {
 		// If there was a failure, run all rollbacks
 		if (firstError) {
 			const rollbackCtx: StepExecutionContext<TData> = { ...ctx, results: state.results };
-			await this.runRollbacks(rollbackCtx, state.completedStepsWithRollback);
-			return firstError;
+			const rollbackErrors = await this.runRollbacks(rollbackCtx, state.completedStepsWithRollback);
+			return rollbackErrors.length > 0 ? new WorkflowRollbackError(firstError, rollbackErrors) : firstError;
 		}
 
 		return undefined;

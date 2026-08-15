@@ -2,21 +2,39 @@
  * Tests for BullMQWorkflowProvider Options Support
  *
  * Verifies the provider options architecture:
- * - Per-workflow concurrency configuration
- * - Workers created with correct concurrency
- * - Options passed through registerDefinitionConsumer
+ * - Provider-owned policy is shared by emitters and consumers
+ * - Worker and job options preserve Ori transport invariants
  */
 
 import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test';
+import { Workflow } from '@orijs/core';
+import { Type } from '@orijs/validation';
 import {
 	BullMQWorkflowProvider,
-	type BullMQWorkflowProviderOptions,
-	type BullMQWorkflowOptions
+	type BullMQWorkflowOptions,
+	type BullMQWorkflowProviderOptions
 } from '../../src/workflows/index.ts';
+import type { FlowJobDefinition } from '../../src/workflows/flow-builder.ts';
+
+const HighVolumeWorkflow = Workflow.define({
+	name: 'high-volume-workflow',
+	data: Type.Object({ id: Type.String() }),
+	result: Type.Void()
+}).steps((s) => s.sequential(s.step('process', Type.Object({}))));
+const SimpleWorkflow = Workflow.define({
+	name: 'simple-workflow',
+	data: Type.Object({ id: Type.String() }),
+	result: Type.Void()
+});
+const ParallelWorkflow = Workflow.define({
+	name: 'parallel-workflow',
+	data: Type.Object({ id: Type.String() }),
+	result: Type.Void()
+});
 
 // Mock factories
 type MockFlowProducer = {
-	add: Mock<() => Promise<{ job: { id: string } }>>;
+	add: Mock<(flow: FlowJobDefinition) => Promise<{ job: { id: string } }>>;
 	close: Mock<() => Promise<void>>;
 };
 
@@ -28,17 +46,24 @@ type MockWorker = {
 
 type MockQueueEvents = {
 	on: Mock<(event: string, handler: () => void) => void>;
+	waitUntilReady: Mock<() => Promise<void>>;
 	close: Mock<() => Promise<void>>;
 };
 
 // Capture worker options from constructor
-let capturedWorkerOptions: { concurrency?: number }[] = [];
+let capturedWorkerOptions: Record<string, unknown>[] = [];
 
 // Simple step groups for all workflows
 const simpleStepGroups = [
 	{
 		type: 'sequential' as const,
 		definitions: [{ name: 'process' }]
+	}
+];
+const parallelStepGroups = [
+	{
+		type: 'parallel' as const,
+		definitions: [{ name: 'first' }, { name: 'second' }]
 	}
 ];
 
@@ -54,12 +79,15 @@ describe('BullMQWorkflowProvider Options', () => {
 	let mockWorker: MockWorker;
 	let mockQueueEvents: MockQueueEvents;
 	let provider: BullMQWorkflowProvider;
+	let createProvider: (
+		workflowOptions?: Readonly<Record<string, BullMQWorkflowOptions>>
+	) => BullMQWorkflowProvider;
 
 	beforeEach(() => {
 		capturedWorkerOptions = [];
 
 		mockFlowProducer = {
-			add: mock(() => Promise.resolve({ job: { id: 'flow-123' } })),
+			add: mock((_flow: FlowJobDefinition) => Promise.resolve({ job: { id: 'flow-123' } })),
 			close: mock(() => Promise.resolve())
 		};
 
@@ -70,82 +98,65 @@ describe('BullMQWorkflowProvider Options', () => {
 
 		mockQueueEvents = {
 			on: mock(() => {}),
+			waitUntilReady: mock(() => Promise.resolve()),
 			close: mock(() => Promise.resolve())
 		};
 
-		// Create provider with mock factories
-		const options: BullMQWorkflowProviderOptions = {
-			connection: { host: 'localhost', port: 6379 },
-			FlowProducerClass: class {
+		createProvider = (workflowOptions) =>
+			new BullMQWorkflowProvider({
+				connection: { host: 'localhost', port: 6379 },
+				workflowOptions,
+				FlowProducerClass: class {
 				add = mockFlowProducer.add;
 				close = mockFlowProducer.close;
-			} as unknown as BullMQWorkflowProviderOptions['FlowProducerClass'],
-			WorkerClass: class {
+				} as unknown as BullMQWorkflowProviderOptions['FlowProducerClass'],
+				WorkerClass: class {
 				on = mockWorker.on;
 				close = mockWorker.close;
 				concurrency: number;
-				constructor(_queueName: string, _processor: unknown, opts?: { concurrency?: number }) {
-					this.concurrency = opts?.concurrency ?? 1;
-					capturedWorkerOptions.push({ concurrency: this.concurrency });
+				constructor(_queueName: string, _processor: unknown, opts?: Record<string, unknown>) {
+					this.concurrency = typeof opts?.concurrency === 'number' ? opts.concurrency : 1;
+					capturedWorkerOptions.push({
+						...opts,
+						concurrency: this.concurrency
+					});
 				}
-			} as unknown as BullMQWorkflowProviderOptions['WorkerClass'],
-			QueueEventsClass: class {
+				} as unknown as BullMQWorkflowProviderOptions['WorkerClass'],
+				QueueEventsClass: class {
 				on = mockQueueEvents.on;
+				waitUntilReady = mockQueueEvents.waitUntilReady;
 				close = mockQueueEvents.close;
-			} as unknown as BullMQWorkflowProviderOptions['QueueEventsClass']
-		};
+				} as unknown as BullMQWorkflowProviderOptions['QueueEventsClass']
+			});
 
-		provider = new BullMQWorkflowProvider(options);
+		provider = createProvider();
 	});
 
-	describe('registerDefinitionConsumer with options', () => {
-		it('should accept BullMQWorkflowOptions when registering', () => {
-			const options: BullMQWorkflowOptions = { concurrency: 10 };
-
-			// Should not throw
+	describe('worker concurrency configuration', () => {
+		it('forwards supported worker options while preserving provider-owned lease settings', async () => {
+			provider = createProvider({
+				'high-volume-workflow': {
+					concurrency: 10,
+					limiter: { max: 25, duration: 1000 }
+				}
+			});
 			provider.registerDefinitionConsumer(
 				'high-volume-workflow',
-				async () => {},
-				simpleStepGroups,
-				createSimpleStepHandlers(),
-				undefined,
-				options
-			);
-
-			expect(true).toBe(true); // Registration succeeded
-		});
-
-		it('should allow registration without options', () => {
-			// Should not throw
-			provider.registerDefinitionConsumer(
-				'default-workflow',
 				async () => {},
 				simpleStepGroups,
 				createSimpleStepHandlers()
 			);
-
-			expect(true).toBe(true); // Registration succeeded
-		});
-	});
-
-	describe('worker concurrency configuration', () => {
-		it('should create workers with specified concurrency', async () => {
-			provider.registerDefinitionConsumer(
-				'high-volume-workflow',
-				async () => {},
-				simpleStepGroups,
-				createSimpleStepHandlers(),
-				undefined,
-				{ concurrency: 10 }
-			);
 			await provider.start();
 
-			// Workers are created for each queue: workflow queue + step queue
-			expect(capturedWorkerOptions.length).toBeGreaterThanOrEqual(1);
-
-			// At least one worker should have concurrency 10
-			const workflowWorker = capturedWorkerOptions[0]!;
-			expect(workflowWorker.concurrency).toBe(10);
+			expect(capturedWorkerOptions).toHaveLength(2);
+			for (const workerOptions of capturedWorkerOptions) {
+				expect(workerOptions).toEqual(expect.objectContaining({
+					concurrency: 10,
+					limiter: { max: 25, duration: 1000 },
+					lockDuration: 5_000,
+					stalledInterval: 5_000
+				}));
+			}
 		});
 
 		it('should default to concurrency 1 when no options provided', async () => {
@@ -165,21 +176,21 @@ describe('BullMQWorkflowProvider Options', () => {
 		});
 
 		it('should configure different concurrency per workflow', async () => {
+			provider = createProvider({
+				'high-volume-workflow': { concurrency: 10 },
+				'low-priority-workflow': { concurrency: 2 }
+			});
 			provider.registerDefinitionConsumer(
 				'high-volume-workflow',
 				async () => {},
 				simpleStepGroups,
-				createSimpleStepHandlers(),
-				undefined,
-				{ concurrency: 10 }
+				createSimpleStepHandlers()
 			);
 			provider.registerDefinitionConsumer(
 				'low-priority-workflow',
 				async () => {},
 				simpleStepGroups,
-				createSimpleStepHandlers(),
-				undefined,
-				{ concurrency: 2 }
+				createSimpleStepHandlers()
 			);
 			await provider.start();
 
@@ -193,62 +204,126 @@ describe('BullMQWorkflowProvider Options', () => {
 		});
 	});
 
-	describe('options interface completeness', () => {
-		it('should accept BullMQ native options', () => {
-			// Full BullMQ passthrough - no abstraction
-			const fullOptions: BullMQWorkflowOptions = {
-				// Worker options
-				concurrency: 5,
-				// Job options (BullMQ native)
-				attempts: 3,
-				backoff: { type: 'exponential', delay: 1000 },
-				failParentOnFailure: true
-			};
+	describe('job option configuration', () => {
+		it('applies producer-owned job policy in an emitter-only distributed topology', async () => {
+			provider = createProvider({
+				'high-volume-workflow': {
+					attempts: 4,
+					backoff: { type: 'fixed', delay: 250 },
+					priority: 7
+				}
+			});
+			provider.registerEmitterWorkflow('high-volume-workflow');
+			await provider.start();
+			await provider.execute(HighVolumeWorkflow, { id: 'distributed-order' });
 
-			// Should not throw
+			const flow = mockFlowProducer.add.mock.calls[0]?.[0];
+			if (!flow) throw new Error('FlowProducer.add was not called');
+			expect(flow.opts).toEqual(expect.objectContaining({ priority: 7 }));
+			expect(flow.children?.[0]?.opts).toEqual(
+				expect.objectContaining({
+					attempts: 4,
+					backoff: { type: 'fixed', delay: 250 },
+					priority: 7
+				})
+			);
+		});
+
+		it('forwards supported job options across job shapes while preserving safety options', async () => {
+			provider = createProvider({
+				'high-volume-workflow': {
+					attempts: 4,
+					backoff: { type: 'fixed', delay: 250 },
+					priority: 7
+				},
+				'simple-workflow': { priority: 7 },
+				'parallel-workflow': { priority: 7 }
+			});
 			provider.registerDefinitionConsumer(
 				'high-volume-workflow',
 				async () => {},
 				simpleStepGroups,
-				createSimpleStepHandlers(),
-				undefined,
-				fullOptions
+				createSimpleStepHandlers()
 			);
+			provider.registerDefinitionConsumer(
+				'simple-workflow',
+				async () => {},
+				[],
+				{}
+			);
+			provider.registerDefinitionConsumer(
+				'parallel-workflow',
+				async () => {},
+				parallelStepGroups,
+				{
+					first: { execute: async () => ({}) },
+					second: { execute: async () => ({}) }
+				}
+			);
+			await provider.start();
+			await provider.execute(HighVolumeWorkflow, { id: 'order-1' });
+			await provider.execute(SimpleWorkflow, { id: 'order-2' });
+			await provider.execute(ParallelWorkflow, { id: 'order-3' });
 
-			expect(true).toBe(true);
+			const flows = mockFlowProducer.add.mock.calls.map(([flow]) => flow);
+			const sequentialFlow = flows.find((flow) => flow.name === 'high-volume-workflow');
+			const simpleFlow = flows.find((flow) => flow.name === 'simple-workflow');
+			const parallelFlow = flows.find((flow) => flow.name === 'parallel-workflow');
+			if (!sequentialFlow || !simpleFlow || !parallelFlow) {
+				throw new Error('Expected simple, sequential, and parallel flows');
+			}
+			expect(sequentialFlow.opts).toEqual(
+				expect.objectContaining({
+					priority: 7,
+					removeOnComplete: { age: 604_800, count: 10_000 },
+					removeOnFail: { age: 2_592_000, count: 10_000 }
+				})
+			);
+			expect(sequentialFlow.children?.[0]?.opts).toEqual(
+				expect.objectContaining({
+					attempts: 4,
+					backoff: { type: 'fixed', delay: 250 },
+					priority: 7,
+					failParentOnFailure: true,
+					removeOnComplete: { age: 604_800, count: 10_000 },
+					removeOnFail: { age: 2_592_000, count: 10_000 }
+				})
+			);
+			expect(simpleFlow.opts).toEqual(
+				expect.objectContaining({
+					priority: 7,
+					removeOnComplete: { age: 604_800, count: 10_000 },
+					removeOnFail: { age: 2_592_000, count: 10_000 }
+				})
+			);
+			expect(parallelFlow.children?.[0]?.opts).toEqual(
+				expect.objectContaining({
+					priority: 7,
+					failParentOnFailure: true,
+					removeOnComplete: { age: 604_800, count: 10_000 },
+					removeOnFail: { age: 2_592_000, count: 10_000 }
+				})
+			);
 		});
-	});
-});
 
-describe('BullMQWorkflowOptions type', () => {
-	it('should accept BullMQ native job and worker options', () => {
-		const options: BullMQWorkflowOptions = {
-			// Worker options
-			concurrency: 10,
-			// Job options (BullMQ native)
-			attempts: 3,
-			backoff: { type: 'exponential', delay: 1000 },
-			failParentOnFailure: true
-		};
+		it('applies step retry defaults when no overrides are registered', async () => {
+			provider.registerDefinitionConsumer(
+				'high-volume-workflow',
+				async () => {},
+				simpleStepGroups,
+				createSimpleStepHandlers()
+			);
+			await provider.start();
+			await provider.execute(HighVolumeWorkflow, { id: 'order-defaults' });
 
-		expect(options.concurrency).toBe(10);
-		expect(options.attempts).toBe(3);
-		expect(options.backoff).toEqual({ type: 'exponential', delay: 1000 });
-		expect(options.failParentOnFailure).toBe(true);
-	});
-
-	it('should allow partial options', () => {
-		const options: BullMQWorkflowOptions = {
-			concurrency: 5
-		};
-
-		expect(options.concurrency).toBe(5);
-		expect(options.attempts).toBeUndefined();
-	});
-
-	it('should allow empty options', () => {
-		const options: BullMQWorkflowOptions = {};
-
-		expect(options.concurrency).toBeUndefined();
+			const flow = mockFlowProducer.add.mock.calls[0]?.[0];
+			if (!flow) throw new Error('FlowProducer.add was not called');
+			expect(flow.children?.[0]?.opts).toEqual(
+				expect.objectContaining({
+					attempts: 3,
+					backoff: { type: 'exponential', delay: 1000 }
+				})
+			);
+		});
 	});
 });

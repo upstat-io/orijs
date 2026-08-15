@@ -28,7 +28,16 @@ function createStep(name: string): StepDefinitionBase {
 }
 
 describe('FlowBuilder', () => {
-	describe('buildFlow', () => {
+		describe('buildFlow', () => {
+		it('bounds completed and failed retention for parent and step jobs', () => {
+			const flow = new FlowBuilder({
+				workflowName: 'Retained', flowId: 'flow-retained', queuePrefix: 'workflow'
+			}).buildFlow([{ type: 'sequential', definitions: [createStep('step1')] }], {});
+
+			expect(flow.opts?.removeOnComplete).toEqual({ age: 604800, count: 10_000 });
+			expect(flow.opts?.removeOnFail).toEqual({ age: 2592000, count: 10_000 });
+			expect(flow.children?.[0]?.opts?.removeOnComplete).toEqual({ age: 604800, count: 10_000 });
+		});
 		it('should create parent job with workflow name and data', () => {
 			const builder = new FlowBuilder({
 				workflowName: 'TestWorkflow',

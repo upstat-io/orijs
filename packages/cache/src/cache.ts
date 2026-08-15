@@ -223,6 +223,16 @@ export class CacheService {
 	): Promise<T | undefined> {
 		const cacheKey = generateCacheKey(config, params);
 
+		// Track on READ, not only on write. invalidate() narrows its meta key
+		// using the configs this instance has seen; a process that starts against
+		// an already-warm cache serves only hits, never reaches the write path,
+		// and so knows no configs. Its invalidate() then falls back to hashing
+		// `{entity, ...params}`, which no write ever registered, and the entry
+		// survives until its TTL — silently, because invalidate reports success.
+		// Reading an entity is proof this instance can be asked to invalidate it.
+		this.trackConfig(config);
+
+
 		// Use singleflight to prevent thundering herd
 		return this.singleflight.do(cacheKey, async () => {
 			// Try to get existing entry

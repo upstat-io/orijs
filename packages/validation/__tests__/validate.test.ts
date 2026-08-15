@@ -209,6 +209,17 @@ describe('validate', () => {
 	});
 
 	describe('validateSync', () => {
+		test('returns a validation failure when a transform rejects during decode', () => {
+			const schema = Type.Transform(Type.String()).Decode(() => {
+				throw new TypeError('Decoded value exceeds its resource budget');
+			}).Encode((value) => value);
+
+			expect(validateSync(schema, 'structurally-valid')).toEqual({
+				success: false,
+				errors: [{ path: '', message: 'Decoded value exceeds its resource budget' }]
+			});
+		});
+
 		test('should validate TypeBox schema synchronously', () => {
 			const schema = Type.Object({
 				name: Type.String(),

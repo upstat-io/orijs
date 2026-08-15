@@ -907,6 +907,48 @@ describe('RequestPipeline', () => {
 			expect(response.headers.get('X-Rate-Limit')).toBe('100');
 			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
 		});
+
+		test('should apply static response headers to a guard-rejected response', async () => {
+			// Guards run before the interceptor chain, so an interceptor cannot carry
+			// security headers onto a short-circuited request. The static map is the
+			// only surface that reaches this response.
+			const staticHeaders = {
+				'Access-Control-Allow-Origin': '*',
+				'X-Content-Type-Options': 'nosniff',
+				'Content-Security-Policy': "default-src 'none'"
+			};
+			const route = createRoute({
+				guards: [DenyGuard],
+				handler: async () => new Response('OK')
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {}, staticHeaders);
+			const response = await handler(createMockRequest());
+
+			expect(response.status).toBe(403);
+			expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+			expect(response.headers.get('Content-Security-Policy')).toBe("default-src 'none'");
+		});
+
+		test('should take precedence over a header value the handler already set', async () => {
+			// Characterization pin: the static map wins. CORS depends on this, and a
+			// caller putting a header here must know it cannot be relaxed per-route —
+			// a per-route value belongs in an interceptor with that key left out of
+			// the static map.
+			const staticHeaders = { 'Content-Security-Policy': "default-src 'none'" };
+			const route = createRoute({
+				guards: [],
+				handler: async () =>
+					new Response('<html></html>', {
+						headers: { 'Content-Security-Policy': "script-src 'self'" }
+					})
+			});
+
+			const handler = pipeline.createHandler(route, mockAppContext, {}, staticHeaders);
+			const response = await handler(createMockRequest());
+
+			expect(response.headers.get('Content-Security-Policy')).toBe("default-src 'none'");
+		});
 	});
 
 	describe('debug logging', () => {

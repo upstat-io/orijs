@@ -170,6 +170,9 @@ export class BullMQEventProvider implements EventProvider {
 	private readonly sweepBatchLimit: number;
 	private sweepTimer: ReturnType<typeof setInterval> | null = null;
 	private started = false;
+	private stopping = false;
+	private lifecycleController = new AbortController();
+	private readonly enqueueTasks = new Set<Promise<void>>();
 
 	/**
 	 * Creates a new BullMQEventProvider.
@@ -245,7 +248,10 @@ export class BullMQEventProvider implements EventProvider {
 			meta,
 			correlationId: subscription.correlationId,
 			...(options?.causationId === undefined ? {} : { causationId: options.causationId }),
-			timestamp: Date.now()
+			timestamp: Date.now(),
+			...(options?.expectsResult === false && options.idempotencyKey
+				? { idempotencyKey: options.idempotencyKey }
+				: {})
 		};
 
 		// Build job options
@@ -255,7 +261,7 @@ export class BullMQEventProvider implements EventProvider {
 		const ttl = this.eventTtls.get(eventName);
 		const jobOptions = {
 			...(options?.delay && { delay: options.delay }),
-			...(options?.idempotencyKey && { jobId: options.idempotencyKey }),
+			jobId: options?.idempotencyKey ?? jobData.eventId,
 			...(ttl !== undefined && { removeOnFail: { age: Math.ceil(ttl / 1000) } })
 		};
 
@@ -263,8 +269,16 @@ export class BullMQEventProvider implements EventProvider {
 		// completion for it would couple the caller to consumer availability and to
 		// the tracker's timeout, which is what `expectsResult: false` exists to avoid.
 		if (options?.expectsResult === false) {
-			this.queueManager
-				.addJob(eventName, jobData, jobOptions)
+			const enqueue = async () => {
+				if (
+					options.idempotencyKey &&
+					(await this.queueManager.hasCompletionReceipt?.(eventName, options.idempotencyKey))
+				) {
+					return;
+				}
+				await this.queueManager.addJob(eventName, jobData, jobOptions);
+			};
+			enqueue()
 				.then(() => {
 					subscription._resolve(undefined as TReturn);
 				})
@@ -293,18 +307,37 @@ export class BullMQEventProvider implements EventProvider {
 			{ timeout }
 		);
 
-		// Add job to queue
-		this.queueManager
-			.addJob(eventName, jobData, jobOptions)
-			.then((job) => {
-				// Map job ID for completion tracking
-				this.completionTracker.mapJobId(queueName, job.id, subscription.correlationId);
-			})
+		// QueueEvents must own the completion stream before a fast worker can
+		// finish; otherwise the completed event can be published before listening.
+		const enqueue = async () => {
+			if (this.completionTracker.waitUntilReady) {
+				await this.waitForCompletionOwnership(queueName);
+			} else if (this.stopping) {
+				throw new Error('BullMQEventProvider is stopping');
+			}
+			this.completionTracker.mapJobId(queueName, jobOptions.jobId, subscription.correlationId);
+			const job = await this.queueManager.addJob(eventName, jobData, jobOptions);
+			const state = await job.getState?.();
+			if (state === 'completed') {
+				const retainedJob = (await this.queueManager.getJob?.(eventName, job.id)) ?? job;
+				this.completionTracker.completeJob(queueName, job.id, retainedJob.returnvalue);
+			} else if (state === 'failed') {
+				this.completionTracker.failJob(
+					queueName,
+					job.id,
+					new Error(job.failedReason ?? 'Event job failed')
+				);
+			}
+			return;
+		};
+		const enqueueTask = enqueue()
 			.catch((error) => {
 				// Handle job creation failure by properly cleaning up the completion tracker
 				// This clears the pending entry, cancels any timeout, and triggers the error callback
 				this.completionTracker.fail(queueName, subscription.correlationId, error);
-			});
+			})
+			.finally(() => this.enqueueTasks.delete(enqueueTask));
+		this.enqueueTasks.add(enqueueTask);
 
 		return subscription;
 	}
@@ -339,11 +372,21 @@ export class BullMQEventProvider implements EventProvider {
 				timestamp: job.data.timestamp
 			};
 
-			return handler(message);
+			const result = await handler(message);
+			if (job.data.idempotencyKey) {
+				await this.queueManager.recordCompletionReceipt?.(eventName, job.data.idempotencyKey);
+			}
+			return result;
 		};
 
 		// Await worker registration to ensure it's ready before returning
-		await this.queueManager.registerWorker(eventName, workerHandler);
+		await this.queueManager.registerWorker(eventName, workerHandler, (jobId, result) => {
+			this.completionTracker.completeJob(
+				this.queueManager.getQueueName(eventName),
+				jobId,
+				result
+			);
+		});
 	}
 
 	/**
@@ -382,11 +425,36 @@ export class BullMQEventProvider implements EventProvider {
 		return this.queueManager.removeJob(eventName, key);
 	}
 
+	public async prepareIdempotencyKeyRetirement(eventName: string, key: string): Promise<void> {
+		await this.queueManager.prepareCompletionReceiptRetirement?.(eventName, key);
+	}
+
+	public async finalizeIdempotencyKeyRetirement(eventName: string, key: string): Promise<void> {
+		await this.queueManager.finalizeCompletionReceiptRetirement?.(eventName, key);
+	}
+
+	public async hasSuccessfulIdempotencyKeyCompletionReceipt(eventName: string, key: string): Promise<boolean> {
+		return (await this.queueManager.hasSuccessfulCompletionReceipt?.(eventName, key)) ?? false;
+	}
+
+	public async hasRetainedEvent(eventName: string, eventId: string): Promise<boolean> {
+		return (await this.queueManager.hasJob?.(eventName, eventId)) ?? true;
+	}
+
+	public async isRetainedEventRetryable(eventName: string, eventId: string): Promise<boolean> {
+		return (await this.queueManager.isJobRetryable?.(eventName, eventId)) ?? true;
+	}
+
 	/**
 	 * Starts the provider.
 	 * If TTL events are configured, starts a periodic sweep to clean stale jobs.
 	 */
 	public async start(): Promise<void> {
+		this.stopping = false;
+		if (this.lifecycleController.signal.aborted) {
+			this.lifecycleController = new AbortController();
+		}
+		this.completionTracker.start?.();
 		this.started = true;
 
 		// Start sweep interval if any events have TTL configured
@@ -416,6 +484,8 @@ export class BullMQEventProvider implements EventProvider {
 		if (!this.started) {
 			return;
 		}
+		this.stopping = true;
+		this.lifecycleController.abort();
 		this.started = false;
 
 		// 0. Clear sweep interval before shutting down queues
@@ -424,12 +494,35 @@ export class BullMQEventProvider implements EventProvider {
 			this.sweepTimer = null;
 		}
 
+		// Settle enqueue ownership before closing the queues they target.
+		await Promise.allSettled([...this.enqueueTasks]);
 		// 1. Stop workers first (wait for jobs to complete), then queues
 		await this.queueManager.stop();
 		// 2. Stop listening for completions (workers already done)
 		await this.completionTracker.stop();
 		// 3. Stop scheduled event queues
 		await this.scheduledEventManager.stop();
+	}
+
+	private async waitForCompletionOwnership(queueName: string): Promise<void> {
+		if (!this.completionTracker.waitUntilReady) {
+			if (this.stopping) throw new Error('BullMQEventProvider is stopping');
+			return;
+		}
+		const signal = this.lifecycleController.signal;
+		if (signal.aborted || this.stopping) throw new Error('BullMQEventProvider is stopping');
+		let rejectStop!: (error: Error) => void;
+		const stopped = new Promise<never>((_resolve, reject) => {
+			rejectStop = reject;
+		});
+		const onStop = () => rejectStop(new Error('BullMQEventProvider is stopping'));
+		signal.addEventListener('abort', onStop, { once: true });
+		try {
+			await Promise.race([this.completionTracker.waitUntilReady(queueName), stopped]);
+		} finally {
+			signal.removeEventListener('abort', onStop);
+		}
+		if (this.stopping) throw new Error('BullMQEventProvider is stopping');
 	}
 
 	/**

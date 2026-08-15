@@ -7,11 +7,17 @@ import { RedisContainer } from '@testcontainers/redis';
 import Redis from 'ioredis';
 import { Queue, QueueEvents, type Job } from 'bullmq';
 import { BaseContainerManager } from './base-container-manager';
+import { RedisDatabaseLease } from './redis-database-lease';
 import type { RedisContainerConfig } from '../types/container-config.types';
+
+const ISOLATED_DATABASE_COUNT = 15;
 
 export class RedisContainerManager extends BaseContainerManager {
 	private redisContainer: StartedRedisContainer | null = null;
 	private redisClient: Redis | null = null;
+	private leaseClient: Redis | null = null;
+	private databaseLease: RedisDatabaseLease | null = null;
+	private database: number | null = null;
 	private queues: Map<string, Queue> = new Map();
 
 	protected async createContainer(): Promise<StartedRedisContainer> {
@@ -35,20 +41,46 @@ export class RedisContainerManager extends BaseContainerManager {
 			this.redisContainer = await container.start();
 		}
 
-		// Create Redis client
-		this.redisClient = new Redis({
+		const connection = {
 			host: this.redisContainer.getHost(),
 			port: this.redisContainer.getPort(),
 			maxRetriesPerRequest: 3,
 			lazyConnect: true,
 			keepAlive: 30000
-		});
+		};
 
-		this.redisClient.on('error', (err: Error) => {
-			console.error(`Redis client error for ${this.packageName}:`, err);
-		});
+		this.leaseClient = new Redis(connection);
+		await this.leaseClient.connect();
+		try {
+			this.databaseLease = new RedisDatabaseLease(
+				this.leaseClient,
+				`${this.packageName}:${process.pid}`,
+				ISOLATED_DATABASE_COUNT
+			);
+			this.database = await this.databaseLease.acquire();
+		} catch (error) {
+			this.databaseLease = null;
+			this.leaseClient.disconnect();
+			this.leaseClient = null;
+			throw error;
+		}
 
-		await this.redisClient.connect();
+		try {
+			this.redisClient = new Redis({ ...connection, db: this.database });
+
+			this.redisClient.on('error', (err: Error) => {
+				console.error(`Redis client error for ${this.packageName}:`, err);
+			});
+
+			await this.redisClient.connect();
+			// The lease is exclusive, so startup can safely remove residue left by a crashed prior owner.
+			await this.redisClient.flushdb();
+		} catch (error) {
+			this.redisClient?.disconnect();
+			this.redisClient = null;
+			await this.releaseDatabaseLease();
+			throw error;
+		}
 
 		// NOTE: We intentionally do NOT set process.env here.
 		// Setting global env vars causes race conditions when running tests in parallel.
@@ -94,7 +126,9 @@ export class RedisContainerManager extends BaseContainerManager {
 		return {
 			host,
 			port,
-			connectionString: `redis://${host}:${port}`
+			db: this.database!,
+			namespace: `orijs-test-db-${this.database}`,
+			connectionString: `redis://${host}:${port}/${this.database}`
 		};
 	}
 
@@ -107,6 +141,7 @@ export class RedisContainerManager extends BaseContainerManager {
 		const client = new Redis({
 			host: config.host,
 			port: config.port,
+			db: config.db,
 			maxRetriesPerRequest: 3,
 			keepAlive: 30000
 		});
@@ -123,11 +158,13 @@ export class RedisContainerManager extends BaseContainerManager {
 	 * Set up environment variables for NestJS Redis module integration
 	 * Matches Postgres setupNestJSEnvironment() pattern
 	 */
-	setupNestJSEnvironment(): { host: string; port: number } {
+	setupNestJSEnvironment(): { host: string; port: number; db: number } {
 		const config = this.getConnectionConfig();
+		if (config.db === undefined) throw new Error('Redis test database lease is unavailable');
 		process.env.SECRET_REDIS_HOST = config.host;
 		process.env.SECRET_REDIS_PORT = String(config.port);
-		return { host: config.host, port: config.port };
+		process.env.SECRET_REDIS_DB = String(config.db);
+		return { host: config.host, port: config.port, db: config.db };
 	}
 
 	/**
@@ -141,7 +178,7 @@ export class RedisContainerManager extends BaseContainerManager {
 	}
 
 	/**
-	 * Flush all Redis data
+	 * Flush only this process-owned Redis database.
 	 */
 	async flushAll(): Promise<void> {
 		if (!this.redisClient) {
@@ -150,7 +187,7 @@ export class RedisContainerManager extends BaseContainerManager {
 
 		try {
 			if (this.redisClient.status === 'ready') {
-				await this.redisClient.flushall();
+				await this.redisClient.flushdb();
 			}
 		} catch (error) {
 			console.warn(`Redis flush failed for ${this.packageName}:`, error);
@@ -319,6 +356,16 @@ export class RedisContainerManager extends BaseContainerManager {
 		}
 	}
 
+	/** Release this process's database without stopping the shared reusable container. */
+	async releaseProcessResources(): Promise<void> {
+		await this.cleanup();
+		if (this.redisClient) {
+			this.redisClient.disconnect();
+			this.redisClient = null;
+		}
+		await this.releaseDatabaseLease();
+	}
+
 	/**
 	 * Override stop to include cleanup with timeout protection
 	 */
@@ -343,6 +390,7 @@ export class RedisContainerManager extends BaseContainerManager {
 				}
 				this.redisClient = null;
 			}
+			await this.releaseDatabaseLease();
 		} catch (error) {
 			console.debug(`Redis stop warning for ${this.packageName}:`, error);
 			// Force disconnect on any error
@@ -355,7 +403,26 @@ export class RedisContainerManager extends BaseContainerManager {
 				this.redisClient = null;
 			}
 		} finally {
+			await this.releaseDatabaseLease();
 			await super.stop();
 		}
+	}
+
+	private async releaseDatabaseLease(): Promise<void> {
+		const lease = this.databaseLease;
+		this.databaseLease = null;
+		this.database = null;
+		try {
+			await lease?.release();
+		} finally {
+			this.leaseClient?.disconnect();
+			this.leaseClient = null;
+		}
+	}
+
+	protected override async onStartAttemptFailure(): Promise<void> {
+		this.redisClient?.disconnect();
+		this.redisClient = null;
+		await this.releaseDatabaseLease();
 	}
 }

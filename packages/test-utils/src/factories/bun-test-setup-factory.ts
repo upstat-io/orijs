@@ -7,7 +7,11 @@
  */
 
 import type { BunTestSetupOptions } from '../types/container-config.types';
-import { startRedisTestContainer, stopRedisTestContainer } from './redis-test-helper-factory';
+import {
+	releaseRedisTestDatabase,
+	startRedisTestContainer,
+	stopRedisTestContainer
+} from './redis-test-helper-factory';
 
 /**
  * Create Bun test preload setup function for a package
@@ -36,6 +40,11 @@ export function createBunTestPreload(options: BunTestSetupOptions) {
 			}
 
 			await Promise.all(containerPromises);
+
+			if (options.dependencies.includes('redis')) {
+				const { afterAll } = await import('bun:test');
+				afterAll(() => releaseRedisTestDatabase(options.packageName));
+			}
 
 			const duration = Date.now() - startTime;
 			console.log(`Test environment ready for ${options.packageName} in ${duration}ms`);

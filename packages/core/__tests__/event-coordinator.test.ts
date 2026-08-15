@@ -445,7 +445,37 @@ describe('EventCoordinator', () => {
 	});
 
 	describe('Consumer-less Event Warning', () => {
-		it('should log warning for consumer-less events at startup', async () => {
+		it('should log warning for consumer-less events when provider has active consumers (mixed mode)', async () => {
+			const warnSpy = mock((..._args: unknown[]) => {});
+			const spyLogger = new Logger('test');
+			spyLogger.warn = warnSpy as any;
+
+			const mockProvider = createMockProvider();
+
+			const EmitterOnlyEvent = Event.define({
+				name: 'emitter.only',
+				data: Type.Object({ id: Type.String() }),
+				result: Type.Void()
+			});
+
+			const coordinator = new EventCoordinator(container, spyLogger, () => mockProvider);
+			coordinator.setProvider(mockProvider);
+			coordinator.registerEventDefinition(TestEvent);
+			coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
+			coordinator.registerEventDefinition(EmitterOnlyEvent);
+			coordinator.registerConsumers();
+
+			await coordinator.start();
+
+			expect(warnSpy).toHaveBeenCalled();
+			const warnMessage = String(warnSpy.mock.calls[0]?.[0] ?? '');
+			expect(warnMessage).toContain('emitter.only');
+			expect(warnMessage).toContain('without consumers');
+
+			await coordinator.stop();
+		});
+
+		it('should not warn for emitter-only provider with zero consumers', async () => {
 			const warnSpy = mock((..._args: unknown[]) => {});
 			const spyLogger = new Logger('test');
 			spyLogger.warn = warnSpy as any;
@@ -465,10 +495,10 @@ describe('EventCoordinator', () => {
 
 			await coordinator.start();
 
-			expect(warnSpy).toHaveBeenCalled();
-			const warnMessage = String(warnSpy.mock.calls[0]?.[0] ?? '');
-			expect(warnMessage).toContain('emitter.only');
-			expect(warnMessage).toContain('without consumers');
+			const warnCalls = warnSpy.mock.calls.filter((call: unknown[]) =>
+				String(call[0] ?? '').includes('without consumers')
+			);
+			expect(warnCalls).toHaveLength(0);
 
 			await coordinator.stop();
 		});
@@ -834,7 +864,7 @@ describe('EventCoordinator', () => {
 			class TriggerConsumer implements IEventConsumer<(typeof TriggerEvent)['_data'], void> {
 				onEvent = async (ctx: EventContext<(typeof TriggerEvent)['_data']>) => {
 					// Emit chained event — key should be auto-derived from DelayedEvent.key
-					ctx.emit('delayed.event', { alertId: ctx.data.alertId }, { delay: 5000 });
+					ctx.emit('delayed.event', { alertId: ctx.data.alertId }, { delay: 5000, enqueueOnly: true });
 				};
 			}
 
@@ -854,9 +884,14 @@ describe('EventCoordinator', () => {
 			// The chained emit should have auto-derived the idempotency key
 			const chainedEmit = emitOptions.find((e) => e.event === 'delayed.event');
 			expect(chainedEmit).toBeDefined();
-			const opts = chainedEmit!.options as { delay?: number; idempotencyKey?: string };
+			const opts = chainedEmit!.options as {
+				delay?: number;
+				idempotencyKey?: string;
+				expectsResult?: boolean;
+			};
 			expect(opts.delay).toBe(5000);
 			expect(opts.idempotencyKey).toBe('esc-alert-42');
+			expect(opts.expectsResult).toBe(false);
 
 			await coordinator.stop();
 		});

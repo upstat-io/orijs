@@ -15,18 +15,11 @@
  * @module workflows/bullmq-workflow-provider
  */
 
-import {
-	FlowProducer,
-	Worker,
-	Queue,
-	QueueEvents,
-	Job,
-	type ConnectionOptions,
-	type JobsOptions,
-	type WorkerOptions
-} from 'bullmq';
+import { FlowProducer, Worker, Queue, QueueEvents, Job, type ConnectionOptions } from 'bullmq';
 import {
 	WorkflowStepError,
+	WorkflowRollbackError,
+	decodeWorkflowFailure,
 	WorkflowTimeoutError,
 	createWorkflowContext,
 	type WorkflowProvider,
@@ -234,28 +227,58 @@ interface BuildSimpleJobOptions<TData> {
 	data: TData;
 	meta?: PropagationMeta;
 	executeOptions?: ExecuteOptions;
+	jobOptions?: StepJobRetryOpts;
 }
 
 /**
- * Combined workflow options - job options + worker options.
- * Full BullMQ native interface, no abstraction.
+ * Supported per-workflow BullMQ options.
+ *
+ * Ori owns connection, job identity, failure cascading, worker leases, and
+ * completed/failed job retention. Those transport invariants are intentionally
+ * not configurable per workflow.
  *
  * @example
  * ```ts
- * app.workflows(registry, provider, {
- *   // Worker options
- *   concurrency: 10,
- *   // Job options
- *   attempts: 3,
- *   backoff: { type: 'exponential', delay: 1000 },
- *   failParentOnFailure: true,
+ * const provider = new BullMQWorkflowProvider({
+ *   connection,
+ *   workflowOptions: {
+ *     'order-workflow': {
+ *       concurrency: 10,
+ *       limiter: { max: 100, duration: 1000 },
+ *       attempts: 3,
+ *       backoff: { type: 'exponential', delay: 1000 },
+ *       priority: 5,
+ *     },
+ *   },
  * });
+ * Ori.create().workflowProvider(provider);
  * ```
  */
-export type BullMQWorkflowOptions = Partial<JobsOptions> & Partial<WorkerOptions>;
+export interface BullMQWorkflowOptions {
+	/** Worker concurrency. @default 1 */
+	readonly concurrency?: number;
+	/** BullMQ worker rate limit. */
+	readonly limiter?: { readonly max: number; readonly duration: number };
+	/** Step-job attempts. @default 3 */
+	readonly attempts?: number;
+	/** Step-job retry backoff. */
+	readonly backoff?: StepJobRetryOpts['backoff'];
+	/** BullMQ priority applied to the workflow parent and every step job. */
+	readonly priority?: number;
+}
+
+interface WorkerConstructionOptions {
+	readonly connection: ConnectionOptions;
+	readonly concurrency?: number;
+	readonly limiter?: { readonly max: number; readonly duration: number };
+	readonly lockDuration?: number;
+	readonly stalledInterval?: number;
+}
 
 export interface BullMQWorkflowProviderOptions {
 	readonly connection: ConnectionOptions;
+	/** Per-workflow execution policy shared by emitter and consumer instances. */
+	readonly workflowOptions?: Readonly<Record<string, BullMQWorkflowOptions>>;
 	readonly queuePrefix?: string;
 	readonly defaultTimeout?: number;
 	/**
@@ -343,12 +366,7 @@ export interface BullMQWorkflowProviderOptions {
 	readonly WorkerClass?: new (
 		queueName: string,
 		processor: (job: Job) => Promise<unknown>,
-		opts: {
-			connection: ConnectionOptions;
-			concurrency?: number;
-			lockDuration?: number;
-			stalledInterval?: number;
-		}
+		opts: WorkerConstructionOptions
 	) => IWorker;
 	readonly QueueEventsClass?: new (
 		queueName: string,
@@ -485,11 +503,12 @@ interface LocalFlowState {
  *
  * Supports per-workflow options via BullMQWorkflowOptions:
  * - concurrency: Worker concurrency per workflow
- * - retries: Max retry attempts
+ * - limiter: Worker rate limit per workflow
+ * - attempts: Max step-job attempts
  * - backoff: Retry backoff strategy
- * - backoffDelay: Base delay between retries
+ * - priority: Parent and step-job priority
  */
-export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOptions> {
+export class BullMQWorkflowProvider implements WorkflowProvider<never> {
 	private readonly connection: ConnectionOptions;
 	private readonly queuePrefix: string;
 	private readonly stepRegistry: StepRegistry;
@@ -499,6 +518,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private readonly flowStateCleanupDelay: number;
 	private readonly maxFlowStates: number;
 	private readonly stepTimeout: number;
+	private readonly workflowOptions: Readonly<Record<string, BullMQWorkflowOptions>>;
 	private readonly log: Logger;
 
 	// Minimal local state - only for caller-side tracking
@@ -520,6 +540,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			settled: boolean;
 		}
 	>();
+	private readonly idempotentHandles = new Map<string, FlowHandle<unknown>>();
 
 	private flowProducer: IFlowProducer | null = null;
 	private stepWorkers: Map<string, IWorker> = new Map();
@@ -544,7 +565,6 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				error?: Error,
 				stepResults?: Record<string, unknown>
 			) => Promise<void>;
-			options?: BullMQWorkflowOptions;
 		}
 	> = new Map();
 
@@ -555,7 +575,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private readonly WorkerClass: new (
 		queueName: string,
 		processor: (job: Job) => Promise<unknown>,
-		opts: { connection: ConnectionOptions; concurrency?: number }
+		opts: WorkerConstructionOptions
 	) => IWorker;
 	private readonly QueueEventsClass: new (
 		queueName: string,
@@ -586,6 +606,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		this.flowStateCleanupDelay = options.flowStateCleanupDelay ?? DEFAULT_FLOW_STATE_CLEANUP_DELAY_MS;
 		this.maxFlowStates = options.maxFlowStates ?? DEFAULT_MAX_FLOW_STATES;
 		this.stepTimeout = options.stepTimeout ?? 0;
+		this.workflowOptions = options.workflowOptions ?? {};
 		this.log = options.logger ?? new Logger('BullMQWorkflowProvider');
 		this.stepRegistry = options.stepRegistry ?? new StepRegistry();
 
@@ -628,7 +649,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 		if (!this.started) {
 			const error = new Error('Provider not started. Call start() first.');
-			this.log.error('Provider not started', { workflowName, error: error.message });
+			this.log.error('Provider not started', {
+				workflowName,
+				error: error.message
+			});
 			throw error;
 		}
 
@@ -640,7 +664,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				`Workflow '${workflowName}' not registered. ` +
 					`Call registerDefinitionConsumer() or registerEmitterWorkflow() first.`
 			);
-			this.log.error('Workflow not registered', { workflowName, error: error.message });
+			this.log.error('Workflow not registered', {
+				workflowName,
+				error: error.message
+			});
 			throw error;
 		}
 
@@ -664,12 +691,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			? { ...options, idempotencyKey: options.idempotencyKey ?? options.id }
 			: options;
 
-		return this.executeDefinition<TData, TResult>(
-			workflowName,
-			data,
-			normalizedOptions,
-			effectiveStepGroups
-		);
+		return this.executeDefinition<TData, TResult>(workflowName, data, normalizedOptions, effectiveStepGroups);
 	}
 
 	/**
@@ -684,30 +706,45 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		options?: ExecuteOptions,
 		definitionStepGroups?: readonly StepGroup[]
 	): Promise<FlowHandle<TResult>> {
+		const idempotencyKey = options?.idempotencyKey;
+		const handleKey = idempotencyKey ? `${workflowName}:${idempotencyKey}` : undefined;
+		const existingHandle = handleKey ? this.idempotentHandles.get(handleKey) : undefined;
+		if (existingHandle) return existingHandle as FlowHandle<TResult>;
 		const flowId = generateFlowId();
 		const queueName = `${this.queuePrefix}.${workflowName}`;
+		if (idempotencyKey) {
+			const existing = await this.getJobById(queueName, idempotencyKey);
+			if (existing.job) {
+				const existingHandle = this.createDurableHandle<TResult>(existing.job, queueName, idempotencyKey);
+				await existing.queue.close();
+				return existingHandle;
+			}
+			await existing.queue.close();
+		}
 		const stepGroups = definitionStepGroups ?? [];
 		const hasSteps = stepGroups.length > 0;
 
 		// Initialize flow state and capture propagation metadata
 		const { flowState, meta } = this.initializeFlowState(flowId, options);
 
+		// Create deferred promise BEFORE adding job
+		const { promise: resultPromise, resolve, reject } = this.createDeferredResult<TResult>();
+		const handle: FlowHandle<TResult> = {
+			id: flowId,
+			status: async () => this.localFlowStates.get(flowId)?.status ?? 'pending',
+			result: async () => resultPromise
+		};
+		if (handleKey) this.idempotentHandles.set(handleKey, handle as FlowHandle<unknown>);
+
 		// Set up QueueEvents BEFORE adding job
 		await this.getOrCreateQueueEvents(queueName);
 
-		// Create deferred promise BEFORE adding job
-		const { promise: resultPromise, resolve, reject } = this.createDeferredResult<TResult>();
-
-		// Build step job retry options from defaults and consumer overrides
-		const consumerOptions = this.definitionConsumers.get(workflowName)?.options;
-		// BullMQ backoff can be number or object; only use if it matches our expected shape
-		const consumerBackoff =
-			consumerOptions?.backoff && typeof consumerOptions.backoff === 'object'
-				? consumerOptions.backoff
-				: undefined;
+		// Build step job policy from provider defaults and per-workflow configuration.
+		const workflowPolicy = this.workflowOptions[workflowName];
 		const stepJobOpts: StepJobRetryOpts = {
-			attempts: consumerOptions?.attempts ?? DEFAULT_STEP_ATTEMPTS,
-			backoff: consumerBackoff ?? DEFAULT_STEP_BACKOFF
+			attempts: workflowPolicy?.attempts ?? DEFAULT_STEP_ATTEMPTS,
+			backoff: workflowPolicy?.backoff ?? DEFAULT_STEP_BACKOFF,
+			priority: workflowPolicy?.priority
 		};
 
 		// Build job structure (without adding to queue yet)
@@ -722,13 +759,34 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 					executeOptions: options,
 					stepJobOpts
 				})
-			: this.buildSimpleJob({ workflowName, flowId, queueName, data, meta, executeOptions: options });
+			: this.buildSimpleJob({
+					workflowName,
+					flowId,
+					queueName,
+					data,
+					meta,
+					executeOptions: options,
+					jobOptions: stepJobOpts
+				});
 
 		// CRITICAL: Register pending result BEFORE adding job to prevent race condition
 		this.registerPendingResult(jobId, flowId, resolve, reject);
 
 		// Add job to queue
 		await this.flowProducer!.add(job);
+		if (idempotencyKey) {
+			const durable = await this.getJobById(queueName, idempotencyKey);
+			const durableFlowId = (durable.job?.data as WorkflowJobData | undefined)?.flowId;
+			if (durable.job && durableFlowId && durableFlowId !== flowId) {
+				this.pendingResults.delete(jobId);
+				this.localFlowStates.delete(flowId);
+				const durableHandle = this.createDurableHandle<TResult>(durable.job, queueName, idempotencyKey);
+				await durable.queue.close();
+				if (handleKey) this.idempotentHandles.set(handleKey, durableHandle as FlowHandle<unknown>);
+				return durableHandle;
+			}
+			await durable.queue.close();
+		}
 
 		// Register flowId -> workflowName in Redis for O(1) lookups
 		await this.registerFlowInRegistry(flowId, workflowName);
@@ -739,10 +797,48 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		// Set up timeout and cleanup
 		this.setupTimeoutAndCleanup(flowId, options, resultPromise);
 
+		return handle;
+	}
+
+	private async getJobById(queueName: string, jobId: string): Promise<{ job?: Job; queue: Queue }> {
+		const queue = this.createLookupQueue(queueName);
+		return { job: (await Job.fromId(queue, jobId)) ?? undefined, queue };
+	}
+
+	private createDurableHandle<TResult>(job: Job, queueName: string, jobId: string): FlowHandle<TResult> {
+		const flowId = (job.data as WorkflowJobData).flowId;
 		return {
 			id: flowId,
-			status: async () => this.localFlowStates.get(flowId)?.status ?? 'pending',
-			result: async () => resultPromise
+			status: async () => {
+				const { job: current, queue } = await this.getJobById(queueName, jobId);
+				if (!current) {
+					await queue.close();
+					return 'pending';
+				}
+				try {
+					return this.mapBullMQStateToFlowStatus(await current.getState());
+				} finally {
+					await queue.close();
+				}
+			},
+			result: async () => {
+				const { job: current, queue } = await this.getJobById(queueName, jobId);
+				if (!current) {
+					await queue.close();
+					throw new Error(`Workflow '${flowId}' not found.`);
+				}
+				const state = await current.getState();
+				if (state === 'completed') {
+					await queue.close();
+					return this.parseJobResult<TResult>(current.returnvalue);
+				}
+				if (state === 'failed') {
+					await queue.close();
+					throw decodeWorkflowFailure(current.failedReason ?? 'Unknown error');
+				}
+				await queue.close();
+				return this.waitForJobCompletion<TResult>(current, flowId, jobId);
+			}
 		};
 	}
 
@@ -750,7 +846,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * Build a flow job with step children.
 	 * Does NOT add to queue - returns structure for caller to add.
 	 */
-	private buildFlowJob<TData>(opts: BuildFlowJobOptions<TData>): { job: FlowJobDefinition; jobId: string } {
+	private buildFlowJob<TData>(opts: BuildFlowJobOptions<TData>): {
+		job: FlowJobDefinition;
+		jobId: string;
+	} {
 		const flowBuilder = new FlowBuilder({
 			workflowName: opts.workflowName,
 			flowId: opts.flowId,
@@ -768,7 +867,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * Build a simple job without steps.
 	 * Does NOT add to queue - returns structure for caller to add.
 	 */
-	private buildSimpleJob<TData>(opts: BuildSimpleJobOptions<TData>): { job: FlowJobDefinition; jobId: string } {
+	private buildSimpleJob<TData>(opts: BuildSimpleJobOptions<TData>): {
+		job: FlowJobDefinition;
+		jobId: string;
+	} {
 		const jobData: WorkflowJobData = {
 			type: 'workflow',
 			version: '1.0',
@@ -782,7 +884,14 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			name: opts.workflowName,
 			queueName: opts.queueName,
 			data: jobData,
-			opts: { jobId }
+			opts: {
+				jobId,
+				...(opts.jobOptions?.priority !== undefined && {
+					priority: opts.jobOptions.priority
+				}),
+				removeOnComplete: { age: 7 * 24 * 60 * 60, count: 10_000 },
+				removeOnFail: { age: 30 * 24 * 60 * 60, count: 10_000 }
+			}
 		};
 		return { job, jobId };
 	}
@@ -846,7 +955,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			}
 
 			if (state === 'failed') {
-				throw new Error(`Workflow '${flowId}' failed: ${job.failedReason ?? 'Unknown error'}`);
+				throw decodeWorkflowFailure(job.failedReason ?? 'Unknown error');
 			}
 
 			// Job still running - close lookup queue, then wait via QueueEvents
@@ -964,6 +1073,27 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		return `${this.queuePrefix}:${FLOW_REGISTRY_KEY_PREFIX}:${hash}`;
 	}
 
+	private getFlowFailureKey(flowId: string): string {
+		const hash = Bun.hash(flowId).toString(36);
+		return `${this.queuePrefix}:workflow-failure:${hash}`;
+	}
+
+	private async storeWorkflowFailure(flowId: string, error: Error): Promise<void> {
+		const client = this.getRedisRegistryClient();
+		if (!client) return;
+		await client
+			.set(this.getFlowFailureKey(flowId), error.message, 'EX', FLOW_REGISTRY_TTL_SECONDS)
+			.catch(() => {});
+	}
+
+	private async loadWorkflowFailure(flowId: string, fallback: string): Promise<Error> {
+		const client = this.getRedisRegistryClient();
+		const serialized = client
+			? await client.get(this.getFlowFailureKey(flowId)).catch(() => null)
+			: null;
+		return decodeWorkflowFailure(serialized ?? fallback);
+	}
+
 	/**
 	 * Get the Redis client for registry operations.
 	 * Returns null if flowProducer not started or connection unavailable.
@@ -1047,7 +1177,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	/**
 	 * Wait for a job to complete and return its result.
 	 */
-	private async waitForJobCompletion<TResult>(job: Job, flowId: string): Promise<TResult> {
+	private async waitForJobCompletion<TResult>(job: Job, flowId: string, expectedJobId = flowId): Promise<TResult> {
 		const queueName = job.queueName;
 
 		// Set up QueueEvents listener
@@ -1060,16 +1190,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			};
 
 			const onCompleted = (args: { jobId: string; returnvalue?: string }) => {
-				if (args.jobId === flowId) {
+				if (args.jobId === expectedJobId) {
 					cleanup();
 					resolve(this.parseJobResult<TResult>(args.returnvalue));
 				}
 			};
 
 			const onFailed = (args: { jobId: string; failedReason: string }) => {
-				if (args.jobId === flowId) {
+				if (args.jobId === expectedJobId) {
 					cleanup();
-					reject(new Error(`Workflow '${flowId}' failed: ${args.failedReason}`));
+					reject(decodeWorkflowFailure(args.failedReason));
 				}
 			};
 
@@ -1085,7 +1215,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 						resolve(this.parseJobResult<TResult>(job.returnvalue));
 					} else if (state === 'failed') {
 						cleanup();
-						reject(new Error(`Workflow '${flowId}' failed: ${job.failedReason ?? 'Unknown error'}`));
+						reject(decodeWorkflowFailure(job.failedReason ?? 'Unknown error'));
 					}
 				})
 				.catch(() => {}); // Chained to prevent unhandled rejection
@@ -1111,7 +1241,6 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * @param stepGroups - Optional step groups defining step structure (from definition.stepGroups)
 	 * @param stepHandlers - Optional step handlers from consumer.steps (execute + rollback)
 	 * @param onError - Optional error handler called when a step fails
-	 * @param options - Optional BullMQ worker options
 	 */
 	public registerDefinitionConsumer(
 		workflowName: string,
@@ -1132,10 +1261,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			error?: Error,
 			stepResults?: Record<string, unknown>
 		) => Promise<void>,
-		options?: BullMQWorkflowOptions
 	): void {
 		const groups = stepGroups ?? [];
-		this.definitionConsumers.set(workflowName, { handler, stepGroups: groups, onError, options });
+		this.definitionConsumers.set(workflowName, {
+			handler,
+			stepGroups: groups,
+			onError
+		});
 
 		// Remove from emitter-only if it was there (now has a consumer)
 		this.emitterWorkflows.delete(workflowName);
@@ -1214,7 +1346,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	public async start(): Promise<void> {
 		if (this.started) return;
 
-		this.flowProducer = new this.FlowProducerClass({ connection: this.connection });
+		this.flowProducer = new this.FlowProducerClass({
+			connection: this.connection
+		});
 		this.started = true;
 
 		// Create workers for definition-based consumers
@@ -1285,6 +1419,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		this.clearTimerMap(this.flowStateCleanupHandles);
 
 		this.pendingResults.clear();
+		this.idempotentHandles.clear();
 		this.localFlowStates.clear();
 
 		this.log.info('Workflow Provider stopped');
@@ -1309,13 +1444,18 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * become unhandled rejections. This handler suppresses expected close errors
 	 * while logging unexpected errors.
 	 */
-	private createShutdownErrorHandler(): (err: Error) => void {
-		return (err: Error) => {
-			if (err.message.includes('Connection is closed')) {
-				this.log.debug('Expected connection close error during shutdown', { error: err.message });
+	private createShutdownErrorHandler(): (err: unknown) => void {
+		return (err: unknown) => {
+			const message = err instanceof Error ? err.message : String(err);
+			if (err === undefined || message.includes('Connection is closed')) {
+				this.log.debug('Expected connection close error during shutdown', {
+					error: message
+				});
 				return;
 			}
-			this.log.error('Redis connection error during shutdown', { error: err.message });
+			this.log.error('Redis connection error during shutdown', {
+				error: message
+			});
 		};
 	}
 
@@ -1324,7 +1464,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 */
 	private async closeWorkerMap(
 		workers: Map<string, IWorker>,
-		errorHandler: (err: Error) => void
+		errorHandler: (err: unknown) => void
 	): Promise<void> {
 		const closes = Array.from(workers.values(), (worker) => {
 			worker.connection._client.on('error', errorHandler as (...args: unknown[]) => void);
@@ -1340,7 +1480,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 */
 	private async closeQueueEventsMap(
 		queueEventsMap: Map<string, IQueueEvents>,
-		errorHandler: (err: Error) => void
+		errorHandler: (err: unknown) => void
 	): Promise<void> {
 		const closes = Array.from(queueEventsMap.values(), (events) => {
 			events.connection._client.on('error', errorHandler as (...args: unknown[]) => void);
@@ -1395,8 +1535,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		const consumer = this.definitionConsumers.get(workflowName);
 		if (!consumer) return;
 
-		const concurrency = consumer.options?.concurrency ?? 1;
-		const workerOpts = this.buildWorkerOptions(concurrency);
+		const workerOpts = this.buildWorkerOptions(this.workflowOptions[workflowName]);
 		const hasSteps = consumer.stepGroups.length > 0;
 
 		// Create step worker if workflow has steps
@@ -1417,16 +1556,18 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	/**
 	 * Build worker options with stall interval configuration.
 	 */
-	private buildWorkerOptions(concurrency: number): {
+	private buildWorkerOptions(options?: BullMQWorkflowOptions): {
 		connection: ConnectionOptions;
 		concurrency: number;
+		limiter?: { readonly max: number; readonly duration: number };
 		lockDuration: number;
 		stalledInterval: number;
 	} {
 		const effectiveStallInterval = this.stallInterval ?? DEFAULT_STALL_INTERVAL_MS;
 		return {
 			connection: this.connection,
-			concurrency,
+			concurrency: options?.concurrency ?? 1,
+			...(options?.limiter && { limiter: options.limiter }),
 			lockDuration: effectiveStallInterval,
 			stalledInterval: effectiveStallInterval
 		};
@@ -1440,6 +1581,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		workerOpts: {
 			connection: ConnectionOptions;
 			concurrency: number;
+			limiter?: { readonly max: number; readonly duration: number };
 			lockDuration: number;
 			stalledInterval: number;
 		}
@@ -1452,7 +1594,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			workerOpts
 		);
 		worker.on('error', (err: unknown) => {
-			this.log.error('Step worker error', { queue: queueName, error: (err as Error).message });
+			this.log.error('Step worker error', {
+				queue: queueName,
+				error: (err as Error).message
+			});
 		});
 		worker.on('completed', (job: unknown) => this.settleActiveWorkerJob(job));
 		worker.on('failed', (job: unknown) => this.settleActiveWorkerJob(job));
@@ -1473,6 +1618,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		workerOpts: {
 			connection: ConnectionOptions;
 			concurrency: number;
+			limiter?: { readonly max: number; readonly duration: number };
 			lockDuration: number;
 			stalledInterval: number;
 		}
@@ -1481,7 +1627,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 		const worker = new this.WorkerClass(queueName, this.trackWorkerProcessor(processor), workerOpts);
 		worker.on('error', (err: unknown) => {
-			this.log.error('Workflow worker error', { queue: queueName, error: (err as Error).message });
+			this.log.error('Workflow worker error', {
+				queue: queueName,
+				error: (err as Error).message
+			});
 		});
 		worker.on('completed', (job: unknown) => this.settleActiveWorkerJob(job));
 		worker.on('failed', (job: unknown) => this.settleActiveWorkerJob(job));
@@ -1649,7 +1798,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 					this.flowStateCleanupHandles.delete(oldestKey);
 				}
 				this.localFlowStates.delete(oldestKey);
-				this.log.debug('Evicted oldest flow state due to capacity limit', { flowId: oldestKey });
+				this.log.debug('Evicted oldest flow state due to capacity limit', {
+					flowId: oldestKey
+				});
 			} else {
 				break; // Safety: exit if no keys found
 			}
@@ -1739,15 +1890,19 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * @returns The handler result
 	 * @throws WorkflowStepError if handler times out
 	 */
-	private async executeStepWithTimeout<T>(stepName: string, handler: () => Promise<T>): Promise<T> {
+	private async executeStepWithTimeout<T>(stepName: string, handler: (signal: AbortSignal) => Promise<T>): Promise<T> {
+		const ownership = new AbortController();
 		// If no step timeout configured, execute directly
 		if (this.stepTimeout <= 0) {
-			return handler();
+			return handler(ownership.signal);
 		}
 
 		// Race between handler and timeout
+		let timedOut = false;
 		const timeoutPromise = new Promise<never>((_, reject) => {
 			const timer = setTimeout(() => {
+				timedOut = true;
+				ownership.abort();
 				reject(
 					new WorkflowStepError(
 						stepName,
@@ -1761,7 +1916,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			}
 		});
 
-		return Promise.race([handler(), timeoutPromise]);
+		const execution = handler(ownership.signal);
+		try {
+			return await Promise.race([execution, timeoutPromise]);
+		} catch (error) {
+			if (timedOut) await execution.catch(() => {});
+			throw error;
+		}
 	}
 
 	/**
@@ -1791,11 +1952,12 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		const childResults = await job.getChildrenValues();
 		const results = flattenChildResults(childResults);
 
-		const ctx = this.createContext(flowId, workflowName, workflowData, results, data.meta, stepName);
-
 		// Execute with error capture and optional timeout
 		try {
-			const result = await this.executeStepWithTimeout(stepName, async () => stepInfo.handler(ctx));
+			const result = await this.executeStepWithTimeout(stepName, async (signal) => {
+				const ctx = this.createContext(flowId, workflowName, workflowData, results, data.meta, stepName, signal);
+				return stepInfo.handler(ctx);
+			});
 			// Include prior results so next step in chain can access all accumulated results
 			return {
 				__version: WRAPPER_VERSION,
@@ -1808,7 +1970,12 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			const stepError = new WorkflowStepError(stepName, originalError);
 
 			// Run rollbacks using BullMQ data + StepRegistry lookup
-			await this.runRollbacks({ job, workflowName, workflowData, meta: data.meta });
+			const rollbackErrors = await this.runRollbacks({
+				job,
+				workflowName,
+				workflowData,
+				meta: data.meta
+			});
 
 			// Call onError callback
 			await this.executeOnError(workflowName, flowId, workflowData, stepError, results, data.meta);
@@ -1821,18 +1988,20 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			// 1. The throw below marks this job as failed in BullMQ
 			// 2. failParentOnFailure cascades the failure to the parent workflow job
 			// 3. Instance A receives the 'failed' QueueEvents and rejects its pending promise
+			const failure = rollbackErrors.length > 0 ? new WorkflowRollbackError(stepError, rollbackErrors) : stepError;
+			await this.storeWorkflowFailure(flowId, failure);
 			const localState = this.localFlowStates.get(flowId);
 			if (localState) {
 				localState.status = 'failed';
-				localState.error = stepError;
+				localState.error = failure;
 			}
 
 			// Reject pending result if we have it (only works on caller instance).
 			// On other instances, this is a no-op - QueueEvents handles notification.
-			this.rejectPendingByFlowId(flowId, stepError);
+			this.rejectPendingByFlowId(flowId, failure);
 
 			// Throw so BullMQ marks job as failed
-			throw stepError;
+			throw failure;
 		}
 	}
 
@@ -1893,13 +2062,17 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		return Promise.all(
 			stepNames.map(async (name) => {
 				const stepInfo = this.stepRegistry.getStep(workflowName, name);
-				const ctx = this.createContext(flowId, workflowName, workflowData, existingResults, meta, name);
-
 				try {
-					const result = await this.executeStepWithTimeout(name, async () => stepInfo.handler(ctx));
+					const result = await this.executeStepWithTimeout(name, async (signal) => {
+						const ctx = this.createContext(flowId, workflowName, workflowData, existingResults, meta, name, signal);
+						return stepInfo.handler(ctx);
+					});
 					return { name, result };
 				} catch (err) {
-					return { name, error: err instanceof Error ? err : new Error(String(err)) };
+					return {
+						name,
+						error: err instanceof Error ? err : new Error(String(err))
+					};
 				}
 			})
 		);
@@ -1920,8 +2093,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		}
 
 		// Run rollbacks, onError, update state
-		await this.runRollbacksWithResults(
-			{ job, workflowName: ctx.workflowName, workflowData: ctx.workflowData, meta: ctx.meta },
+		const rollbackErrors = await this.runRollbacksWithResults(
+			{
+				job,
+				workflowName: ctx.workflowName,
+				workflowData: ctx.workflowData,
+				meta: ctx.meta
+			},
 			parallelResults
 		);
 		await this.executeOnError(
@@ -1933,14 +2111,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			ctx.meta
 		);
 
+		const failure = rollbackErrors.length > 0 ? new WorkflowRollbackError(stepError, rollbackErrors) : stepError;
+		await this.storeWorkflowFailure(ctx.flowId, failure);
 		const localState = this.localFlowStates.get(ctx.flowId);
 		if (localState) {
 			localState.status = 'failed';
-			localState.error = stepError;
+			localState.error = failure;
 		}
 
-		this.rejectPendingByFlowId(ctx.flowId, stepError);
-		throw stepError;
+		this.rejectPendingByFlowId(ctx.flowId, failure);
+		throw failure;
 	}
 
 	/**
@@ -1967,18 +2147,19 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	 * DISTRIBUTED: Uses job.getChildrenValues() to find completed steps,
 	 * then StepRegistry to lookup rollback handlers.
 	 */
-	private async runRollbacks(ctx: RollbackContext): Promise<void> {
+	private async runRollbacks(ctx: RollbackContext): Promise<Error[]> {
 		// Get completed steps from BullMQ job data
 		const childResults = await ctx.job.getChildrenValues();
 		const results = flattenChildResults(childResults);
 		const completedStepNames = Object.keys(results);
 
 		if (completedStepNames.length === 0) {
-			return;
+			return [];
 		}
 
 		const flowId = (ctx.job.data as StepJobData).flowId;
 		const failures: Array<{ step: string; error: string }> = [];
+		const rollbackErrors: Error[] = [];
 		let successCount = 0;
 
 		// Run rollbacks in reverse order
@@ -2000,7 +2181,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				this.log.debug('Rollback completed', { flowId, step: stepName });
 				successCount++;
 			} catch (rollbackError) {
-				const errorMessage = (rollbackError as Error).message;
+				const error = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+				rollbackErrors.push(error);
+				const errorMessage = error.message;
 				failures.push({ step: stepName, error: errorMessage });
 				this.log.error('Rollback failed', {
 					flowId,
@@ -2020,6 +2203,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				failures: failures.length > 0 ? failures : undefined
 			});
 		}
+		return rollbackErrors;
 	}
 
 	/**
@@ -2029,17 +2213,18 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private async runRollbacksWithResults(
 		ctx: RollbackContext,
 		allResults: Record<string, unknown>
-	): Promise<void> {
+	): Promise<Error[]> {
 		const flowId = (ctx.job.data as StepJobData).flowId;
 
 		// Get step names that completed successfully (have results)
 		const completedStepNames = Object.keys(allResults);
 
 		if (completedStepNames.length === 0) {
-			return;
+			return [];
 		}
 
 		const failures: Array<{ step: string; error: string }> = [];
+		const rollbackErrors: Error[] = [];
 		let successCount = 0;
 
 		// Run rollbacks in reverse order
@@ -2061,7 +2246,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				this.log.debug('Rollback completed', { flowId, step: stepName });
 				successCount++;
 			} catch (rollbackError) {
-				const errorMessage = (rollbackError as Error).message;
+				const error = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+				rollbackErrors.push(error);
+				const errorMessage = error.message;
 				failures.push({ step: stepName, error: errorMessage });
 				this.log.error('Rollback failed', {
 					flowId,
@@ -2070,7 +2257,6 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				});
 			}
 		}
-
 		// Log aggregated summary if any rollbacks were attempted
 		if (successCount > 0 || failures.length > 0) {
 			this.log.info('Rollback summary', {
@@ -2081,6 +2267,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				failures: failures.length > 0 ? failures : undefined
 			});
 		}
+		return rollbackErrors;
 	}
 
 	/**
@@ -2144,7 +2331,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		workflowData: unknown,
 		results: Record<string, unknown>,
 		meta?: PropagationMeta,
-		stepName?: string
+		stepName?: string,
+		signal?: AbortSignal
 	): WorkflowContext<unknown> {
 		const baseLog = meta ? Logger.fromMeta(workflowName, meta) : this.log.child(workflowName);
 
@@ -2157,7 +2345,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		return createWorkflowContext(flowId, workflowData, results, log, meta ?? {}, {
 			workflowName,
 			stepName,
-			providerId: this.providerId
+			providerId: this.providerId,
+			signal
 		});
 	}
 
@@ -2173,14 +2362,20 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		const initializing = this.queueEventsInitializations.get(queueName);
 		if (initializing) return initializing.ready;
 
-		const events = new this.QueueEventsClass(queueName, { connection: this.connection });
+		const events = new this.QueueEventsClass(queueName, {
+			connection: this.connection
+		});
 		let closePromise: Promise<void> | undefined;
 		const close = (): Promise<void> => (closePromise ??= events.close());
 
 		const ready = (async (): Promise<IQueueEvents> => {
 			// Handle QueueEvents errors per BullMQ docs
 			events.on('error', (err: unknown) => {
-				this.log.error('QueueEvents error', { queue: queueName, error: (err as Error).message });
+				if (!this.started && err instanceof Error && err.message === 'Connection is closed.') return;
+				this.log.error('QueueEvents error', {
+					queue: queueName,
+					error: (err as Error).message
+				});
 			});
 
 			try {
@@ -2193,7 +2388,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 				// Listen for workflow completion
 				events.on('completed', (...eventArgs: unknown[]) => {
-					const args = eventArgs[0] as { jobId: string; returnvalue?: string | unknown };
+					const args = eventArgs[0] as {
+						jobId: string;
+						returnvalue?: string | unknown;
+					};
 					const { jobId, returnvalue } = args;
 
 					// Atomically settle to prevent race with timeout handler
@@ -2229,7 +2427,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 				});
 
 				// Listen for workflow failure
-				events.on('failed', (...eventArgs: unknown[]) => {
+				events.on('failed', async (...eventArgs: unknown[]) => {
 					const args = eventArgs[0] as { jobId: string; failedReason: string };
 					const { jobId, failedReason } = args;
 
@@ -2239,15 +2437,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 					// Update local state
 					const localState = this.localFlowStates.get(pending.flowId);
+					const failure = await this.loadWorkflowFailure(pending.flowId, failedReason);
 					if (localState) {
 						localState.status = 'failed';
-						localState.error = new Error(failedReason);
+						localState.error = failure;
 					}
 
 					// Schedule cleanup to prevent unbounded memory growth from accumulated flow states.
 					this.scheduleFlowStateCleanup(pending.flowId);
 
-					pending.reject(new Error(failedReason));
+					pending.reject(failure);
 				});
 
 				this.queueEvents.set(queueName, events);
@@ -2315,7 +2514,10 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private handleTimeoutWithRedisCheck(flowId: string, effectiveTimeout: number): void {
 		// Fire-and-forget async check - errors are logged, not thrown
 		this.checkRedisAndTimeout(flowId, effectiveTimeout).catch((err) => {
-			this.log.error('Error during timeout Redis check', { flowId, error: (err as Error).message });
+			this.log.error('Error during timeout Redis check', {
+				flowId,
+				error: (err as Error).message
+			});
 			// On error checking Redis, fall back to timeout behavior
 			this.executeTimeout(flowId, effectiveTimeout);
 		});

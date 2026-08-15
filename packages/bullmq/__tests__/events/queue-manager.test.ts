@@ -141,8 +141,11 @@ describe('QueueManager', () => {
 			const MockQueue = mock(() => mockQueue);
 
 			let capturedProcessor: ((job: any) => Promise<any>) | null = null;
+			const workerEvents = new Map<string, (...args: any[]) => void>();
 			const mockWorker = {
-				on: mock(() => {}),
+				on: mock((event: string, callback: (...args: any[]) => void) => {
+					workerEvents.set(event, callback);
+				}),
 				close: mock(() => Promise.resolve()),
 				waitUntilReady: mock(() => Promise.resolve()),
 				connection: { _client: { on: mock(() => {}) } },
@@ -161,15 +164,19 @@ describe('QueueManager', () => {
 			});
 
 			const handler = mock(async (_job: any) => ({ processed: true }));
-			await manager.registerWorker('monitor.check', handler);
+			const onCompleted = mock(() => {});
+			await manager.registerWorker('monitor.check', handler, onCompleted);
 
 			// Simulate job processing
 			expect(capturedProcessor).not.toBeNull();
 			const mockJob = { id: 'job-1', data: { payload: { test: true } } };
 			const result = await capturedProcessor!(mockJob);
+			expect(onCompleted).not.toHaveBeenCalled();
+			workerEvents.get('completed')!(mockJob, result);
 
 			expect(handler).toHaveBeenCalledWith(mockJob);
 			expect(result).toEqual({ processed: true });
+			expect(onCompleted).toHaveBeenCalledWith('job-1', { processed: true });
 		});
 	});
 
@@ -361,6 +368,35 @@ describe('QueueManager', () => {
 				attempts: 5,
 				backoff: { type: 'fixed', delay: 2000 }
 			});
+		});
+	});
+
+	describe('removeJob', () => {
+		it('removes both the terminal job and its completion-receipt state', async () => {
+			const remove = mock(() => Promise.resolve());
+			const evalRedis = mock(() => Promise.resolve(2));
+			const mockQueue = {
+				add: mock(() => Promise.resolve({ id: 'job-123' })),
+				on: mock(() => {}),
+				close: mock(() => Promise.resolve()),
+				getJob: mock(() => Promise.resolve({ remove })),
+				connection: { _client: { on: mock(() => {}), eval: evalRedis } }
+			};
+			const MockQueue = mock(() => mockQueue);
+			const { QueueManager } = await import('../../src/events/queue-manager.ts');
+			const manager = new QueueManager({
+				connection: { host: 'localhost', port: 6379 },
+				QueueClass: MockQueue as any
+			});
+
+			expect(await manager.removeJob('incident.lifecycle-effect-execute', 'delivery-key')).toBe(true);
+			expect(remove).toHaveBeenCalledTimes(1);
+			expect(evalRedis).toHaveBeenCalledWith(
+				"return redis.call('DEL', KEYS[1], KEYS[2])",
+				2,
+				expect.stringContaining(':receipt:'),
+				expect.stringContaining(':receipt:')
+			);
 		});
 	});
 });

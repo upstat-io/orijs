@@ -346,14 +346,15 @@ describe('BullMQ Workflow 2-Instance Distribution', () => {
 			const instance1 = harness.getInstance('instance1');
 			const handle1 = await instance1.execute(TrackedWorkflowDef, { value: 3 });
 
-			// Wait for it to complete first
-			await withTimeout(handle1.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION);
+			// The result itself is the ownership boundary: instance2 must not be stopped
+			// while it can still own work from the first execution.
+			await handle1.result();
 
 			// Now stop instance2 and verify instance1 can still handle workflows
 			await harness.stopInstance('instance2');
 
 			const handle2 = await instance1.execute(TrackedWorkflowDef, { value: 7 });
-			const result = await withTimeout(handle2.result(), TEST_TIMEOUTS.WORKFLOW_EXECUTION);
+			const result = await handle2.result();
 
 			// (7*2 + 10) * 2 = 48
 			expect(result).toEqual({ result: 48 });

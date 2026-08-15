@@ -50,7 +50,8 @@ describe('RedisWsProvider Interface Segregation', () => {
 		await redisHelper.flushAll();
 		const config = redisHelper.getConnectionConfig();
 		provider = new RedisWsProvider({
-			connection: { host: config.host, port: config.port }
+			connection: { host: config.host, port: config.port, db: config.db },
+			keyPrefix: `${config.namespace}:ws`
 		});
 	});
 

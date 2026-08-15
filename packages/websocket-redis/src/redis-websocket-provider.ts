@@ -39,6 +39,8 @@ import { validateTopic, validateSocketId } from '@orijs/websocket';
 export interface RedisConnectionOptions {
 	readonly host: string;
 	readonly port: number;
+	/** Optional Redis database index. */
+	readonly db?: number;
 }
 
 /**

@@ -59,7 +59,7 @@ describe('CacheService (functional)', () => {
 		}
 		const connectionConfig = redisHelper.getConnectionConfig();
 		redisCacheProvider = new RedisCacheProvider({
-			connection: { host: connectionConfig.host, port: connectionConfig.port }
+			connection: { host: connectionConfig.host, port: connectionConfig.port, db: connectionConfig.db }
 		});
 		cacheService = new CacheService(redisCacheProvider);
 	});

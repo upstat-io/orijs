@@ -163,6 +163,66 @@ describe('CompletionTracker', () => {
 	});
 
 	describe('job ID mapping', () => {
+		it('should settle every local correlation attached to the same job', async () => {
+			const MockQueueEvents = mock(() => ({
+				on: mock(() => {}),
+				waitUntilReady: mock(() => Promise.resolve()),
+				close: mock(() => Promise.resolve()),
+				connection: { _client: { on: mock(() => {}) } }
+			}));
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const tracker = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+			const first = mock(() => {});
+			const second = mock(() => {});
+
+			tracker.register('event.shared', 'corr-first', first);
+			tracker.register('event.shared', 'corr-second', second);
+			tracker.mapJobId('event.shared', 'same-job', 'corr-first');
+			tracker.mapJobId('event.shared', 'same-job', 'corr-second');
+			tracker.completeJob('event.shared', 'same-job', { ok: true });
+
+			expect(first).toHaveBeenCalledWith({ ok: true });
+			expect(second).toHaveBeenCalledWith({ ok: true });
+		});
+
+		it('should ignore a completion owned by another tracker on the shared queue', async () => {
+			const instances: Array<{ handlers: Map<string, (...args: any[]) => void> }> = [];
+			const MockQueueEvents = mock(() => {
+				const handlers = new Map<string, (...args: any[]) => void>();
+				instances.push({ handlers });
+				return {
+					on: mock((event: string, handler: (...args: any[]) => void) => handlers.set(event, handler)),
+					waitUntilReady: mock(() => Promise.resolve()),
+					close: mock(() => Promise.resolve()),
+					connection: { _client: { on: mock(() => {}) } }
+				};
+			});
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const first = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+			const second = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any
+			});
+			const firstResult = mock(() => {});
+			const secondResult = mock(() => {});
+
+			first.register('event.shared', 'corr-first', firstResult);
+			first.mapJobId('event.shared', 'job-first', 'corr-first');
+			second.register('event.shared', 'corr-second', secondResult);
+
+			instances[1]!.handlers.get('completed')!({ jobId: 'job-first', returnvalue: 'null' });
+			second.mapJobId('event.shared', 'job-first', 'corr-second');
+
+			expect(firstResult).not.toHaveBeenCalled();
+			expect(secondResult).not.toHaveBeenCalled();
+		});
+
 		it('should map job ID to correlation ID', async () => {
 			const mockQueueEvents = {
 				on: mock(() => {}),
@@ -214,6 +274,30 @@ describe('CompletionTracker', () => {
 	});
 
 	describe('lifecycle', () => {
+		it('should not report the expected QueueEvents connection-close error during stop', async () => {
+			let errorHandler!: (error: Error) => void;
+			const logger = { warn: mock(() => {}), error: mock(() => {}) };
+			const MockQueueEvents = mock(() => ({
+				on: mock((event: string, handler: (error: Error) => void) => {
+					if (event === 'error') errorHandler = handler;
+				}),
+				waitUntilReady: mock(() => Promise.resolve()),
+				close: mock(async () => errorHandler(new Error('Connection is closed.'))),
+				connection: { _client: { on: mock(() => {}) } }
+			}));
+			const { CompletionTracker } = await import('../../src/events/completion-tracker.ts');
+			const tracker = new CompletionTracker({
+				connection: { host: 'localhost', port: 6379 },
+				QueueEventsClass: MockQueueEvents as any,
+				logger
+			});
+
+			tracker.register('event.test', 'corr-1', () => {});
+			await tracker.stop();
+
+			expect(logger.error).not.toHaveBeenCalled();
+		});
+
 		it('should close all QueueEvents on stop', async () => {
 			const mockInstances: any[] = [];
 			const MockQueueEvents = mock(() => {

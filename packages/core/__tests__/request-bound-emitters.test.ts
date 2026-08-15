@@ -1,410 +1,592 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, spyOn } from "bun:test";
 import {
-	RequestBoundEventEmitter,
-	RequestBoundWorkflowExecutor,
-	RequestBoundSocketEmitter,
-	type RequestBindingContext
-} from '../src/controllers/request-bound-emitters.ts';
-import type { SocketEmitter } from '../src/types/emitter.ts';
-import { Event } from '../src/types/event-definition.ts';
-import { Workflow } from '../src/types/workflow-definition.ts';
-import { Type } from '@orijs/validation';
-import { Logger } from '@orijs/logging';
-import type { EventCoordinator } from '../src/event-coordinator.ts';
-import type { WorkflowCoordinator } from '../src/workflow-coordinator.ts';
-import type { EventProvider } from '@orijs/events';
+  RequestBoundEventEmitter,
+  RequestBoundWorkflowExecutor,
+  RequestBoundSocketEmitter,
+  type RequestBindingContext,
+} from "../src/controllers/request-bound-emitters.ts";
+import type { SocketEmitter } from "../src/types/emitter.ts";
+import { Event } from "../src/types/event-definition.ts";
+import { Workflow } from "../src/types/workflow-definition.ts";
+import { Type } from "@orijs/validation";
+import { Logger } from "@orijs/logging";
+import type { EventCoordinator } from "../src/event-coordinator.ts";
+import type { WorkflowCoordinator } from "../src/workflow-coordinator.ts";
+import { createSubscription, type EventProvider } from "@orijs/events";
 
-describe('RequestBoundEventEmitter', () => {
-	let mockEventCoordinator: EventCoordinator;
-	let mockProvider: EventProvider;
-	let context: RequestBindingContext;
-	let logger: Logger;
+describe("RequestBoundEventEmitter", () => {
+  let mockEventCoordinator: EventCoordinator;
+  let mockProvider: EventProvider;
+  let context: RequestBindingContext;
+  let logger: Logger;
 
-	const TestEvent = Event.define({
-		name: 'test.event',
-		data: Type.Object({
-			message: Type.String(),
-			count: Type.Number()
-		}),
-		result: Type.Object({ received: Type.Boolean() })
-	});
+  const TestEvent = Event.define({
+    name: "test.event",
+    data: Type.Object({
+      message: Type.String(),
+      count: Type.Number(),
+    }),
+    result: Type.Object({ received: Type.Boolean() }),
+  });
 
-	beforeEach(() => {
-		logger = new Logger('test');
-		context = {
-			correlationId: 'req-123',
-			logger
-		};
+  beforeEach(() => {
+    logger = new Logger("test");
+    context = {
+      correlationId: "req-123",
+      logger,
+    };
 
-		mockProvider = {
-			start: async () => {},
-			stop: async () => {},
-			emit: mock(() => Promise.resolve({ received: true })),
-			subscribe: () => {}
-		} as unknown as EventProvider;
+    const subscription = createSubscription<{ received: boolean }>();
+    subscription._resolve({ received: true });
+    mockProvider = {
+      start: async () => {},
+      stop: async () => {},
+      emit: mock(() => subscription),
+      subscribe: () => {},
+    } as unknown as EventProvider;
 
-		mockEventCoordinator = {
-			getProvider: mock(() => mockProvider),
-			getEventDefinition: mock(() => TestEvent)
-		} as unknown as EventCoordinator;
-	});
+    mockEventCoordinator = {
+      getProvider: mock(() => mockProvider),
+      getEventDefinition: mock(() => TestEvent),
+    } as unknown as EventCoordinator;
+  });
 
-	describe('emit', () => {
-		it('should emit event with valid payload and propagate correlationId', async () => {
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+  describe("emit", () => {
+    it("should emit event with valid payload and propagate correlationId", async () => {
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			const result = await emitter.emit(TestEvent, { message: 'hello', count: 42 });
+      const result = await emitter.emit(TestEvent, {
+        message: "hello",
+        count: 42,
+      });
 
-			expect(result).toEqual({ received: true });
-			expect(mockProvider.emit).toHaveBeenCalledWith(
-				'test.event',
-				{ message: 'hello', count: 42 },
-				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ expectsResult: true }
-			);
-		});
+      expect(result).toEqual({ received: true });
+      expect(mockProvider.emit).toHaveBeenCalledWith(
+        "test.event",
+        { message: "hello", count: 42 },
+        { correlationId: "req-123", causationId: "req-123" },
+        { expectsResult: true },
+      );
+    });
 
-		it('should throw when no event provider configured', async () => {
-			mockEventCoordinator.getProvider = mock(() => null);
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should throw when no event provider configured", async () => {
+      mockEventCoordinator.getProvider = mock(() => null);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await expect(emitter.emit(TestEvent, { message: 'hello', count: 42 })).rejects.toThrow(
-				/no event provider configured/
-			);
-		});
+      await expect(
+        emitter.emit(TestEvent, { message: "hello", count: 42 }),
+      ).rejects.toThrow(/no event provider configured/);
+    });
 
-		it('should throw when event not registered', async () => {
-			mockEventCoordinator.getEventDefinition = mock(() => undefined);
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should throw when event not registered", async () => {
+      mockEventCoordinator.getEventDefinition = mock(() => undefined);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await expect(emitter.emit(TestEvent, { message: 'hello', count: 42 })).rejects.toThrow(
-				/event not registered/
-			);
-		});
+      await expect(
+        emitter.emit(TestEvent, { message: "hello", count: 42 }),
+      ).rejects.toThrow(/event not registered/);
+    });
 
-		it('should throw on invalid payload (missing required field)', async () => {
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should throw on invalid payload (missing required field)", async () => {
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await expect(
-				emitter.emit(TestEvent, { message: 'hello' } as any) // missing count
-			).rejects.toThrow(/payload validation failed/);
-		});
+      await expect(
+        emitter.emit(TestEvent, { message: "hello" } as any), // missing count
+      ).rejects.toThrow(/payload validation failed/);
+    });
 
-		it('should throw on invalid payload (wrong type)', async () => {
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should throw on invalid payload (wrong type)", async () => {
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await expect(
-				emitter.emit(TestEvent, { message: 'hello', count: 'not-a-number' } as any)
-			).rejects.toThrow(/payload validation failed/);
-		});
+      await expect(
+        emitter.emit(TestEvent, {
+          message: "hello",
+          count: "not-a-number",
+        } as any),
+      ).rejects.toThrow(/payload validation failed/);
+    });
 
-		it('should pass delay option to provider', async () => {
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should pass delay option to provider", async () => {
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await emitter.emit(TestEvent, { message: 'hello', count: 1 }, { delay: 5000 });
+      await emitter.emit(
+        TestEvent,
+        { message: "hello", count: 1 },
+        { delay: 5000 },
+      );
 
-			expect(mockProvider.emit).toHaveBeenCalledWith(
-				'test.event',
-				{ message: 'hello', count: 1 },
-				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ delay: 5000, expectsResult: true }
-			);
-		});
+      expect(mockProvider.emit).toHaveBeenCalledWith(
+        "test.event",
+        { message: "hello", count: 1 },
+        { correlationId: "req-123", causationId: "req-123" },
+        { delay: 5000, expectsResult: true },
+      );
+    });
 
-		it('should pass explicit idempotencyKey option to provider', async () => {
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should pass explicit idempotencyKey option to provider", async () => {
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await emitter.emit(TestEvent, { message: 'hello', count: 1 }, { idempotencyKey: 'my-key' });
+      await emitter.emit(
+        TestEvent,
+        { message: "hello", count: 1 },
+        { idempotencyKey: "my-key" },
+      );
 
-			expect(mockProvider.emit).toHaveBeenCalledWith(
-				'test.event',
-				{ message: 'hello', count: 1 },
-				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'my-key', expectsResult: true }
-			);
-		});
+      expect(mockProvider.emit).toHaveBeenCalledWith(
+        "test.event",
+        { message: "hello", count: 1 },
+        { correlationId: "req-123", causationId: "req-123" },
+        { idempotencyKey: "my-key", expectsResult: true },
+      );
+    });
 
-		it('should derive idempotencyKey from event definition key function', async () => {
-			const KeyedEvent = Event.define({
-				name: 'keyed.event',
-				data: Type.Object({ alertUuid: Type.String() }),
-				result: Type.Void(),
-				key: (data) => data.alertUuid
-			});
+    it("should derive idempotencyKey from event definition key function", async () => {
+      const KeyedEvent = Event.define({
+        name: "keyed.event",
+        data: Type.Object({ alertUuid: Type.String() }),
+        result: Type.Void(),
+        key: (data) => data.alertUuid,
+      });
 
-			mockEventCoordinator.getEventDefinition = mock(() => KeyedEvent) as typeof mockEventCoordinator.getEventDefinition;
+      mockEventCoordinator.getEventDefinition = mock(
+        () => KeyedEvent,
+      ) as typeof mockEventCoordinator.getEventDefinition;
 
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await emitter.emit(KeyedEvent, { alertUuid: 'abc-123' });
+      await emitter.emit(KeyedEvent, { alertUuid: "abc-123" });
 
-			expect(mockProvider.emit).toHaveBeenCalledWith(
-				'keyed.event',
-				{ alertUuid: 'abc-123' },
-				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'abc-123', expectsResult: true }
-			);
-		});
+      expect(mockProvider.emit).toHaveBeenCalledWith(
+        "keyed.event",
+        { alertUuid: "abc-123" },
+        { correlationId: "req-123", causationId: "req-123" },
+        { idempotencyKey: "abc-123", expectsResult: false },
+      );
+    });
 
-		it('should prefer explicit idempotencyKey over definition key function', async () => {
-			const KeyedEvent = Event.define({
-				name: 'keyed.event',
-				data: Type.Object({ alertUuid: Type.String() }),
-				result: Type.Void(),
-				key: (data) => data.alertUuid
-			});
+    it("should prefer explicit idempotencyKey over definition key function", async () => {
+      const KeyedEvent = Event.define({
+        name: "keyed.event",
+        data: Type.Object({ alertUuid: Type.String() }),
+        result: Type.Void(),
+        key: (data) => data.alertUuid,
+      });
 
-			mockEventCoordinator.getEventDefinition = mock(() => KeyedEvent) as typeof mockEventCoordinator.getEventDefinition;
+      mockEventCoordinator.getEventDefinition = mock(
+        () => KeyedEvent,
+      ) as typeof mockEventCoordinator.getEventDefinition;
 
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-			await emitter.emit(KeyedEvent, { alertUuid: 'abc-123' }, { idempotencyKey: 'explicit-key' });
+      await emitter.emit(
+        KeyedEvent,
+        { alertUuid: "abc-123" },
+        { idempotencyKey: "explicit-key" },
+      );
 
-			expect(mockProvider.emit).toHaveBeenCalledWith(
-				'keyed.event',
-				{ alertUuid: 'abc-123' },
-				{ correlationId: 'req-123', causationId: 'req-123' },
-				{ idempotencyKey: 'explicit-key', expectsResult: true }
-			);
-		});
-	});
+      expect(mockProvider.emit).toHaveBeenCalledWith(
+        "keyed.event",
+        { alertUuid: "abc-123" },
+        { correlationId: "req-123", causationId: "req-123" },
+        { idempotencyKey: "explicit-key", expectsResult: false },
+      );
+    });
 
-	describe('cancel', () => {
-		it('should delegate cancel to event coordinator', async () => {
-			mockEventCoordinator.cancel = mock(async () => true);
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+    it("should log rejection with request context when a fire-and-forget (unawaited) emit rejects", async () => {
+      const providerErr = new Error("queue dispatch failed");
+      const subscription = createSubscription();
+      subscription._reject(providerErr);
+      mockProvider.emit = mock(
+        () => subscription,
+      ) as unknown as EventProvider["emit"];
 
-			const result = await emitter.cancel(TestEvent, 'my-key');
+      const errorSpy = spyOn(logger, "error");
 
-			expect(result).toBe(true);
-			expect(mockEventCoordinator.cancel).toHaveBeenCalledWith('test.event', 'my-key');
-		});
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
 
-		it('should return false when coordinator cancel returns false', async () => {
-			mockEventCoordinator.cancel = mock(async () => false);
-			const emitter = new RequestBoundEventEmitter(mockEventCoordinator, context);
+      // Fire-and-forget: caller does not await or attach its own .catch,
+      // matching the `void ctx.events.emit(...)` production call shape.
+      void emitter.emit(TestEvent, { message: "hello", count: 1 });
 
-			const result = await emitter.cancel(TestEvent, 'nonexistent');
+      // Let the rejection's microtask queue drain.
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-			expect(result).toBe(false);
-		});
-	});
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Unhandled rejection for event "test.event"',
+        expect.objectContaining({
+          eventName: "test.event",
+          correlationId: "req-123",
+          error: "queue dispatch failed",
+        }),
+      );
+    });
+
+    it("should not create a second unhandled rejection for a fire-and-forget emit", async () => {
+      const providerErr = new Error("queue dispatch failed");
+      const subscription = createSubscription();
+      subscription._reject(providerErr);
+      mockProvider.emit = mock(
+        () => subscription,
+      ) as unknown as EventProvider["emit"];
+
+      let sawUnhandledRejection = false;
+      const onUnhandled = () => {
+        sawUnhandledRejection = true;
+      };
+      process.on("unhandledRejection", onUnhandled);
+
+      try {
+        const emitter = new RequestBoundEventEmitter(
+          mockEventCoordinator,
+          context,
+        );
+        void emitter.emit(TestEvent, { message: "hello", count: 1 });
+
+        // Give the runtime a chance to flag an unhandled rejection if one occurs.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(sawUnhandledRejection).toBe(false);
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
+    });
+  });
+
+  describe("cancel", () => {
+    it("should delegate cancel to event coordinator", async () => {
+      mockEventCoordinator.cancel = mock(async () => true);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
+
+      const result = await emitter.cancel(TestEvent, "my-key");
+
+      expect(result).toBe(true);
+      expect(mockEventCoordinator.cancel).toHaveBeenCalledWith(
+        "test.event",
+        "my-key",
+      );
+    });
+
+    it("should return false when coordinator cancel returns false", async () => {
+      mockEventCoordinator.cancel = mock(async () => false);
+      const emitter = new RequestBoundEventEmitter(
+        mockEventCoordinator,
+        context,
+      );
+
+      const result = await emitter.cancel(TestEvent, "nonexistent");
+
+      expect(result).toBe(false);
+    });
+  });
 });
 
-describe('RequestBoundWorkflowExecutor', () => {
-	let mockWorkflowCoordinator: WorkflowCoordinator;
-	let context: RequestBindingContext;
-	let logger: Logger;
+describe("RequestBoundWorkflowExecutor", () => {
+  let mockWorkflowCoordinator: WorkflowCoordinator;
+  let context: RequestBindingContext;
+  let logger: Logger;
 
-	const TestWorkflow = Workflow.define({
-		name: 'test-workflow',
-		data: Type.Object({
-			orderId: Type.String(),
-			amount: Type.Number()
-		}),
-		result: Type.Object({ success: Type.Boolean(), processedAt: Type.String() })
-	});
+  const TestWorkflow = Workflow.define({
+    name: "test-workflow",
+    data: Type.Object({
+      orderId: Type.String(),
+      amount: Type.Number(),
+    }),
+    result: Type.Object({
+      success: Type.Boolean(),
+      processedAt: Type.String(),
+    }),
+  });
 
-	beforeEach(() => {
-		logger = new Logger('test');
-		context = {
-			correlationId: 'req-456',
-			logger
-		};
+  beforeEach(() => {
+    logger = new Logger("test");
+    context = {
+      correlationId: "req-456",
+      logger,
+    };
 
-		mockWorkflowCoordinator = {
-			getConsumer: mock(() => ({
-				definition: TestWorkflow,
-				consumer: {
-					configure: () => {},
-					onComplete: async (_ctx: any) => ({
-						success: true,
-						processedAt: new Date().toISOString()
-					})
-				}
-			})),
-			getWorkflowDefinition: mock(() => TestWorkflow)
-		} as unknown as WorkflowCoordinator;
-	});
+    mockWorkflowCoordinator = {
+      getConsumer: mock(() => ({
+        definition: TestWorkflow,
+        consumer: {
+          configure: () => {},
+          onComplete: async (_ctx: any) => ({
+            success: true,
+            processedAt: new Date().toISOString(),
+          }),
+        },
+      })),
+      getWorkflowDefinition: mock(() => TestWorkflow),
+    } as unknown as WorkflowCoordinator;
+  });
 
-	describe('execute', () => {
-		it('should execute workflow with valid data and return handle', async () => {
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+  describe("execute", () => {
+    it("should execute workflow with valid data and return handle", async () => {
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			const handle = await executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 });
+      const handle = await executor.execute(TestWorkflow, {
+        orderId: "ORD-001",
+        amount: 99.99,
+      });
 
-			expect(handle.id).toContain('test-workflow');
+      expect(handle.id).toContain("test-workflow");
 
-			// Wait for async execution
-			const result = await handle.result();
-			expect(result.success).toBe(true);
-			expect(result.processedAt).toBeDefined();
+      // Wait for async execution
+      const result = await handle.result();
+      expect(result.success).toBe(true);
+      expect(result.processedAt).toBeDefined();
 
-			const status = await handle.status();
-			expect(status).toBe('completed');
-		});
+      const status = await handle.status();
+      expect(status).toBe("completed");
+    });
 
-		it('should throw when workflow not registered', async () => {
-			mockWorkflowCoordinator.getConsumer = mock(() => undefined);
-			mockWorkflowCoordinator.getWorkflowDefinition = mock(() => undefined);
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should throw when workflow not registered", async () => {
+      mockWorkflowCoordinator.getConsumer = mock(() => undefined);
+      mockWorkflowCoordinator.getWorkflowDefinition = mock(() => undefined);
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			await expect(executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 })).rejects.toThrow(
-				/workflow not registered/
-			);
-		});
+      await expect(
+        executor.execute(TestWorkflow, { orderId: "ORD-001", amount: 99.99 }),
+      ).rejects.toThrow(/workflow not registered/);
+    });
 
-		it('should return NullWorkflowHandle when no consumer registered (definition only)', async () => {
-			mockWorkflowCoordinator.getConsumer = mock(() => undefined);
-			// Definition exists but no consumer
-			mockWorkflowCoordinator.getWorkflowDefinition = mock(() => TestWorkflow);
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should return NullWorkflowHandle when no consumer registered (definition only)", async () => {
+      mockWorkflowCoordinator.getConsumer = mock(() => undefined);
+      // Definition exists but no consumer
+      mockWorkflowCoordinator.getWorkflowDefinition = mock(() => TestWorkflow);
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			const handle = await executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 });
+      const handle = await executor.execute(TestWorkflow, {
+        orderId: "ORD-001",
+        amount: 99.99,
+      });
 
-			expect(handle.id).toContain('null-test-workflow');
+      expect(handle.id).toContain("null-test-workflow");
 
-			const status = await handle.status();
-			expect(status).toBe('failed');
+      const status = await handle.status();
+      expect(status).toBe("failed");
 
-			await expect(handle.result()).rejects.toThrow(/no workflow provider configured/);
+      await expect(handle.result()).rejects.toThrow(
+        /no workflow provider configured/,
+      );
 
-			const cancelled = await handle.cancel();
-			expect(cancelled).toBe(false);
-		});
+      const cancelled = await handle.cancel();
+      expect(cancelled).toBe(false);
+    });
 
-		it('should throw on invalid data (missing required field)', async () => {
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should throw on invalid data (missing required field)", async () => {
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			await expect(
-				executor.execute(TestWorkflow, { orderId: 'ORD-001' } as any) // missing amount
-			).rejects.toThrow(/data validation failed/);
-		});
+      await expect(
+        executor.execute(TestWorkflow, { orderId: "ORD-001" } as any), // missing amount
+      ).rejects.toThrow(/data validation failed/);
+    });
 
-		it('should throw on invalid data (wrong type)', async () => {
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should throw on invalid data (wrong type)", async () => {
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			await expect(
-				executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 'not-a-number' } as any)
-			).rejects.toThrow(/data validation failed/);
-		});
+      await expect(
+        executor.execute(TestWorkflow, {
+          orderId: "ORD-001",
+          amount: "not-a-number",
+        } as any),
+      ).rejects.toThrow(/data validation failed/);
+    });
 
-		it('should handle consumer onComplete throwing error', async () => {
-			mockWorkflowCoordinator.getConsumer = mock(() => ({
-				definition: TestWorkflow,
-				consumer: {
-					configure: () => {},
-					onComplete: async () => {
-						throw new Error('Consumer processing failed');
-					}
-				}
-			}));
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should handle consumer onComplete throwing error", async () => {
+      mockWorkflowCoordinator.getConsumer = mock(() => ({
+        definition: TestWorkflow,
+        consumer: {
+          configure: () => {},
+          onComplete: async () => {
+            throw new Error("Consumer processing failed");
+          },
+        },
+      }));
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			const handle = await executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 });
+      const handle = await executor.execute(TestWorkflow, {
+        orderId: "ORD-001",
+        amount: 99.99,
+      });
 
-			// Wait for async execution to fail
-			await expect(handle.result()).rejects.toThrow(/Consumer processing failed/);
+      // Wait for async execution to fail
+      await expect(handle.result()).rejects.toThrow(
+        /Consumer processing failed/,
+      );
 
-			const status = await handle.status();
-			expect(status).toBe('failed');
-		});
+      const status = await handle.status();
+      expect(status).toBe("failed");
+    });
 
-		it('should propagate correlationId in workflow context', async () => {
-			let capturedMeta: any;
-			mockWorkflowCoordinator.getConsumer = mock(() => ({
-				definition: TestWorkflow,
-				consumer: {
-					configure: () => {},
-					onComplete: async (ctx: any) => {
-						capturedMeta = ctx.meta;
-						return { success: true, processedAt: new Date().toISOString() };
-					}
-				}
-			}));
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should propagate correlationId in workflow context", async () => {
+      let capturedMeta: any;
+      mockWorkflowCoordinator.getConsumer = mock(() => ({
+        definition: TestWorkflow,
+        consumer: {
+          configure: () => {},
+          onComplete: async (ctx: any) => {
+            capturedMeta = ctx.meta;
+            return { success: true, processedAt: new Date().toISOString() };
+          },
+        },
+      }));
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			const handle = await executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 });
-			await handle.result();
+      const handle = await executor.execute(TestWorkflow, {
+        orderId: "ORD-001",
+        amount: 99.99,
+      });
+      await handle.result();
 
-			expect(capturedMeta.correlationId).toBe('req-456');
-		});
+      expect(capturedMeta.correlationId).toBe("req-456");
+    });
 
-		it('should not support cancellation in direct invocation mode', async () => {
-			const executor = new RequestBoundWorkflowExecutor(mockWorkflowCoordinator, context);
+    it("should not support cancellation in direct invocation mode", async () => {
+      const executor = new RequestBoundWorkflowExecutor(
+        mockWorkflowCoordinator,
+        context,
+      );
 
-			const handle = await executor.execute(TestWorkflow, { orderId: 'ORD-001', amount: 99.99 });
+      const handle = await executor.execute(TestWorkflow, {
+        orderId: "ORD-001",
+        amount: 99.99,
+      });
 
-			const cancelled = await handle.cancel();
-			expect(cancelled).toBe(false);
-		});
-	});
+      const cancelled = await handle.cancel();
+      expect(cancelled).toBe(false);
+    });
+  });
 });
 
-describe('RequestBoundSocketEmitter', () => {
-	let mockEmitter: SocketEmitter;
-	let context: RequestBindingContext;
-	let logger: Logger;
+describe("RequestBoundSocketEmitter", () => {
+  let mockEmitter: SocketEmitter;
+  let context: RequestBindingContext;
+  let logger: Logger;
 
-	beforeEach(() => {
-		logger = new Logger('test');
-		context = {
-			correlationId: 'req-789',
-			logger
-		};
+  beforeEach(() => {
+    logger = new Logger("test");
+    context = {
+      correlationId: "req-789",
+      logger,
+    };
 
-		mockEmitter = {
-			publish: mock(() => Promise.resolve()),
-			send: mock(() => true),
-			broadcast: mock(() => {}),
-			emit: mock(() => Promise.resolve())
-		};
-	});
+    mockEmitter = {
+      publish: mock(() => Promise.resolve()),
+      send: mock(() => true),
+      broadcast: mock(() => {}),
+      emit: mock(() => Promise.resolve()),
+    };
+  });
 
-	describe('correlationId', () => {
-		it('should expose correlationId from request context', () => {
-			const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
+  describe("correlationId", () => {
+    it("should expose correlationId from request context", () => {
+      const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
 
-			expect(boundEmitter.correlationId).toBe('req-789');
-		});
-	});
+      expect(boundEmitter.correlationId).toBe("req-789");
+    });
+  });
 
-	describe('publish', () => {
-		it('should delegate to underlying emitter', () => {
-			const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
+  describe("publish", () => {
+    it("should delegate to underlying emitter", () => {
+      const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
 
-			boundEmitter.publish('user:123', JSON.stringify({ type: 'update' }));
+      boundEmitter.publish("user:123", JSON.stringify({ type: "update" }));
 
-			expect(mockEmitter.publish).toHaveBeenCalledWith('user:123', JSON.stringify({ type: 'update' }));
-		});
+      expect(mockEmitter.publish).toHaveBeenCalledWith(
+        "user:123",
+        JSON.stringify({ type: "update" }),
+      );
+    });
 
-		it('should handle binary messages', () => {
-			const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
-			const binaryData = new ArrayBuffer(8);
+    it("should handle binary messages", () => {
+      const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
+      const binaryData = new ArrayBuffer(8);
 
-			boundEmitter.publish('binary-topic', binaryData);
+      boundEmitter.publish("binary-topic", binaryData);
 
-			expect(mockEmitter.publish).toHaveBeenCalledWith('binary-topic', binaryData);
-		});
-	});
+      expect(mockEmitter.publish).toHaveBeenCalledWith(
+        "binary-topic",
+        binaryData,
+      );
+    });
+  });
 
-	describe('send', () => {
-		it('should delegate to underlying emitter', () => {
-			const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
+  describe("send", () => {
+    it("should delegate to underlying emitter", () => {
+      const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
 
-			boundEmitter.send('socket-456', 'direct message');
+      boundEmitter.send("socket-456", "direct message");
 
-			expect(mockEmitter.send).toHaveBeenCalledWith('socket-456', 'direct message');
-		});
-	});
+      expect(mockEmitter.send).toHaveBeenCalledWith(
+        "socket-456",
+        "direct message",
+      );
+    });
+  });
 
-	describe('broadcast', () => {
-		it('should delegate to underlying emitter', () => {
-			const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
+  describe("broadcast", () => {
+    it("should delegate to underlying emitter", () => {
+      const boundEmitter = new RequestBoundSocketEmitter(mockEmitter, context);
 
-			boundEmitter.broadcast(JSON.stringify({ type: 'announcement' }));
+      boundEmitter.broadcast(JSON.stringify({ type: "announcement" }));
 
-			expect(mockEmitter.broadcast).toHaveBeenCalledWith(JSON.stringify({ type: 'announcement' }));
-		});
-	});
+      expect(mockEmitter.broadcast).toHaveBeenCalledWith(
+        JSON.stringify({ type: "announcement" }),
+      );
+    });
+  });
 });

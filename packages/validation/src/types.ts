@@ -138,8 +138,15 @@ function validateTypeBox<T>(schema: TSchema, data: unknown): ValidationResult<T>
 	const errors = [...Value.Errors(schema, withDefaults)];
 
 	if (errors.length === 0) {
-		const decoded = Value.Decode(schema, withDefaults);
-		return { success: true, data: decoded as T };
+		try {
+			const decoded = Value.Decode(schema, withDefaults);
+			return { success: true, data: decoded as T };
+		} catch (error) {
+			return {
+				success: false,
+				errors: [{ path: '', message: error instanceof Error ? error.message : String(error) }]
+			};
+		}
 	}
 
 	return {

@@ -214,7 +214,7 @@ export interface EventContext<TPayload> {
 	readonly emit: <TReturn = void>(
 		eventName: string,
 		payload: unknown,
-		options?: { delay?: number; idempotencyKey?: string }
+		options?: { delay?: number; idempotencyKey?: string; enqueueOnly?: boolean }
 	) => { wait: () => Promise<TReturn> };
 	/**
 	 * Cancel a pending delayed event by its derived key.
@@ -227,6 +227,11 @@ export interface EventContext<TPayload> {
 	 * @returns true if the event was found and cancelled, false otherwise
 	 */
 	readonly cancel: (eventName: string, key: string) => Promise<boolean>;
+	readonly prepareIdempotencyKeyRetirement?: (eventName: string, key: string) => Promise<void>;
+	readonly finalizeIdempotencyKeyRetirement?: (eventName: string, key: string) => Promise<void>;
+	readonly hasSuccessfulIdempotencyKeyCompletionReceipt?: (eventName: string, key: string) => Promise<boolean>;
+	readonly hasRetainedEvent?: (eventName: string, eventId: string) => Promise<boolean>;
+	readonly isRetainedEventRetryable?: (eventName: string, eventId: string) => Promise<boolean>;
 }
 
 /**

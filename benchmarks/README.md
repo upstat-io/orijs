@@ -8,6 +8,9 @@ Performance benchmarks for the OriJS framework.
 # Run all benchmarks
 bun benchmarks/run-all.ts
 
+# Run every scenario with the bounded smoke-test workload
+bun benchmarks/run-all.ts --quick
+
 # Run individual benchmarks
 bun benchmarks/scenarios/raw-bun.ts        # Raw Bun.serve baseline
 bun benchmarks/scenarios/orijs-minimal.ts   # OriJS minimal endpoint

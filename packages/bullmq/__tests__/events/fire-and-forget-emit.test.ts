@@ -18,7 +18,13 @@ import { describe, expect, it, mock } from 'bun:test';
 function buildMocks(addJob?: () => Promise<{ id: string }>) {
 	const queueManager = {
 		addJob: mock(addJob ?? (() => Promise.resolve({ id: 'job-1' }))),
-		registerWorker: mock(() => {}),
+		hasCompletionReceipt: mock(() => Promise.resolve(false)),
+		hasSuccessfulCompletionReceipt: mock(() => Promise.resolve(false)),
+		recordCompletionReceipt: mock(() => Promise.resolve()),
+		prepareCompletionReceiptRetirement: mock(() => Promise.resolve()),
+		finalizeCompletionReceiptRetirement: mock(() => Promise.resolve()),
+		hasJob: mock(() => Promise.resolve(true)),
+		registerWorker: mock((_eventName: string, _handler: (job: unknown) => Promise<unknown>) => Promise.resolve()),
 		getQueue: mock(() => ({ add: mock(() => Promise.resolve({ id: 'job-1' })) })),
 		getQueueName: mock((eventName: string) => `event.${eventName}`),
 		stop: mock(() => Promise.resolve())
@@ -74,6 +80,95 @@ describe('fire-and-forget emit', () => {
 
 		// No completion is ever delivered; the enqueue alone must settle it.
 		expect(await subscription).toBeUndefined();
+	});
+
+	it('should skip re-enqueue when a durable completion receipt exists', async () => {
+		const mocks = buildMocks();
+		mocks.queueManager.hasCompletionReceipt.mockImplementation(() => Promise.resolve(true));
+		const provider = await buildProvider(mocks);
+
+		await provider.emit('email.sent', {}, {}, { expectsResult: false, idempotencyKey: 'delivery-key' });
+
+		expect(mocks.queueManager.hasCompletionReceipt).toHaveBeenCalledWith('email.sent', 'delivery-key');
+		expect(mocks.queueManager.addJob).toHaveBeenCalledTimes(0);
+	});
+
+	it('should prepare and finalize receipt retirement through the provider boundary', async () => {
+		const mocks = buildMocks();
+		const provider = await buildProvider(mocks);
+
+		await provider.prepareIdempotencyKeyRetirement('email.sent', 'delivery-key');
+		await provider.finalizeIdempotencyKeyRetirement('email.sent', 'delivery-key');
+
+		expect(mocks.queueManager.prepareCompletionReceiptRetirement).toHaveBeenCalledWith(
+			'email.sent',
+			'delivery-key'
+		);
+		expect(mocks.queueManager.finalizeCompletionReceiptRetirement).toHaveBeenCalledWith(
+			'email.sent',
+			'delivery-key'
+		);
+	});
+
+	it('should expose durable completion receipts for outbox reconciliation', async () => {
+		const mocks = buildMocks();
+		mocks.queueManager.hasSuccessfulCompletionReceipt.mockResolvedValue(true);
+		const provider = await buildProvider(mocks);
+
+		expect(await provider.hasSuccessfulIdempotencyKeyCompletionReceipt('escalation.stopped', 'delivery-key')).toBe(true);
+		expect(mocks.queueManager.hasSuccessfulCompletionReceipt).toHaveBeenCalledWith(
+			'escalation.stopped',
+			'delivery-key'
+		);
+	});
+
+	it('should report whether a parent event job remains retained', async () => {
+		const mocks = buildMocks();
+		mocks.queueManager.hasJob.mockResolvedValue(false);
+		const provider = await buildProvider(mocks);
+
+		expect(await provider.hasRetainedEvent('catalog.changed', 'event-id')).toBe(false);
+		expect(mocks.queueManager.hasJob).toHaveBeenCalledWith('catalog.changed', 'event-id');
+	});
+
+	it('should use the durable event identity as the default BullMQ job ID', async () => {
+		const mocks = buildMocks();
+		const provider = await buildProvider(mocks);
+
+		await provider.emit('catalog.changed', {}, {}, { expectsResult: false });
+
+		const [, message, options] = mocks.queueManager.addJob.mock.calls[0] as unknown as [
+			string,
+			{ eventId: string },
+			{ jobId: string }
+		];
+		expect(options.jobId).toBe(message.eventId);
+	});
+
+	it('should record the durable receipt only after the child consumer succeeds', async () => {
+		const mocks = buildMocks();
+		let workerHandler: ((job: { data: Record<string, unknown> }) => Promise<unknown>) | undefined;
+		mocks.queueManager.registerWorker.mockImplementation((_eventName, handler) => {
+			workerHandler = handler as typeof workerHandler;
+			return Promise.resolve();
+		});
+		const provider = await buildProvider(mocks);
+		await provider.subscribe('email.sent', () => Promise.resolve({ success: true }));
+
+		await workerHandler?.({
+			data: {
+				version: '1',
+				eventId: 'event-1',
+				eventName: 'email.sent',
+				payload: {},
+				meta: {},
+				correlationId: 'correlation-1',
+				timestamp: Date.now(),
+				idempotencyKey: 'delivery-key'
+			}
+		});
+
+		expect(mocks.queueManager.recordCompletionReceipt).toHaveBeenCalledWith('email.sent', 'delivery-key');
 	});
 
 	it('should surface the enqueue failure when the job cannot be queued', async () => {

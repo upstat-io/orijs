@@ -36,6 +36,7 @@ export interface EventMessage<TPayload = unknown> {
 	readonly causationId?: string;
 	/** Timestamp when event was emitted */
 	readonly timestamp: number;
+	readonly idempotencyKey?: string;
 }
 
 /**
@@ -150,6 +151,11 @@ export interface EventEmitter<TEventNames extends string = string> {
 	 * @returns true if the event was found and cancelled, false otherwise
 	 */
 	cancel(eventName: string, key: string): Promise<boolean>;
+	prepareIdempotencyKeyRetirement?(eventName: string, key: string): Promise<void>;
+	finalizeIdempotencyKeyRetirement?(eventName: string, key: string): Promise<void>;
+	hasSuccessfulIdempotencyKeyCompletionReceipt?(eventName: string, key: string): Promise<boolean>;
+	hasRetainedEvent?(eventName: string, eventId: string): Promise<boolean>;
+	isRetainedEventRetryable?(eventName: string, eventId: string): Promise<boolean>;
 }
 
 /**

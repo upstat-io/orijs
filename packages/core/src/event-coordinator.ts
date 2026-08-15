@@ -195,10 +195,10 @@ export class EventCoordinator {
 				timestamp: message.timestamp,
 				correlationId: message.correlationId,
 				causationId: message.causationId,
-				emit: <TReturn = void>(
-					eventName: string,
-					eventPayload: unknown,
-					options?: { delay?: number; idempotencyKey?: string }
+					emit: <TReturn = void>(
+						eventName: string,
+						eventPayload: unknown,
+						options?: { delay?: number; idempotencyKey?: string; enqueueOnly?: boolean }
 				): { wait: () => Promise<TReturn> } => {
 					// Emit chained event with proper causation propagation:
 					// - Same correlationId for end-to-end distributed tracing (from meta, not subscription ID)
@@ -226,6 +226,7 @@ export class EventCoordinator {
 						{
 							delay: options?.delay,
 							causationId: message.eventId,
+							...(options?.enqueueOnly === true && { expectsResult: false }),
 							...(idempotencyKey && { idempotencyKey })
 						}
 					);
@@ -238,6 +239,21 @@ export class EventCoordinator {
 						return false;
 					}
 					return this.eventProvider.cancel(eventName, key);
+				},
+				prepareIdempotencyKeyRetirement: async (eventName: string, key: string): Promise<void> => {
+					await this.eventProvider?.prepareIdempotencyKeyRetirement?.(eventName, key);
+				},
+				finalizeIdempotencyKeyRetirement: async (eventName: string, key: string): Promise<void> => {
+					await this.eventProvider?.finalizeIdempotencyKeyRetirement?.(eventName, key);
+				},
+				hasSuccessfulIdempotencyKeyCompletionReceipt: async (eventName: string, key: string): Promise<boolean> => {
+					return (await this.eventProvider?.hasSuccessfulIdempotencyKeyCompletionReceipt?.(eventName, key)) ?? false;
+				},
+				hasRetainedEvent: async (eventName: string, eventId: string): Promise<boolean> => {
+					return (await this.eventProvider?.hasRetainedEvent?.(eventName, eventId)) ?? true;
+				},
+				isRetainedEventRetryable: async (eventName: string, eventId: string): Promise<boolean> => {
+					return (await this.eventProvider?.isRetainedEventRetryable?.(eventName, eventId)) ?? true;
 				}
 			};
 
@@ -309,23 +325,26 @@ export class EventCoordinator {
 		if (this.eventProvider) {
 			await this.eventProvider.start();
 
-			// Warn about events with definitions but no consumers
-			const consumerlessEvents: string[] = [];
-			for (const eventName of this.eventDefinitions.keys()) {
-				if (!this.registeredConsumerEvents.has(eventName)) {
-					consumerlessEvents.push(eventName);
-				}
-			}
-			if (consumerlessEvents.length > 0) {
-				this.logger.warn(
-					`Events registered without consumers: [${consumerlessEvents.join(', ')}]. ` +
-					'Jobs for these events will accumulate in queues with no processor. ' +
-					'Set a TTL on the event definition to auto-clean stale jobs.'
-				);
-			}
-
 			const consumerCount = this.registeredConsumerEvents.size;
 			const defCount = this.eventDefinitions.size;
+
+			// Warn about events with definitions but no consumers only when the instance has consumers (not pure emitter-only)
+			if (consumerCount > 0) {
+				const consumerlessEvents: string[] = [];
+				for (const eventName of this.eventDefinitions.keys()) {
+					if (!this.registeredConsumerEvents.has(eventName)) {
+						consumerlessEvents.push(eventName);
+					}
+				}
+				if (consumerlessEvents.length > 0) {
+					this.logger.warn(
+						`Events registered without consumers: [${consumerlessEvents.join(', ')}]. ` +
+						'Jobs for these events will accumulate in queues with no processor. ' +
+						'Set a TTL on the event definition to auto-clean stale jobs.'
+					);
+				}
+			}
+
 			if (consumerCount > 0) {
 				const events = Array.from(this.registeredConsumerEvents).join(', ');
 				this.logger.info(`Event Provider Started -> [${consumerCount} Consumers] [${defCount} Definitions] [${events}]`);

@@ -106,6 +106,18 @@ function formatPretty(obj: LogObject, options: FormatOptions): string {
 		}
 	}
 
+	// Why: each reserved key is classified on its own type so a non-Error value under
+	// either key cannot be dropped, and inline rendering bypasses the trace-field path
+	// so a registered `error` trace field cannot truncate a diagnostic string.
+	const reservedErrorKeys: ReadonlyArray<'error' | 'err'> = ['error', 'err'];
+	const errorBlocks: Array<[string, Error]> = [];
+	for (const key of reservedErrorKeys) {
+		const value = key === 'error' ? error : err;
+		if (value === null || value === undefined) continue;
+		if (value instanceof Error) errorBlocks.push([key, value]);
+		else otherParts.push(formatKeyValue(key, value, options));
+	}
+
 	const traceStr = traceParts.length > 0 ? ` ${traceParts.join(' ')}` : '';
 	const contextStr = otherParts.length > 0 ? `: ${otherParts.join(' ')}` : '';
 
@@ -119,10 +131,12 @@ function formatPretty(obj: LogObject, options: FormatOptions): string {
 	// Format: HH:MM:SS:L:ContextName trcId:xxx acctId:xxx message: otherContext
 	let output = `${colors.gray}${time}${colors.reset}:${levelColor}${levelChar}${colors.reset}:${colors.yellow}${name}${colors.reset}${traceStr} ${message}${contextStr}`;
 
-	// Handle error objects with enhanced formatting (syntax-highlighted stack traces)
-	const errorObj = error ?? err;
-	if (errorObj instanceof Error) {
-		const errorOutput = formatError(errorObj, options);
+	// Handle error objects with enhanced formatting (syntax-highlighted stack traces).
+	// Why: the key label is emitted only when both keys carry an Error, so the
+	// single-Error line stays byte-identical to its prior output.
+	for (const [key, errorObj] of errorBlocks) {
+		const label = errorBlocks.length > 1 ? `${key}:\n` : '';
+		const errorOutput = label + formatError(errorObj, options);
 		output += '\n' + (isError ? `${colors.red}${errorOutput}${colors.reset}` : errorOutput);
 	}
 

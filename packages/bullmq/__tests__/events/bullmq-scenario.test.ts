@@ -89,7 +89,6 @@ describe('BullMQ Event Provider E2E Scenarios', () => {
 		it('should process monitor check and return health status', async () => {
 			// ARRANGE: Register handler that simulates monitor checking
 			const handlerCalls: MonitorCheckPayload[] = [];
-			let result: MonitorCheckResult | null = null;
 
 			await provider.subscribe<MonitorCheckPayload, MonitorCheckResult>(
 				eventName('monitor.check'),
@@ -116,28 +115,22 @@ describe('BullMQ Event Provider E2E Scenarios', () => {
 				trace_id: 'trace-abc'
 			};
 
-			provider
+			const result = await provider
 				.emit<MonitorCheckResult>(
 					eventName('monitor.check'),
 					{ monitorId: 'mon-123', url: 'https://healthy.example.com' },
 					meta
 				)
-				.subscribe((r: MonitorCheckResult) => {
-					result = r;
-				});
-
-			// Wait for async processing
-			await waitFor(() => result !== null, 2000);
+				.toPromise();
 
 			// ASSERT: Verify handler was called exactly once
 			expect(handlerCalls).toHaveLength(1);
 			expect(handlerCalls[0]?.monitorId).toBe('mon-123');
 
 			// ASSERT: Verify result returned via callback
-			expect(result).not.toBeNull();
-			expect(result!.monitorId).toBe('mon-123');
-			expect(result!.healthy).toBe(true);
-			expect(result!.responseTime).toBeGreaterThan(0);
+			expect(result.monitorId).toBe('mon-123');
+			expect(result.healthy).toBe(true);
+			expect(result.responseTime).toBeGreaterThan(0);
 		});
 
 		it('should preserve context (request_id, trace_id) through processing', async () => {

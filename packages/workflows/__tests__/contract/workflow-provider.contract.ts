@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import type { WorkflowProvider } from '../../src/workflow.types.ts';
-import { WorkflowStepError } from '../../src/workflow.types.ts';
+import { WorkflowRollbackError, WorkflowStepError } from '../../src/workflow.types.ts';
 import { WorkflowTimeoutError } from '../../src/in-process-workflow-provider.ts';
 import type { TestOrderData, ExecutionLog, DefinitionWorkflowConfig } from './workflows/index';
 import { createMockDefinition } from './workflows/definition-types';
@@ -438,7 +438,9 @@ export function workflowProviderContractTests(config: ContractTestConfig): void 
 				'should continue other rollbacks even if one rollback fails',
 				async () => {
 					const executionLog: ExecutionLog = [];
-					const workflowConfig = createRollbackErrorWorkflow(executionLog);
+					const primary = new Error('exact primary');
+					const rollback = new Error('exact rollback');
+					const workflowConfig = createRollbackErrorWorkflow(executionLog, { primary, rollback });
 					const definition = registerAndGetDefinition(provider, workflowConfig);
 					await provider.start();
 
@@ -447,7 +449,11 @@ export function workflowProviderContractTests(config: ContractTestConfig): void 
 						amount: 0
 					});
 
-					await handle.result().catch(() => {});
+					const failure = await handle.result().catch((error: Error) => error);
+					expect(failure).toBeInstanceOf(WorkflowRollbackError);
+					expect((failure as WorkflowRollbackError).primaryError).toBeInstanceOf(WorkflowStepError);
+					expect(((failure as WorkflowRollbackError).primaryError as WorkflowStepError).cause).toBe(primary);
+					expect((failure as WorkflowRollbackError).rollbackErrors).toEqual([rollback]);
 
 					// step2's rollback fails but step1's rollback should still run
 					expect(executionLog).toEqual([

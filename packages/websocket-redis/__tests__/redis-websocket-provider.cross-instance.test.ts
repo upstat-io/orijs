@@ -1,15 +1,4 @@
-/**
- * Integration tests for cross-instance WebSocket messaging with RedisWsProvider.
- *
- * These tests verify that messages published from one server instance are
- * received by clients connected to other instances - the primary purpose
- * of the Redis provider.
- *
- * The key scenario being tested:
- * 1. Client connects to Instance A and joins room "account:123" via ws.subscribe()
- * 2. API call to Instance B publishes message to "account:123"
- * 3. Client on Instance A should receive the message via Redis pub/sub
- */
+/** Cross-instance integration for direct RedisWsProvider consumers. */
 
 import { describe, it, expect, beforeEach, beforeAll, afterEach } from 'bun:test';
 import { createRedisTestHelper, waitFor, delay, type RedisTestHelper } from '@orijs/test-utils';
@@ -40,8 +29,8 @@ describe('RedisWsProvider cross-instance messaging', () => {
 	function createProvider(keyPrefix = 'ws-test'): RedisWsProvider {
 		const config = redisHelper.getConnectionConfig();
 		const provider = new RedisWsProvider({
-			connection: { host: config.host, port: config.port },
-			keyPrefix
+			connection: { host: config.host, port: config.port, db: config.db },
+			keyPrefix: `${config.namespace}:${keyPrefix}`
 		});
 		allProviders.push(provider);
 		return provider;
@@ -69,7 +58,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 	describe('cross-instance pub/sub with provider.subscribe()', () => {
 		it('should deliver messages across instances when using provider.subscribe()', async () => {
-			// Setup: Two server instances with their own providers
 			const instanceA = createProvider();
 			const instanceB = createProvider();
 			const mockServerA = createMockServer();
@@ -79,13 +67,10 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 			instanceA.setServer(mockServerA);
 
-			// Client on Instance A subscribes using provider.subscribe()
-			// This is the CORRECT way - it subscribes to the Redis channel
 			instanceA.subscribe(SOCKET_INSTANCE_A, 'account:123');
 
 			await delay(200); // Allow Redis subscription to establish
 
-			// Instance B publishes a message (simulating an API call)
 			await instanceB.publish(
 				'account:123',
 				JSON.stringify({
@@ -95,7 +80,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 				})
 			);
 
-			// Message should be received on Instance A
 			await waitFor(() => mockServerA.publishedMessages.length >= 1, {
 				timeout: 2000,
 				message: 'Message not received on Instance A'
@@ -107,7 +91,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 		});
 
 		it('should NOT deliver messages when instance has no Redis subscription', async () => {
-			// Setup: Two server instances
 			const instanceA = createProvider();
 			const instanceB = createProvider();
 			const mockServerA = createMockServer();
@@ -117,12 +100,7 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 			instanceA.setServer(mockServerA);
 
-			// PROBLEM: Instance A does NOT call provider.subscribe()
-			// This simulates what happens when using ws.subscribe() directly
-			// without going through the coordinator/provider
-			// (No subscription call here - this is the bug we're demonstrating)
-
-			// Instance B publishes a message
+			// Why: Direct provider consumers receive only explicitly subscribed topics.
 			await instanceB.publish(
 				'account:123',
 				JSON.stringify({
@@ -132,35 +110,13 @@ describe('RedisWsProvider cross-instance messaging', () => {
 				})
 			);
 
-			// Wait to see if message arrives (it shouldn't)
 			await delay(500);
 
-			// Message should NOT be received because Instance A
-			// never subscribed to the Redis channel
 			expect(mockServerA.publishedMessages.length).toBe(0);
 		});
 	});
 
-	describe('the real-world scenario: ws.subscribe() without provider.subscribe()', () => {
-		/**
-		 * This test demonstrates the ACTUAL failure scenario:
-		 *
-		 * In real usage with OriJS Application, when a client joins a room:
-		 * 1. onWebSocket.message handler receives { type: 'joinRoom', room: 'account:123' }
-		 * 2. Handler calls ws.subscribe('account:123') - Bun's native method
-		 * 3. This subscribes the WebSocket to the LOCAL Bun pub/sub topic
-		 * 4. BUT it does NOT subscribe to the Redis channel!
-		 *
-		 * When another instance publishes:
-		 * 1. provider.publish('account:123', message) publishes to Redis
-		 * 2. The Redis subscriber on Instance A is NOT subscribed to 'ws-test:account:123'
-		 * 3. handleRedisMessage() is never called
-		 * 4. The client never receives the message
-		 *
-		 * The fix: The provider should automatically ensure Redis subscription
-		 * when server.publish() is set up, OR the framework should intercept
-		 * ws.subscribe() calls.
-		 */
+	describe('direct provider subscription requirement', () => {
 		it('should demonstrate that provider.subscribe() is required for cross-instance messaging', async () => {
 			const instanceA = createProvider();
 			const instanceB = createProvider();
@@ -171,8 +127,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 			instanceA.setServer(mockServerA);
 
-			// Scenario 1: WITHOUT provider.subscribe() - messages NOT received
-			// (This simulates what happens with raw ws.subscribe())
 			mockServerA.publishedMessages.length = 0;
 
 			await instanceB.publish('room:no-redis-sub', 'Message without subscription');
@@ -180,7 +134,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 			expect(mockServerA.publishedMessages.length).toBe(0);
 
-			// Scenario 2: WITH provider.subscribe() - messages ARE received
 			instanceA.subscribe(SOCKET_INSTANCE_A, 'room:with-redis-sub');
 			await delay(200);
 
@@ -193,50 +146,6 @@ describe('RedisWsProvider cross-instance messaging', () => {
 
 			expect(mockServerA.publishedMessages.length).toBe(1);
 			expect(mockServerA.publishedMessages[0]?.topic).toBe('room:with-redis-sub');
-		});
-	});
-
-	describe('automatic Redis subscription on publish (proposed fix)', () => {
-		/**
-		 * PROPOSED FIX: When a server has setServer() called (indicating it will
-		 * forward messages to local WebSockets), it should automatically subscribe
-		 * to Redis channels when a local client subscribes via Bun's native
-		 * ws.subscribe().
-		 *
-		 * The cleanest solution is to have the Application framework intercept
-		 * ws.subscribe() calls and route them through the coordinator, which
-		 * already calls both ws.subscribe() AND provider.subscribe().
-		 *
-		 * This test documents the EXPECTED behavior after the fix.
-		 */
-		it.skip('should automatically handle Redis subscription when ws.subscribe() is called', async () => {
-			// This test is skipped until the fix is implemented
-			// It documents the expected behavior
-
-			const instanceA = createProvider();
-			const instanceB = createProvider();
-			const mockServerA = createMockServer();
-
-			await instanceA.start();
-			await instanceB.start();
-
-			instanceA.setServer(mockServerA);
-
-			// After the fix: Just calling setServer() and having the server's
-			// websocket.open handler call ws.subscribe() should be enough.
-			// The framework should automatically ensure Redis subscription.
-
-			// For now, we need explicit provider.subscribe()
-			instanceA.subscribe(SOCKET_INSTANCE_A, 'auto-sub-topic');
-			await delay(200);
-
-			await instanceB.publish('auto-sub-topic', 'Test message');
-
-			await waitFor(() => mockServerA.publishedMessages.length >= 1, {
-				timeout: 2000
-			});
-
-			expect(mockServerA.publishedMessages.length).toBe(1);
 		});
 	});
 

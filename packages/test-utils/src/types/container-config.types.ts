@@ -14,6 +14,8 @@ export interface PostgresContainerConfig {
 export interface RedisContainerConfig {
 	host: string;
 	port: number;
+	db?: number;
+	namespace?: string;
 	connectionString: string;
 }
 

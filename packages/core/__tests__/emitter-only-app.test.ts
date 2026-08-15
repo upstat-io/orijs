@@ -62,11 +62,8 @@ function addTestController(app: Application): Application {
 	return app.controller('/api', TestController);
 }
 
-describe('Emitter-Only App Pattern', () => {
+	describe('Emitter-Only App Pattern', () => {
 	let app: Application;
-	let port = 51000;
-
-	const getPort = () => ++port;
 
 	beforeEach(() => {
 		Logger.reset();
@@ -83,7 +80,7 @@ describe('Emitter-Only App Pattern', () => {
 				.event(TestEvent) // No .consumer() - emitter only
 				.use(addTestService); // Should be able to chain .use()
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Event should be registered
 			const eventCoordinator = (app as any).eventCoordinator;
@@ -95,16 +92,14 @@ describe('Emitter-Only App Pattern', () => {
 		});
 
 		it('should allow .controller() after .event() without consumer', async () => {
-			const usedPort = getPort();
-
 			app = Ori.create()
 				.event(TestEvent) // No .consumer()
 				.controller('/api', TestController);
 
-			await app.listen(usedPort);
+			const server = await app.listen(0);
 
 			// Controller should work
-			const response = await fetch(`http://localhost:${usedPort}/api`);
+			const response = await fetch(`http://localhost:${server.port}/api`);
 			expect(response.status).toBe(200);
 		});
 
@@ -113,7 +108,7 @@ describe('Emitter-Only App Pattern', () => {
 				.event(TestEvent) // No .consumer()
 				.provider(TestService);
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Service should be registered
 			const container = (app as any).container;
@@ -126,14 +121,13 @@ describe('Emitter-Only App Pattern', () => {
 				.use(addTestService)
 				.use(addTestController);
 
-			const usedPort = getPort();
-			await app.listen(usedPort);
+			const server = await app.listen(0);
 
 			// Both should be registered
 			const container = (app as any).container;
 			expect(container.has(TestService)).toBe(true);
 
-			const response = await fetch(`http://localhost:${usedPort}/api`);
+			const response = await fetch(`http://localhost:${server.port}/api`);
 			expect(response.status).toBe(200);
 		});
 	});
@@ -144,7 +138,7 @@ describe('Emitter-Only App Pattern', () => {
 				.workflow(TestWorkflow) // No .consumer() - emitter only
 				.use(addTestService);
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Workflow should be registered
 			const workflowCoordinator = (app as any).workflowCoordinator;
@@ -156,16 +150,14 @@ describe('Emitter-Only App Pattern', () => {
 		});
 
 		it('should allow .controller() after .workflow() without consumer', async () => {
-			const usedPort = getPort();
-
 			app = Ori.create()
 				.workflow(TestWorkflow) // No .consumer()
 				.controller('/api', TestController);
 
-			await app.listen(usedPort);
+			const server = await app.listen(0);
 
 			// Controller should work
-			const response = await fetch(`http://localhost:${usedPort}/api`);
+			const response = await fetch(`http://localhost:${server.port}/api`);
 			expect(response.status).toBe(200);
 		});
 
@@ -174,7 +166,7 @@ describe('Emitter-Only App Pattern', () => {
 				.workflow(TestWorkflow) // No .consumer()
 				.provider(TestService);
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Service should be registered
 			const container = (app as any).container;
@@ -185,8 +177,6 @@ describe('Emitter-Only App Pattern', () => {
 	describe('Mixed emitter-only pattern (real app simulation)', () => {
 		it('should support full emitter-only app pattern like ori-backend-public-server', async () => {
 			// This simulates the exact structure of ori-backend-public-server/src/app.ts
-			const usedPort = getPort();
-
 			app = Ori.create()
 				.use(addTestService) // addMappers, addQueryBuilders, etc.
 				.event(TestEvent) // .event(ExampleEvent) - emitter only
@@ -194,7 +184,7 @@ describe('Emitter-Only App Pattern', () => {
 				.workflow(TestWorkflow) // .workflow(ExampleWorkflowDef) - emitter only
 				.controller('/health', TestController); // .controller(...)
 
-			await app.listen(usedPort);
+			const server = await app.listen(0);
 
 			// Event should be registered for emission
 			const eventCoordinator = (app as any).eventCoordinator;
@@ -205,7 +195,7 @@ describe('Emitter-Only App Pattern', () => {
 			expect(workflowCoordinator.getWorkflowDefinition('test-workflow')).toBeDefined();
 
 			// Controllers should work
-			const response = await fetch(`http://localhost:${usedPort}/api`);
+			const response = await fetch(`http://localhost:${server.port}/api`);
 			expect(response.status).toBe(200);
 		});
 
@@ -214,7 +204,7 @@ describe('Emitter-Only App Pattern', () => {
 				.event(TestEvent) // No .consumer()
 				.workflow(TestWorkflow); // No .consumer()
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Both should be registered
 			const eventCoordinator = (app as any).eventCoordinator;
@@ -229,7 +219,7 @@ describe('Emitter-Only App Pattern', () => {
 				.workflow(TestWorkflow) // No .consumer()
 				.event(TestEvent); // No .consumer()
 
-			await app.listen(getPort());
+			await app.listen(0);
 
 			// Both should be registered
 			const eventCoordinator = (app as any).eventCoordinator;

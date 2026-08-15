@@ -102,7 +102,11 @@ export function createNoSelfRollbackWorkflow(
  * step2's rollback throws, but step1's rollback should still run.
  */
 export function createRollbackErrorWorkflow(
-	executionLog: ExecutionLog
+	executionLog: ExecutionLog,
+	errors: { primary: Error; rollback: Error } = {
+		primary: new Error('Step 3 failed'),
+		rollback: new Error('Rollback failed')
+	}
 ): DefinitionWorkflowConfig<TestOrderData, void> {
 	return {
 		name: 'RollbackErrorWorkflow',
@@ -124,13 +128,13 @@ export function createRollbackErrorWorkflow(
 				},
 				rollback: () => {
 					executionLog.push('step2-rollback-start');
-					return Promise.reject(new Error('Rollback failed'));
+					return Promise.reject(errors.rollback);
 				}
 			},
 			step3: {
 				execute: () => {
 					executionLog.push('step3-execute');
-					return Promise.reject(new Error('Step 3 failed'));
+					return Promise.reject(errors.primary);
 				},
 				rollback: async () => {
 					executionLog.push('step3-rollback');

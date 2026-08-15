@@ -64,6 +64,7 @@ interface IRedisConnection {
  */
 export interface IQueueEventsLike {
 	on(event: string, callback: (...args: unknown[]) => void): void;
+	waitUntilReady(): Promise<unknown>;
 	close(): Promise<void>;
 	/** Main ioredis connection - exposed for adding error handlers that persist through close() */
 	connection: IRedisConnection;
@@ -96,20 +97,11 @@ interface PendingCompletion {
 }
 
 /**
- * Early result for jobs that complete before mapJobId is called.
- * Handles race condition where very fast jobs complete before the
- * job ID to correlation ID mapping is established.
- */
-interface EarlyResult {
-	readonly result: unknown;
-	readonly isFailure: boolean;
-	readonly error?: Error;
-}
-
-/**
  * Completion Tracker interface for dependency injection.
  */
 export interface ICompletionTracker {
+	/** Begin or resume a provider lifecycle. */
+	start?(): void;
 	/** Register a callback for a correlation ID */
 	register<TResult = unknown>(
 		queueName: string,
@@ -118,6 +110,8 @@ export interface ICompletionTracker {
 		onError?: ErrorCallback,
 		options?: RegisterOptions
 	): void;
+	/** Wait until the queue's completion stream owns its Redis subscription. */
+	waitUntilReady?(queueName: string): Promise<void>;
 	/** Map a job ID to its correlation ID */
 	mapJobId(queueName: string, jobId: string, correlationId: string): void;
 	/** Get correlation ID for a job ID */
@@ -126,8 +120,12 @@ export interface ICompletionTracker {
 	hasPending(queueName: string, correlationId: string): boolean;
 	/** Complete a pending registration with a result */
 	complete(queueName: string, correlationId: string, result: unknown): void;
+	/** Complete every local registration attached to a job ID. */
+	completeJob(queueName: string, jobId: string, result: unknown): void;
 	/** Fail a pending registration with an error */
 	fail(queueName: string, correlationId: string, error: Error): void;
+	/** Fail every local registration attached to a job ID. */
+	failJob(queueName: string, jobId: string, error: Error): void;
 	/** Stop and clean up */
 	stop(): Promise<void>;
 }
@@ -164,13 +162,12 @@ export class CompletionTracker implements ICompletionTracker {
 	private readonly logger: ILogger;
 	private readonly queueEvents = new Map<string, IQueueEventsLike>();
 	private readonly pending = new Map<string, Map<string, PendingCompletion>>();
-	private readonly jobIdToCorrelationId = new Map<string, Map<string, string>>();
-	// Stores results for jobs that complete before mapJobId is called (race condition handling)
-	private readonly earlyResults = new Map<string, Map<string, EarlyResult>>();
+	private readonly jobIdToCorrelationId = new Map<string, Map<string, Set<string>>>();
 	private readonly QueueEventsClass: new (
 		name: string,
 		options: { connection: ConnectionOptions }
 	) => IQueueEventsLike;
+	private stopping = false;
 
 	/**
 	 * Creates a new CompletionTracker.
@@ -183,6 +180,10 @@ export class CompletionTracker implements ICompletionTracker {
 		this.logger = options.logger ?? new Logger('CompletionTracker');
 		this.QueueEventsClass =
 			options.QueueEventsClass ?? (QueueEvents as unknown as typeof this.QueueEventsClass);
+	}
+
+	public start(): void {
+		this.stopping = false;
 	}
 
 	/**
@@ -201,6 +202,9 @@ export class CompletionTracker implements ICompletionTracker {
 		// Handle QueueEvents errors per BullMQ docs
 		events.on('error', (err: unknown) => {
 			const message = err instanceof Error ? err.message : String(err);
+			if (this.stopping && message.includes('Connection is closed')) {
+				return;
+			}
 			this.logger.error('QueueEvents error', { queueName, error: message });
 		});
 
@@ -233,11 +237,7 @@ export class CompletionTracker implements ICompletionTracker {
 				}
 
 				if (correlationId) {
-					this.complete(queueName, correlationId, result);
-				} else {
-					// Race condition: job completed before mapJobId was called
-					// Store the result to be delivered when mapJobId is called
-					this.storeEarlyResult(queueName, jobId, { result, isFailure: false });
+					this.completeJob(queueName, jobId, result);
 				}
 			} catch (handlerError) {
 				this.logger.error('Unhandled error in completed event handler', {
@@ -255,11 +255,7 @@ export class CompletionTracker implements ICompletionTracker {
 				const correlationId = this.getCorrelationId(queueName, jobId);
 				const error = new Error(failedReason);
 				if (correlationId) {
-					this.fail(queueName, correlationId, error);
-				} else {
-					// Race condition: job failed before mapJobId was called
-					// Store the error to be delivered when mapJobId is called
-					this.storeEarlyResult(queueName, jobId, { result: undefined, isFailure: true, error });
+					this.failJob(queueName, jobId, error);
 				}
 			} catch (handlerError) {
 				this.logger.error('Unhandled error in failed event handler', {
@@ -288,25 +284,13 @@ export class CompletionTracker implements ICompletionTracker {
 	/**
 	 * Gets or creates a job ID to correlation ID map for a queue.
 	 */
-	private getOrCreateJobIdMap(queueName: string): Map<string, string> {
+	private getOrCreateJobIdMap(queueName: string): Map<string, Set<string>> {
 		let jobIdMap = this.jobIdToCorrelationId.get(queueName);
 		if (!jobIdMap) {
 			jobIdMap = new Map();
 			this.jobIdToCorrelationId.set(queueName, jobIdMap);
 		}
 		return jobIdMap;
-	}
-
-	/**
-	 * Gets or creates an early results map for a queue.
-	 */
-	private getOrCreateEarlyResultsMap(queueName: string): Map<string, EarlyResult> {
-		let earlyResultsMap = this.earlyResults.get(queueName);
-		if (!earlyResultsMap) {
-			earlyResultsMap = new Map();
-			this.earlyResults.set(queueName, earlyResultsMap);
-		}
-		return earlyResultsMap;
 	}
 
 	/**
@@ -356,35 +340,30 @@ export class CompletionTracker implements ICompletionTracker {
 		});
 	}
 
+	public async waitUntilReady(queueName: string): Promise<void> {
+		await this.getQueueEvents(queueName).waitUntilReady();
+	}
+
 	/**
 	 * Maps a job ID to its correlation ID.
 	 *
 	 * Called after job is added to queue, so we can look up
 	 * correlation ID when QueueEvents fires.
 	 *
-	 * Handles race condition: if the job already completed before this
-	 * mapping was established, delivers the early result immediately.
+	 * The provider establishes this mapping before enqueueing the job.
 	 */
 	public mapJobId(queueName: string, jobId: string, correlationId: string): void {
 		const jobIdMap = this.getOrCreateJobIdMap(queueName);
-		jobIdMap.set(jobId, correlationId);
-
-		// Check for early result (race condition handling)
-		const earlyResult = this.getAndRemoveEarlyResult(queueName, jobId);
-		if (earlyResult) {
-			if (earlyResult.isFailure && earlyResult.error) {
-				this.fail(queueName, correlationId, earlyResult.error);
-			} else {
-				this.complete(queueName, correlationId, earlyResult.result);
-			}
-		}
+		const correlationIds = jobIdMap.get(jobId) ?? new Set<string>();
+		correlationIds.add(correlationId);
+		jobIdMap.set(jobId, correlationIds);
 	}
 
 	/**
 	 * Gets the correlation ID for a job ID.
 	 */
 	public getCorrelationId(queueName: string, jobId: string): string | undefined {
-		return this.jobIdToCorrelationId.get(queueName)?.get(jobId);
+		return this.jobIdToCorrelationId.get(queueName)?.get(jobId)?.values().next().value;
 	}
 
 	/**
@@ -431,6 +410,13 @@ export class CompletionTracker implements ICompletionTracker {
 		}
 	}
 
+	public completeJob(queueName: string, jobId: string, result: unknown): void {
+		const correlationIds = [...(this.jobIdToCorrelationId.get(queueName)?.get(jobId) ?? [])];
+		for (const correlationId of correlationIds) {
+			this.complete(queueName, correlationId, result);
+		}
+	}
+
 	/**
 	 * Fails a pending registration with an error.
 	 */
@@ -470,6 +456,13 @@ export class CompletionTracker implements ICompletionTracker {
 		}
 	}
 
+	public failJob(queueName: string, jobId: string, error: Error): void {
+		const correlationIds = [...(this.jobIdToCorrelationId.get(queueName)?.get(jobId) ?? [])];
+		for (const correlationId of correlationIds) {
+			this.fail(queueName, correlationId, error);
+		}
+	}
+
 	/**
 	 * Cleans up job ID mapping for a correlation ID.
 	 */
@@ -477,36 +470,15 @@ export class CompletionTracker implements ICompletionTracker {
 		const jobIdMap = this.jobIdToCorrelationId.get(queueName);
 		if (jobIdMap) {
 			// Find and remove the job ID entry
-			for (const [jobId, corrId] of jobIdMap.entries()) {
-				if (corrId === correlationId) {
-					jobIdMap.delete(jobId);
+			for (const [jobId, correlationIds] of jobIdMap.entries()) {
+				if (correlationIds.delete(correlationId)) {
+					if (correlationIds.size === 0) {
+						jobIdMap.delete(jobId);
+					}
 					break;
 				}
 			}
 		}
-	}
-
-	/**
-	 * Stores an early result for a job that completed before mapJobId was called.
-	 */
-	private storeEarlyResult(queueName: string, jobId: string, earlyResult: EarlyResult): void {
-		const earlyResultsMap = this.getOrCreateEarlyResultsMap(queueName);
-		earlyResultsMap.set(jobId, earlyResult);
-	}
-
-	/**
-	 * Gets and removes an early result for a job.
-	 */
-	private getAndRemoveEarlyResult(queueName: string, jobId: string): EarlyResult | undefined {
-		const queueEarlyResults = this.earlyResults.get(queueName);
-		if (!queueEarlyResults) {
-			return undefined;
-		}
-		const earlyResult = queueEarlyResults.get(jobId);
-		if (earlyResult) {
-			queueEarlyResults.delete(jobId);
-		}
-		return earlyResult;
 	}
 
 	/**
@@ -518,6 +490,7 @@ export class CompletionTracker implements ICompletionTracker {
 	 * handlers to the internal ioredis clients that persist through close().
 	 */
 	public async stop(): Promise<void> {
+		this.stopping = true;
 		// Reject all pending completions with shutdown error and clear timeouts
 		const shutdownError = new Error('CompletionTracker shutting down');
 		for (const [_queueName, queuePending] of this.pending.entries()) {
@@ -537,7 +510,6 @@ export class CompletionTracker implements ICompletionTracker {
 		}
 		this.pending.clear();
 		this.jobIdToCorrelationId.clear();
-		this.earlyResults.clear();
 
 		// Error handler for expected connection close errors during shutdown
 		const connectionErrorHandler = (err: unknown) => {

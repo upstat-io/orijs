@@ -193,9 +193,6 @@ describe('BullMQEventProvider Integration', () => {
 		}, 10000);
 
 		it('should resolve with undefined when handler returns nothing', async () => {
-			let called = false;
-			let result: unknown = 'not-set';
-
 			await provider.subscribe(eventName('void.event'), async () => {
 				// No return value
 			});
@@ -203,14 +200,46 @@ describe('BullMQEventProvider Integration', () => {
 			await provider.start();
 
 			const meta: PropagationMeta = {};
-			provider.emit(eventName('void.event'), {}, meta).subscribe((r: void) => {
-				called = true;
-				result = r;
-			});
-
-			await waitFor(() => called);
+			const result = await provider.emit(eventName('void.event'), {}, meta).toPromise();
 
 			expect(result).toBeUndefined();
+		});
+
+		it('should converge concurrent and retained request-response calls with one idempotency key', async () => {
+			let releaseHandler!: () => void;
+			const handlerRelease = new Promise<void>((resolve) => {
+				releaseHandler = resolve;
+			});
+			let acknowledgeHandler!: () => void;
+			const handlerEntered = new Promise<void>((resolve) => {
+				acknowledgeHandler = resolve;
+			});
+			let executionCount = 0;
+			await provider.subscribe(eventName('idempotent.result'), async () => {
+				executionCount += 1;
+				acknowledgeHandler();
+				await handlerRelease;
+				return { stable: true };
+			});
+			await provider.start();
+
+			const first = provider
+				.emit<{ stable: boolean }>(eventName('idempotent.result'), {}, {}, { idempotencyKey: 'same-key' })
+				.toPromise();
+			const second = provider
+				.emit<{ stable: boolean }>(eventName('idempotent.result'), {}, {}, { idempotencyKey: 'same-key' })
+				.toPromise();
+			await handlerEntered;
+			releaseHandler();
+
+			expect(await Promise.all([first, second])).toEqual([{ stable: true }, { stable: true }]);
+			expect(executionCount).toBe(1);
+
+			const retained = await provider
+				.emit<{ stable: boolean }>(eventName('idempotent.result'), {}, {}, { idempotencyKey: 'same-key' })
+				.toPromise();
+			expect(retained).toEqual({ stable: true });
+			expect(executionCount).toBe(1);
 		});
 
 		it('should include correlationId in message', async () => {
@@ -561,6 +590,10 @@ describe('ScheduledEventManager Integration', () => {
 	it('should fire scheduled event at interval', async () => {
 		const connection = getRedisConnectionOptions();
 		const received: any[] = [];
+		let resolveSecondDelivery!: () => void;
+		const secondDelivery = new Promise<void>((resolve) => {
+			resolveSecondDelivery = resolve;
+		});
 		// Use unique queue name per test to avoid interference from leftover jobs
 		const queueName = `interval.test.${crypto.randomUUID().slice(0, 8)}`;
 
@@ -569,6 +602,7 @@ describe('ScheduledEventManager Integration', () => {
 			`scheduled.${queueName}`,
 			async (job) => {
 				received.push(job.data);
+				if (received.length === 2) resolveSecondDelivery();
 			},
 			{ connection }
 		);
@@ -583,8 +617,7 @@ describe('ScheduledEventManager Integration', () => {
 			payload: { counter: 1 }
 		});
 
-		// Wait for at least 2 scheduled fires
-		await waitFor(() => received.length >= 2, 1000);
+		await secondDelivery;
 
 		expect(received[0].payload).toEqual({ counter: 1 });
 

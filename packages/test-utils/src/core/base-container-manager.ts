@@ -143,6 +143,7 @@ export abstract class BaseContainerManager {
 	protected abstract performHealthCheck(): Promise<boolean>;
 	protected abstract getContainerImage(): string;
 	protected abstract getContainerType(): string;
+	protected async onStartAttemptFailure(): Promise<void> {}
 
 	/**
 	 * Execute operation with aggressive retry logic and immediate cleanup on failure
@@ -152,10 +153,19 @@ export abstract class BaseContainerManager {
 
 		for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
 			try {
-				// Wrap operation with 60-second timeout (containers can take time to start in CI)
-				return await this.withTimeout(operation(), 60000);
+				// The concrete container owns its startup deadline. An outer Promise.race cannot
+				// cancel the losing operation and would allow a retry to overlap its ownership.
+				return await operation();
 			} catch (error) {
 				lastError = error as Error;
+				try {
+					await this.onStartAttemptFailure();
+				} catch (cleanupError) {
+					console.warn(
+						`Failed to clean up start attempt for ${this.packageName}:`,
+						cleanupError
+					);
+				}
 				this.onFailure();
 				console.warn(`Container start attempt ${attempt} failed for ${this.packageName}:`, lastError.message);
 

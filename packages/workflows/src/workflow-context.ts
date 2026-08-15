@@ -37,6 +37,8 @@ import type { Logger, PropagationMeta } from '@orijs/logging';
  * ```
  */
 export interface WorkflowContext<TData = unknown, TSteps = Record<string, unknown>> {
+	/** Revoked when this execution no longer owns permission to commit effects. */
+	readonly signal: AbortSignal;
 	/** Unique flow ID for this workflow execution */
 	readonly flowId: string;
 
@@ -92,7 +94,8 @@ export class DefaultWorkflowContext<TData = unknown> implements WorkflowContext<
 		public readonly results: Record<string, unknown>,
 		public readonly log: Logger,
 		public readonly meta: PropagationMeta,
-		public readonly providerId?: string
+		public readonly providerId?: string,
+		public readonly signal: AbortSignal = new AbortController().signal
 	) {
 		// Extract correlationId from meta for convenience access
 		this.correlationId = (meta.correlationId as string) ?? flowId;
@@ -109,6 +112,8 @@ export interface WorkflowContextOptions {
 	stepName?: string;
 	/** Provider instance identifier for distributed tracing */
 	providerId?: string;
+	/** Execution ownership signal for timeout/cancellation fencing. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -163,6 +168,6 @@ export function createWorkflowContext<TData>(
 	const contextualLog = log.with(logContext);
 
 	return Object.freeze(
-		new DefaultWorkflowContext(flowId, data, results, contextualLog, meta, options?.providerId)
+		new DefaultWorkflowContext(flowId, data, results, contextualLog, meta, options?.providerId, options?.signal)
 	);
 }

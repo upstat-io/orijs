@@ -9,7 +9,7 @@
  * - WebSocket upgrade and connection flow
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { type Application, Ori } from '../src/index.ts';
 import { Logger } from '@orijs/logging';
 import type { OriController, RouteBuilder } from '../src/types/index.ts';
@@ -903,6 +903,7 @@ describe('Application WebSocket Integration', () => {
 
 		test('should properly route subscriptions through coordinator proxy', async () => {
 			const provider = new InProcWsProvider();
+			const subscribeSpy = spyOn(provider, 'subscribe');
 			const receivedMessages: string[] = [];
 
 			const port = getPort();
@@ -939,6 +940,10 @@ describe('Application WebSocket Integration', () => {
 			// Wait for message
 			await waitFor(() => receivedMessages.length > 0, { timeout: 1000 });
 
+			const notificationSubscriptions = subscribeSpy.mock.calls.filter(
+				([, topic]) => topic === 'notifications'
+			);
+			expect(notificationSubscriptions).toEqual([[expect.any(String), 'notifications']]);
 			expect(receivedMessages).toContain('test-message');
 
 			ws.close();

@@ -1,6 +1,16 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { existsSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
-import { consoleTransport, fileTransport, multiTransport, type LogObject, levels } from '../src/index.ts';
+import {
+	consoleTransport,
+	fileTransport,
+	multiTransport,
+	type LogObject,
+	levels,
+	ANSI_COLORS,
+	registerTraceFields,
+	resetTraceFields,
+	truncateValue
+} from '../src/index.ts';
 
 const testLogDir = '/tmp/orijs-test-logs';
 
@@ -38,6 +48,160 @@ describe('consoleTransport', () => {
 	test('should accept colors option', () => {
 		const transport = consoleTransport({ pretty: true, colors: true });
 		expect(() => transport.write(createLogObject())).not.toThrow();
+	});
+
+	// Regression: `error` and `err` are destructured out of context and were re-rendered only
+	// when the value was an Error instance, so any non-Error value under either key vanished from
+	// the rendered line. Callers overwhelmingly pass `error.message`, a string.
+	function captureWrite(obj: LogObject, opts: { colors?: boolean } = {}): string {
+		const transport = consoleTransport({ pretty: true, colors: opts.colors ?? false });
+		const original = console.log;
+		let captured = '';
+		console.log = (line: string) => {
+			captured = line;
+		};
+		try {
+			transport.write(obj);
+		} finally {
+			console.log = original;
+		}
+		return captured;
+	}
+
+	const inlineCases: Array<{ name: string; fields: Partial<LogObject>; expect: string[] }> = [
+		{ name: 'string under error', fields: { error: 'str-a' }, expect: ['error:str-a'] },
+		{ name: 'string under err', fields: { err: 'str-b' }, expect: ['err:str-b'] },
+		{ name: 'string under both', fields: { error: 'str-a', err: 'str-b' }, expect: ['error:str-a', 'err:str-b'] },
+		{ name: 'number under error', fields: { error: 42 }, expect: ['error:42'] },
+		{ name: 'number under err', fields: { err: 7 }, expect: ['err:7'] },
+		{ name: 'boolean under error', fields: { error: false }, expect: ['error:false'] },
+		{ name: 'array under error', fields: { error: [1, 2, 3] }, expect: ['error:[1, 2, 3]'] },
+		{ name: 'array under err', fields: { err: ['x', 'y'] }, expect: ['err:[x, y]'] },
+		{ name: 'object under error', fields: { error: { code: 'E1' } }, expect: ['error:', 'code'] },
+		{ name: 'object under err', fields: { err: { code: 'E2' } }, expect: ['err:', 'code'] }
+	];
+
+	for (const cell of inlineCases) {
+		test(`should render a non-Error value inline: ${cell.name}`, () => {
+			const output = captureWrite(createLogObject(cell.fields));
+			for (const fragment of cell.expect) expect(output).toContain(fragment);
+		});
+	}
+
+	const absentCases: Array<{ name: string; fields: Partial<LogObject> }> = [
+		{ name: 'null under error', fields: { error: null } },
+		{ name: 'null under err', fields: { err: null } },
+		{ name: 'undefined under error', fields: { error: undefined } },
+		{ name: 'undefined under err', fields: { err: undefined } }
+	];
+
+	for (const cell of absentCases) {
+		test(`should emit nothing for an absent value: ${cell.name}`, () => {
+			const baseline = captureWrite(createLogObject());
+			const output = captureWrite(createLogObject(cell.fields));
+			expect(output).toBe(baseline);
+		});
+	}
+
+	test('should render an Error under error as a trailing block, not inline', () => {
+		const output = captureWrite(createLogObject({ error: new Error('err-instance-a') }));
+		const [head, ...rest] = output.split('\n');
+		expect(head).not.toContain('err-instance-a');
+		expect(rest.join('\n')).toContain('err-instance-a');
+	});
+
+	test('should render an Error under err as a trailing block, not inline', () => {
+		const output = captureWrite(createLogObject({ err: new Error('err-instance-b') }));
+		const [head, ...rest] = output.split('\n');
+		expect(head).not.toContain('err-instance-b');
+		expect(rest.join('\n')).toContain('err-instance-b');
+	});
+
+	test('should render a string inline and an Error as a block when both keys are populated', () => {
+		const output = captureWrite(createLogObject({ error: 'inline-str', err: new Error('block-err') }));
+		const [head, ...rest] = output.split('\n');
+		expect(head).toContain('error:inline-str');
+		expect(rest.join('\n')).toContain('block-err');
+	});
+
+	test('should render an Error block and a string inline when the keys are reversed', () => {
+		const output = captureWrite(createLogObject({ error: new Error('block-err-rev'), err: 'inline-str-rev' }));
+		const [head, ...rest] = output.split('\n');
+		expect(head).toContain('err:inline-str-rev');
+		expect(head).not.toContain('block-err-rev');
+		expect(rest.join('\n')).toContain('block-err-rev');
+	});
+
+	test('should label both blocks by key when error and err both hold Errors', () => {
+		const output = captureWrite(
+			createLogObject({ error: new Error('two-block-a'), err: new Error('two-block-b') })
+		);
+		expect(output).toContain('error:');
+		expect(output).toContain('err:');
+		expect(output).toContain('two-block-a');
+		expect(output).toContain('two-block-b');
+	});
+
+	test('should wrap the trailing error block in red at error level with colors enabled', () => {
+		const output = captureWrite(
+			createLogObject({ level: levels.error, error: new Error('red-wrapped') }),
+			{ colors: true }
+		);
+		const block = output.slice(output.indexOf('\n') + 1);
+		expect(block.startsWith(ANSI_COLORS.red)).toBe(true);
+		expect(block.endsWith(ANSI_COLORS.reset)).toBe(true);
+	});
+
+	test('should not wrap the trailing error block in red below error level', () => {
+		const output = captureWrite(
+			createLogObject({ level: levels.info, error: new Error('not-red-wrapped') }),
+			{ colors: true }
+		);
+		const block = output.slice(output.indexOf('\n') + 1);
+		expect(block.startsWith(ANSI_COLORS.red)).toBe(false);
+	});
+
+	test('should render a long string under error in full when error is a registered trace field', () => {
+		const long = 'this-string-is-much-longer-than-the-truncate-length';
+		registerTraceFields({ error: { abbrev: 'err', color: ANSI_COLORS.red } });
+		try {
+			const output = captureWrite(createLogObject({ error: long }));
+			expect(output).toContain(long);
+			expect(output).not.toContain(truncateValue(long) + ANSI_COLORS.reset);
+		} finally {
+			resetTraceFields();
+		}
+	});
+
+	test('should leave json mode output unchanged for every reserved-key shape', () => {
+		const transport = consoleTransport({ json: true });
+		const original = console.log;
+		const lines: string[] = [];
+		console.log = (line: string) => {
+			lines.push(line);
+		};
+		try {
+			for (const cell of inlineCases) transport.write(createLogObject({ time: 0, ...cell.fields }));
+		} finally {
+			console.log = original;
+		}
+		for (const [index, line] of lines.entries()) {
+			expect(line).toBe(JSON.stringify(createLogObject({ time: 0, ...inlineCases[index]!.fields })));
+		}
+	});
+
+	test('should place the error key after ordinary context in the pretty line', () => {
+		const output = captureWrite(
+			createLogObject({
+				time: 0,
+				incidentUuid: 'inc-1',
+				error: 'column "lifecycle_key" does not exist'
+			})
+		);
+		expect(output).toContain(
+			`${ANSI_COLORS.white}incidentUuid:inc-1${ANSI_COLORS.reset} ` +
+				`${ANSI_COLORS.white}error:column "lifecycle_key" does not exist${ANSI_COLORS.reset}`
+		);
 	});
 
 	test('should handle nested objects using Bun.inspect', () => {

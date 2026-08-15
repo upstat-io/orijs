@@ -23,11 +23,19 @@ describe('RedisCacheProvider (functional)', () => {
 			throw new Error('Redis container not ready - check Bun test preload');
 		}
 		const connectionConfig = redisHelper.getConnectionConfig();
-		redis = new Redis({ host: connectionConfig.host, port: connectionConfig.port });
+		redis = new Redis({
+			host: connectionConfig.host,
+			port: connectionConfig.port,
+			db: connectionConfig.db
+		});
 		// Handle connection errors to prevent unhandled error events
 		redis.on('error', () => {});
 		redisCache = new RedisCacheProvider({
-			connection: { host: connectionConfig.host, port: connectionConfig.port }
+			connection: {
+				host: connectionConfig.host,
+				port: connectionConfig.port,
+				db: connectionConfig.db
+			}
 		});
 	});
 

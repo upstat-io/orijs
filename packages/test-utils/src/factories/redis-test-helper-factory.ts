@@ -106,6 +106,14 @@ export async function stopRedisTestContainer(packageName: string): Promise<void>
 	}
 }
 
+/** Release only this process's leased database while retaining the reusable container. */
+export async function releaseRedisTestDatabase(packageName: string): Promise<void> {
+	const manager = globalRedisManagers.get(packageName);
+	if (!manager) return;
+	await manager.releaseProcessResources();
+	globalRedisManagers.delete(packageName);
+}
+
 /**
  * Stop all Redis containers (emergency cleanup)
  */

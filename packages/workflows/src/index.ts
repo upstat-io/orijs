@@ -20,7 +20,7 @@ export type {
 } from './workflow.types';
 
 // Error types
-export { WorkflowStepError } from './workflow.types';
+export { WorkflowStepError, WorkflowRollbackError, decodeWorkflowFailure } from './workflow.types';
 
 // Context (used by step handlers)
 export { createWorkflowContext, type WorkflowContext } from './workflow-context';
