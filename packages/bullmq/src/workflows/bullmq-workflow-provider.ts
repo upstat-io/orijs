@@ -1292,7 +1292,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 
 	private async pauseWorkers(): Promise<void> {
 		const workers = [...this.stepWorkers.values(), ...this.workflowWorkers.values()];
-		await Promise.all(workers.map((worker) => worker.pause?.(true)));
+		await Promise.all(workers.map((worker) => worker.pause?.()));
 	}
 
 	private async drainActiveWorkerJobs(): Promise<void> {

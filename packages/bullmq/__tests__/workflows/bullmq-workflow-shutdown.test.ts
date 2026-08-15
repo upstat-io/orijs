@@ -221,16 +221,16 @@ describe("BullMQWorkflowProvider shutdown", () => {
     try {
       await Promise.resolve();
       expect(lifecycle).toEqual([
-        "pause:pause-before-close.alpha.steps:true",
-        "pause:pause-before-close.alpha:true",
+        "pause:pause-before-close.alpha.steps:undefined",
+        "pause:pause-before-close.alpha:undefined",
       ]);
     } finally {
       pauseGate.release();
       await stopping;
     }
     expect(lifecycle).toEqual([
-      "pause:pause-before-close.alpha.steps:true",
-      "pause:pause-before-close.alpha:true",
+      "pause:pause-before-close.alpha.steps:undefined",
+      "pause:pause-before-close.alpha:undefined",
       "close:pause-before-close.alpha.steps:true",
       "close:pause-before-close.alpha:true",
     ]);
@@ -317,14 +317,14 @@ describe("BullMQWorkflowProvider shutdown", () => {
     await Promise.resolve();
     expect(lifecycle).toEqual([
       "handler:start",
-      "pause:active-drain.alpha:true",
+      "pause:active-drain.alpha:undefined",
     ]);
 
     handlerGate.release();
     await finalizationStarted.wait;
     expect(lifecycle).toEqual([
       "handler:start",
-      "pause:active-drain.alpha:true",
+      "pause:active-drain.alpha:undefined",
       "handler:end",
       "bullmq:finalizing",
     ]);
@@ -334,7 +334,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
     await stopping;
     expect(lifecycle).toEqual([
       "handler:start",
-      "pause:active-drain.alpha:true",
+      "pause:active-drain.alpha:undefined",
       "handler:end",
       "bullmq:finalizing",
       "bullmq:completed",
