@@ -129,14 +129,15 @@ export class SocketRouteBuilder<
     handler: SocketHandler<TState, TSocket, TResponse>,
     schema?: Schema,
   ): this {
-    this.currentRoute = {
+    const route: SocketRouteDefinition = {
       messageType,
       handler: handler as SocketHandler,
       guards: this.getEffectiveGuards(),
-      schema,
+      ...(schema !== undefined && { schema }),
     };
+    this.currentRoute = route;
     this.routeGuardsOverride = null;
-    this.routes.push(this.currentRoute);
+    this.routes.push(route);
     return this;
   }
 

@@ -68,12 +68,13 @@ describe("SocketRouteBuilder", () => {
       expect(routes[0]!.schema).toBe(schema);
     });
 
-    test("should have undefined schema when not provided", () => {
+    test("should omit schema when not provided", () => {
       builder.on("message", dummyHandler);
 
       const routes = builder.getRoutes();
 
       expect(routes[0]!.schema).toBeUndefined();
+      expect(Object.hasOwn(routes[0]!, "schema")).toBeFalse();
     });
   });
 
