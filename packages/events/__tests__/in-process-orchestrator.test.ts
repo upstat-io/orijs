@@ -340,9 +340,11 @@ describe("InProcessEventProvider", () => {
 
     it("should not have causationId when not provided", async () => {
       let receivedCausationId: string | undefined = "initial";
+      let receivedMessageHasCausationId: boolean | undefined;
 
       provider.subscribe("test.event", async (msg: EventMessage) => {
         receivedCausationId = msg.causationId;
+        receivedMessageHasCausationId = Object.hasOwn(msg, "causationId");
       });
 
       const meta: PropagationMeta = {};
@@ -351,6 +353,7 @@ describe("InProcessEventProvider", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(receivedCausationId).toBeUndefined();
+      expect(receivedMessageHasCausationId).toBeFalse();
     });
   });
 

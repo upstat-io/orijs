@@ -294,7 +294,7 @@ export class InProcessEventProvider implements EventProvider {
       payload,
       meta,
       correlationId,
-      causationId,
+      ...(causationId !== undefined && { causationId }),
       timestamp: Date.now(),
     };
   }
