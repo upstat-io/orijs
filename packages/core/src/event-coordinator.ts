@@ -221,7 +221,9 @@ export class EventCoordinator {
         eventName: message.eventName,
         timestamp: message.timestamp,
         correlationId: message.correlationId,
-        causationId: message.causationId,
+        ...(message.causationId !== undefined && {
+          causationId: message.causationId,
+        }),
         emit: <TReturn = void>(
           eventName: string,
           eventPayload: unknown,
@@ -256,7 +258,7 @@ export class EventCoordinator {
               causationId: message.eventId,
             },
             {
-              delay: options?.delay,
+              ...(options?.delay !== undefined && { delay: options.delay }),
               causationId: message.eventId,
               ...(options?.enqueueOnly === true && { expectsResult: false }),
               ...(idempotencyKey && { idempotencyKey }),

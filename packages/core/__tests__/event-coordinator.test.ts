@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { EventCoordinator } from "../src/event-coordinator.ts";
 import { Container } from "../src/container.ts";
-import { Logger } from "@orijs/logging";
+import { Logger, type PropagationMeta } from "@orijs/logging";
 import { Event } from "../src/types/event-definition.ts";
 import { Type } from "@orijs/validation";
 import type { IEventConsumer, EventContext } from "../src/types/consumer.ts";
 import type {
+  EmitOptions,
+  EventHandlerFn,
   EventProvider,
   EventSubscription as EventSub,
 } from "@orijs/events";
@@ -787,6 +789,92 @@ describe("EventCoordinator", () => {
   });
 
   describe("Event Chaining (ctx.emit)", () => {
+    it("should omit absent optional metadata when building event context and emit options", async () => {
+      const contexts: Array<EventContext<{ value: string }>> = [];
+      const emittedOptions: unknown[] = [];
+      let capturedHandler: EventHandlerFn<unknown, unknown> | undefined;
+
+      const provider: EventProvider = {
+        start: async () => {},
+        stop: async () => {},
+        emit: <TReturn = void>(
+          _eventName: string,
+          _payload: unknown,
+          _meta?: PropagationMeta,
+          options?: EmitOptions,
+        ) => {
+          emittedOptions.push(options);
+          return {
+            toPromise: async () => undefined,
+          } as unknown as EventSub<TReturn>;
+        },
+        subscribe: (_eventName, handler) => {
+          capturedHandler = handler as unknown as EventHandlerFn<
+            unknown,
+            unknown
+          >;
+        },
+        cancel: async () => false,
+      };
+      const MetadataEvent = Event.define({
+        name: "metadata.event",
+        data: Type.Object({ value: Type.String() }),
+        result: Type.Void(),
+      });
+
+      class MetadataConsumer implements IEventConsumer<
+        (typeof MetadataEvent)["_data"],
+        void
+      > {
+        onEvent = async (
+          ctx: EventContext<(typeof MetadataEvent)["_data"]>,
+        ) => {
+          contexts.push(ctx);
+          ctx.emit("child.event", {});
+          ctx.emit("child.event", {}, { delay: 0 });
+        };
+      }
+
+      const coordinator = new EventCoordinator(
+        container,
+        logger,
+        () => provider,
+      );
+      coordinator.registerEventDefinition(MetadataEvent);
+      coordinator.addEventConsumer(MetadataEvent, MetadataConsumer, []);
+      coordinator.registerConsumers();
+
+      expect(capturedHandler).toBeDefined();
+      await capturedHandler!({
+        version: "1",
+        eventId: "event-without-parent",
+        eventName: MetadataEvent.name,
+        payload: { value: "first" },
+        meta: { correlationId: "correlation-1" },
+        correlationId: "correlation-1",
+        timestamp: 1,
+      });
+      await capturedHandler!({
+        version: "1",
+        eventId: "event-with-parent",
+        eventName: MetadataEvent.name,
+        payload: { value: "second" },
+        meta: { correlationId: "correlation-2" },
+        correlationId: "correlation-2",
+        causationId: "parent-event",
+        timestamp: 2,
+      });
+
+      expect(contexts).toHaveLength(2);
+      expect(Object.hasOwn(contexts[0]!, "causationId")).toBeFalse();
+      expect(Object.hasOwn(contexts[1]!, "causationId")).toBeTrue();
+      expect(contexts[1]!.causationId).toBe("parent-event");
+      expect(emittedOptions).toHaveLength(4);
+      expect(Object.hasOwn(emittedOptions[0]!, "delay")).toBeFalse();
+      expect(Object.hasOwn(emittedOptions[1]!, "delay")).toBeTrue();
+      expect((emittedOptions[1] as { delay: number }).delay).toBe(0);
+    });
+
     it("should allow emitting chained events from within a consumer", async () => {
       const emittedEvents: Array<{
         event: string;
