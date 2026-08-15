@@ -111,6 +111,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
   it("should initiate independent worker closes together when stopping", async () => {
     const workerCloseStarts: string[] = [];
     const closeGate = createCloseGate();
+    const firstCloseStarted = createCloseGate();
 
     class GatedWorker implements IWorker {
       public readonly connection = { _client: new TestRedisClient() };
@@ -128,6 +129,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
 
       public async close(): Promise<void> {
         workerCloseStarts.push(this.queueName);
+        firstCloseStarted.release();
         await closeGate.wait;
       }
     }
@@ -159,7 +161,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
 
     const stopping = provider.stop();
     try {
-      await Promise.resolve();
+      await firstCloseStarted.wait;
       expect(workerCloseStarts).toEqual([
         "shutdown-workers.alpha.steps",
         "shutdown-workers.beta.steps",
@@ -170,6 +172,174 @@ describe("BullMQWorkflowProvider shutdown", () => {
       closeGate.release();
       await stopping;
     }
+  });
+
+  it("should pause worker intake before closing any worker", async () => {
+    const lifecycle: string[] = [];
+    const pauseGate = createCloseGate();
+
+    class PauseGatedWorker implements IWorker {
+      public readonly connection = { _client: new TestRedisClient() };
+      public readonly blockingConnection = { _client: new TestRedisClient() };
+
+      constructor(
+        private readonly queueName: string,
+        _processor: (job: Job) => Promise<unknown>,
+        _options: unknown,
+      ) {}
+
+      public on(): this {
+        return this;
+      }
+
+      public async pause(doNotWaitActive?: boolean): Promise<void> {
+        lifecycle.push(`pause:${this.queueName}:${doNotWaitActive}`);
+        await pauseGate.wait;
+      }
+
+      public async close(force?: boolean): Promise<void> {
+        lifecycle.push(`close:${this.queueName}:${force}`);
+      }
+    }
+
+    const provider = new BullMQWorkflowProvider({
+      connection: { host: "localhost", port: 6379 },
+      queuePrefix: "pause-before-close",
+      defaultTimeout: 0,
+      FlowProducerClass: TestFlowProducer,
+      WorkerClass: PauseGatedWorker,
+    });
+    provider.registerDefinitionConsumer(
+      "alpha",
+      async () => undefined,
+      [{ type: "sequential", definitions: [{ name: "step" }] }],
+      { step: { execute: async () => undefined } },
+    );
+    await provider.start();
+
+    const stopping = provider.stop();
+    try {
+      await Promise.resolve();
+      expect(lifecycle).toEqual([
+        "pause:pause-before-close.alpha.steps:true",
+        "pause:pause-before-close.alpha:true",
+      ]);
+    } finally {
+      pauseGate.release();
+      await stopping;
+    }
+    expect(lifecycle).toEqual([
+      "pause:pause-before-close.alpha.steps:true",
+      "pause:pause-before-close.alpha:true",
+      "close:pause-before-close.alpha.steps:true",
+      "close:pause-before-close.alpha:true",
+    ]);
+  });
+
+  it("should drain active jobs through BullMQ finalization before forcing idle connections closed", async () => {
+    const lifecycle: string[] = [];
+    const handlerStarted = createCloseGate();
+    const handlerGate = createCloseGate();
+    const finalizationStarted = createCloseGate();
+    const finalizationGate = createCloseGate();
+    const workers = new Map<string, ActiveJobWorker>();
+
+    class ActiveJobWorker implements IWorker {
+      public readonly connection = { _client: new TestRedisClient() };
+      public readonly blockingConnection = { _client: new TestRedisClient() };
+      private readonly listeners = new Map<
+        string,
+        Array<(...args: unknown[]) => void>
+      >();
+
+      constructor(
+        private readonly queueName: string,
+        private readonly processor: (job: Job) => Promise<unknown>,
+        _options: unknown,
+      ) {
+        workers.set(queueName, this);
+      }
+
+      public on(event: string, handler: (...args: unknown[]) => void): this {
+        const listeners = this.listeners.get(event) ?? [];
+        listeners.push(handler);
+        this.listeners.set(event, listeners);
+        return this;
+      }
+
+      public async process(job: Job): Promise<void> {
+        const result = await this.processor(job);
+        lifecycle.push("bullmq:finalizing");
+        finalizationStarted.release();
+        await finalizationGate.wait;
+        for (const listener of this.listeners.get("completed") ?? []) {
+          listener(job, result);
+        }
+        lifecycle.push("bullmq:completed");
+      }
+
+      public async pause(doNotWaitActive?: boolean): Promise<void> {
+        lifecycle.push(`pause:${this.queueName}:${doNotWaitActive}`);
+      }
+
+      public async close(force?: boolean): Promise<void> {
+        lifecycle.push(`close:${this.queueName}:${force}`);
+      }
+    }
+
+    const provider = new BullMQWorkflowProvider({
+      connection: { host: "localhost", port: 6379 },
+      queuePrefix: "active-drain",
+      defaultTimeout: 0,
+      FlowProducerClass: TestFlowProducer,
+      WorkerClass: ActiveJobWorker,
+    });
+    provider.registerDefinitionConsumer(
+      "alpha",
+      async () => {
+        lifecycle.push("handler:start");
+        handlerStarted.release();
+        await handlerGate.wait;
+        lifecycle.push("handler:end");
+      },
+      [],
+    );
+    await provider.start();
+
+    const worker = workers.get("active-drain.alpha");
+    if (!worker) throw new Error("Workflow worker was not captured");
+    const processing = worker.process({
+      data: { flowId: "active-flow", workflowData: {} },
+    } as Job);
+    await handlerStarted.wait;
+
+    const stopping = provider.stop();
+    await Promise.resolve();
+    expect(lifecycle).toEqual([
+      "handler:start",
+      "pause:active-drain.alpha:true",
+    ]);
+
+    handlerGate.release();
+    await finalizationStarted.wait;
+    expect(lifecycle).toEqual([
+      "handler:start",
+      "pause:active-drain.alpha:true",
+      "handler:end",
+      "bullmq:finalizing",
+    ]);
+
+    finalizationGate.release();
+    await processing;
+    await stopping;
+    expect(lifecycle).toEqual([
+      "handler:start",
+      "pause:active-drain.alpha:true",
+      "handler:end",
+      "bullmq:finalizing",
+      "bullmq:completed",
+      "close:active-drain.alpha:true",
+    ]);
   });
 
   it("should initiate independent QueueEvents closes together before closing the producer", async () => {

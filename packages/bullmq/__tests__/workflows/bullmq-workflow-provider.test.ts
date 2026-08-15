@@ -86,14 +86,34 @@ function createCapturingWorkerClass(
 ) {
 	return class CapturingWorkerClass {
 		public close = mock(() => Promise.resolve());
-		public on = mock(() => this);
 		public connection = createMockRedisConnection();
 		public blockingConnection = createMockRedisConnection();
+		private readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 
 		constructor(queueName: string, processor: (job: unknown) => Promise<unknown>, _opts: unknown) {
 			if (queueName.endsWith('.steps')) {
-				onStepProcessor(processor);
+				onStepProcessor(async (job: unknown) => {
+					try {
+						const result = await processor(job);
+						this.emit('completed', job, result);
+						return result;
+					} catch (error) {
+						this.emit('failed', job, error);
+						throw error;
+					}
+				});
 			}
+		}
+
+		public on = mock((event: string, handler: (...args: unknown[]) => void): this => {
+			const listeners = this.listeners.get(event) ?? [];
+			listeners.push(handler);
+			this.listeners.set(event, listeners);
+			return this;
+		});
+
+		private emit(event: string, ...args: unknown[]): void {
+			for (const listener of this.listeners.get(event) ?? []) listener(...args);
 		}
 	};
 }
@@ -884,15 +904,35 @@ describe('processDefinitionWorkflow functional tests', () => {
 		// Create Worker class that captures the workflow processor (not step processor)
 		const CapturingWorkflowWorkerClass = class {
 			public close = mock(() => Promise.resolve());
-			public on = mock(() => this);
 			public connection = { _client: { on: mock(() => {}) } };
 			public blockingConnection = { _client: { on: mock(() => {}) } };
+			private readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 
 			constructor(queueName: string, processor: (job: unknown) => Promise<unknown>, _opts: unknown) {
 				// Capture workflow processor (not .steps queue)
 				if (!queueName.endsWith('.steps')) {
-					capturedWorkflowProcessor = processor;
+					capturedWorkflowProcessor = async (job: unknown) => {
+						try {
+							const result = await processor(job);
+							this.emit('completed', job, result);
+							return result;
+						} catch (error) {
+							this.emit('failed', job, error);
+							throw error;
+						}
+					};
 				}
+			}
+
+			public on = mock((event: string, handler: (...args: unknown[]) => void): this => {
+				const listeners = this.listeners.get(event) ?? [];
+				listeners.push(handler);
+				this.listeners.set(event, listeners);
+				return this;
+			});
+
+			private emit(event: string, ...args: unknown[]): void {
+				for (const listener of this.listeners.get(event) ?? []) listener(...args);
 			}
 		};
 

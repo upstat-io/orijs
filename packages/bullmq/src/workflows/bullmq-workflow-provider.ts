@@ -423,7 +423,8 @@ interface IRedisConnection {
 }
 
 export interface IWorker {
-	close(): Promise<void>;
+	close(force?: boolean): Promise<void>;
+	pause?(doNotWaitActive?: boolean): Promise<void>;
 	on(event: string, handler: (...args: unknown[]) => void): this;
 	/**
 	 * Main ioredis connection - used for commands.
@@ -505,6 +506,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private readonly timeoutHandles: Map<string, ReturnType<typeof setTimeout>> = new Map();
 	// Handles for scheduled localFlowStates cleanup (cleared on stop)
 	private readonly flowStateCleanupHandles: Map<string, ReturnType<typeof setTimeout>> = new Map();
+	private readonly activeWorkerJobs = new Map<Job, Promise<void>>();
+	private readonly activeWorkerJobSettlers = new WeakMap<Job, () => void>();
 
 	// Deferred promises keyed by jobId (not flowId) for QueueEvents routing
 	// `settled` flag prevents race conditions between timeout and QueueEvents handlers
@@ -1256,6 +1259,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 			await this.closeQueueEventsInitializations();
 		}
 
+		await this.pauseWorkers();
+		await this.drainActiveWorkerJobs();
+
 		// Close all workers before moving to resources that observe their results.
 		await Promise.all([
 			this.closeWorkerMap(this.stepWorkers, errorHandler),
@@ -1282,6 +1288,17 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		this.localFlowStates.clear();
 
 		this.log.info('Workflow Provider stopped');
+	}
+
+	private async pauseWorkers(): Promise<void> {
+		const workers = [...this.stepWorkers.values(), ...this.workflowWorkers.values()];
+		await Promise.all(workers.map((worker) => worker.pause?.(true)));
+	}
+
+	private async drainActiveWorkerJobs(): Promise<void> {
+		while (this.activeWorkerJobs.size > 0) {
+			await Promise.all(this.activeWorkerJobs.values());
+		}
 	}
 
 	/**
@@ -1312,7 +1329,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		const closes = Array.from(workers.values(), (worker) => {
 			worker.connection._client.on('error', errorHandler as (...args: unknown[]) => void);
 			worker.blockingConnection._client.on('error', errorHandler as (...args: unknown[]) => void);
-			return worker.close();
+			return worker.close(true);
 		});
 		await Promise.all(closes);
 		workers.clear();
@@ -1429,13 +1446,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	): void {
 		if (this.stepWorkers.has(queueName)) return;
 
-		const worker = new this.WorkerClass(queueName, async (job: Job) => this.processStep(job), workerOpts);
+		const worker = new this.WorkerClass(
+			queueName,
+			this.trackWorkerProcessor(async (job: Job) => this.processStep(job)),
+			workerOpts
+		);
 		worker.on('error', (err: unknown) => {
 			this.log.error('Step worker error', { queue: queueName, error: (err as Error).message });
 		});
-		worker.on('failed', () => {
-			/* Handled via QueueEvents */
-		});
+		worker.on('completed', (job: unknown) => this.settleActiveWorkerJob(job));
+		worker.on('failed', (job: unknown) => this.settleActiveWorkerJob(job));
 		this.stepWorkers.set(queueName, worker);
 
 		this.log.info(`Step Worker Created -> [${queueName}]`, {
@@ -1459,19 +1479,42 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	): void {
 		if (this.workflowWorkers.has(queueName)) return;
 
-		const worker = new this.WorkerClass(queueName, processor, workerOpts);
+		const worker = new this.WorkerClass(queueName, this.trackWorkerProcessor(processor), workerOpts);
 		worker.on('error', (err: unknown) => {
 			this.log.error('Workflow worker error', { queue: queueName, error: (err as Error).message });
 		});
-		worker.on('failed', () => {
-			/* Handled via QueueEvents */
-		});
+		worker.on('completed', (job: unknown) => this.settleActiveWorkerJob(job));
+		worker.on('failed', (job: unknown) => this.settleActiveWorkerJob(job));
 		this.workflowWorkers.set(queueName, worker);
 
 		this.log.info(`Workflow Worker Created -> [${queueName}]`, {
 			providerId: this.providerId,
 			concurrency: workerOpts.concurrency
 		});
+	}
+
+	private trackWorkerProcessor(
+		processor: (job: Job) => Promise<unknown>
+	): (job: Job) => Promise<unknown> {
+		return async (job: Job): Promise<unknown> => {
+			let settle!: () => void;
+			const settled = new Promise<void>((resolve) => {
+				settle = resolve;
+			});
+			this.activeWorkerJobs.set(job, settled);
+			this.activeWorkerJobSettlers.set(job, settle);
+			return processor(job);
+		};
+	}
+
+	private settleActiveWorkerJob(job: unknown): void {
+		if (typeof job !== 'object' || job === null) return;
+		const activeJob = job as Job;
+		const settle = this.activeWorkerJobSettlers.get(activeJob);
+		if (!settle) return;
+		this.activeWorkerJobSettlers.delete(activeJob);
+		this.activeWorkerJobs.delete(activeJob);
+		settle();
 	}
 
 	/**
