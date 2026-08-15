@@ -240,7 +240,7 @@ export class BullMQEventProvider implements EventProvider {
 			payload,
 			meta,
 			correlationId: subscription.correlationId,
-			causationId: options?.causationId,
+			...(options?.causationId === undefined ? {} : { causationId: options.causationId }),
 			timestamp: Date.now()
 		};
 
@@ -329,7 +329,9 @@ export class BullMQEventProvider implements EventProvider {
 				payload: job.data.payload as TPayload,
 				meta: job.data.meta,
 				correlationId: job.data.correlationId,
-				causationId: job.data.causationId,
+				...(job.data.causationId === undefined
+					? {}
+					: { causationId: job.data.causationId }),
 				timestamp: job.data.timestamp
 			};
 
