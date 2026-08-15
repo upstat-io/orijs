@@ -494,8 +494,8 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private readonly queuePrefix: string;
 	private readonly stepRegistry: StepRegistry;
 	private readonly defaultTimeout: number;
-	private readonly stallInterval?: number;
-	private readonly providerId?: string;
+	private readonly stallInterval: number | undefined;
+	private readonly providerId: string | undefined;
 	private readonly flowStateCleanupDelay: number;
 	private readonly maxFlowStates: number;
 	private readonly stepTimeout: number;
