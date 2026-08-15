@@ -453,6 +453,11 @@ export interface IQueueEvents {
 	connection: IRedisConnection;
 }
 
+interface QueueEventsInitialization {
+	readonly ready: Promise<IQueueEvents>;
+	close(): Promise<void>;
+}
+
 function generateFlowId(): string {
 	return `flow-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -517,6 +522,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private stepWorkers: Map<string, IWorker> = new Map();
 	private workflowWorkers: Map<string, IWorker> = new Map();
 	private queueEvents: Map<string, IQueueEvents> = new Map();
+	private queueEventsInitializations: Map<string, QueueEventsInitialization> = new Map();
 	private started = false;
 
 	// Definition-based consumer handlers (new API)
@@ -1246,6 +1252,9 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		this.log.info('Workflow Provider stopping');
 
 		const errorHandler = this.createShutdownErrorHandler();
+		if (this.queueEventsInitializations.size > 0) {
+			await this.closeQueueEventsInitializations();
+		}
 
 		// Close all workers before moving to resources that observe their results.
 		await Promise.all([
@@ -1322,6 +1331,16 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 		});
 		await Promise.all(closes);
 		queueEventsMap.clear();
+	}
+
+	private async closeQueueEventsInitializations(): Promise<void> {
+		const initializations = Array.from(this.queueEventsInitializations.values());
+		try {
+			await Promise.all(initializations.map((initialization) => initialization.close()));
+		} finally {
+			await Promise.allSettled(initializations.map((initialization) => initialization.ready));
+			this.queueEventsInitializations.clear();
+		}
 	}
 
 	/**
@@ -2108,79 +2127,102 @@ export class BullMQWorkflowProvider implements WorkflowProvider<BullMQWorkflowOp
 	private async getOrCreateQueueEvents(queueName: string): Promise<IQueueEvents> {
 		const existing = this.queueEvents.get(queueName);
 		if (existing) return existing;
+		const initializing = this.queueEventsInitializations.get(queueName);
+		if (initializing) return initializing.ready;
 
 		const events = new this.QueueEventsClass(queueName, { connection: this.connection });
+		let closePromise: Promise<void> | undefined;
+		const close = (): Promise<void> => (closePromise ??= events.close());
 
-		// Handle QueueEvents errors per BullMQ docs
-		events.on('error', (err: unknown) => {
-			this.log.error('QueueEvents error', { queue: queueName, error: (err as Error).message });
-		});
+		const ready = (async (): Promise<IQueueEvents> => {
+			// Handle QueueEvents errors per BullMQ docs
+			events.on('error', (err: unknown) => {
+				this.log.error('QueueEvents error', { queue: queueName, error: (err as Error).message });
+			});
 
-		// CRITICAL: Wait for connection before relying on events
-		// Without this, fast-completing workflows might not emit 'completed' in time
-		await events.waitUntilReady();
-
-		// Listen for workflow completion
-		events.on('completed', (...eventArgs: unknown[]) => {
-			const args = eventArgs[0] as { jobId: string; returnvalue?: string | unknown };
-			const { jobId, returnvalue } = args;
-
-			// Atomically settle to prevent race with timeout handler
-			const pending = this.trySettlePending(jobId);
-			if (!pending) return; // Not our job or already settled
-
-			// Update local state
-			const localState = this.localFlowStates.get(pending.flowId);
-			if (localState) {
-				localState.status = 'completed';
-			}
-
-			// Schedule cleanup to prevent unbounded memory growth from accumulated flow states.
-			this.scheduleFlowStateCleanup(pending.flowId);
-
-			// Parse and sanitize result to prevent prototype pollution
-			let result: unknown;
-			if (returnvalue == null) {
-				result = undefined;
-			} else if (typeof returnvalue === 'string') {
-				try {
-					// Json.parse automatically sanitizes to strip dangerous keys
-					result = Json.parse(returnvalue);
-				} catch {
-					result = returnvalue;
+			try {
+				// CRITICAL: Wait for connection before relying on events
+				// Without this, fast-completing workflows might not emit 'completed' in time
+				await events.waitUntilReady();
+				if (!this.started) {
+					throw new Error('Workflow provider stopped while QueueEvents was initializing');
 				}
-			} else {
-				// Non-string values should be sanitized if they're objects
-				result = Json.sanitize(returnvalue);
+
+				// Listen for workflow completion
+				events.on('completed', (...eventArgs: unknown[]) => {
+					const args = eventArgs[0] as { jobId: string; returnvalue?: string | unknown };
+					const { jobId, returnvalue } = args;
+
+					// Atomically settle to prevent race with timeout handler
+					const pending = this.trySettlePending(jobId);
+					if (!pending) return; // Not our job or already settled
+
+					// Update local state
+					const localState = this.localFlowStates.get(pending.flowId);
+					if (localState) {
+						localState.status = 'completed';
+					}
+
+					// Schedule cleanup to prevent unbounded memory growth from accumulated flow states.
+					this.scheduleFlowStateCleanup(pending.flowId);
+
+					// Parse and sanitize result to prevent prototype pollution
+					let result: unknown;
+					if (returnvalue == null) {
+						result = undefined;
+					} else if (typeof returnvalue === 'string') {
+						try {
+							// Json.parse automatically sanitizes to strip dangerous keys
+							result = Json.parse(returnvalue);
+						} catch {
+							result = returnvalue;
+						}
+					} else {
+						// Non-string values should be sanitized if they're objects
+						result = Json.sanitize(returnvalue);
+					}
+
+					pending.resolve(result);
+				});
+
+				// Listen for workflow failure
+				events.on('failed', (...eventArgs: unknown[]) => {
+					const args = eventArgs[0] as { jobId: string; failedReason: string };
+					const { jobId, failedReason } = args;
+
+					// Atomically settle to prevent race with timeout handler
+					const pending = this.trySettlePending(jobId);
+					if (!pending) return; // Not our job or already settled
+
+					// Update local state
+					const localState = this.localFlowStates.get(pending.flowId);
+					if (localState) {
+						localState.status = 'failed';
+						localState.error = new Error(failedReason);
+					}
+
+					// Schedule cleanup to prevent unbounded memory growth from accumulated flow states.
+					this.scheduleFlowStateCleanup(pending.flowId);
+
+					pending.reject(new Error(failedReason));
+				});
+
+				this.queueEvents.set(queueName, events);
+				return events;
+			} catch (error) {
+				await close();
+				throw error;
 			}
-
-			pending.resolve(result);
-		});
-
-		// Listen for workflow failure
-		events.on('failed', (...eventArgs: unknown[]) => {
-			const args = eventArgs[0] as { jobId: string; failedReason: string };
-			const { jobId, failedReason } = args;
-
-			// Atomically settle to prevent race with timeout handler
-			const pending = this.trySettlePending(jobId);
-			if (!pending) return; // Not our job or already settled
-
-			// Update local state
-			const localState = this.localFlowStates.get(pending.flowId);
-			if (localState) {
-				localState.status = 'failed';
-				localState.error = new Error(failedReason);
+		})();
+		const initialization = { ready, close };
+		this.queueEventsInitializations.set(queueName, initialization);
+		try {
+			return await ready;
+		} finally {
+			if (this.queueEventsInitializations.get(queueName) === initialization) {
+				this.queueEventsInitializations.delete(queueName);
 			}
-
-			// Schedule cleanup to prevent unbounded memory growth from accumulated flow states.
-			this.scheduleFlowStateCleanup(pending.flowId);
-
-			pending.reject(new Error(failedReason));
-		});
-
-		this.queueEvents.set(queueName, events);
-		return events;
+		}
 	}
 
 	/**

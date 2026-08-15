@@ -44,6 +44,70 @@ class TestFlowProducer implements IFlowProducer {
 }
 
 describe("BullMQWorkflowProvider shutdown", () => {
+  it("should own and close one QueueEvents initialization shared by concurrent executions", async () => {
+    const readyGate = createCloseGate();
+    const close = mock(async () => undefined);
+    let constructionCount = 0;
+
+    class InitializingQueueEvents implements IQueueEvents {
+      public readonly connection = { _client: new TestRedisClient() };
+
+      constructor(_queueName: string, _options: unknown) {
+        constructionCount += 1;
+      }
+
+      public on(): this {
+        return this;
+      }
+
+      public off(): this {
+        return this;
+      }
+
+      public async waitUntilReady(): Promise<void> {
+        await readyGate.wait;
+      }
+
+      public close = close;
+    }
+
+    const provider = new BullMQWorkflowProvider({
+      connection: { host: "localhost", port: 6379 },
+      queuePrefix: "shutdown-initializing-events",
+      defaultTimeout: 0,
+      FlowProducerClass: TestFlowProducer,
+      QueueEventsClass: InitializingQueueEvents,
+    });
+    const workflow = Workflow.define({
+      name: "shared",
+      data: Type.Object({}),
+      result: Type.Void(),
+    });
+    provider.registerEmitterWorkflow(workflow.name);
+    await provider.start();
+
+    const firstExecution = provider.execute(workflow, {});
+    const secondExecution = provider.execute(workflow, {});
+    const executionFailure = Promise.all([
+      firstExecution,
+      secondExecution,
+    ]).then(
+      () => new Error("Concurrent executions unexpectedly resolved"),
+      (error: Error) => error,
+    );
+
+    expect(constructionCount).toBe(1);
+
+    const stopping = provider.stop();
+    readyGate.release();
+
+    await expect(stopping).resolves.toBeUndefined();
+    expect((await executionFailure).message).toContain(
+      "Workflow provider stopped",
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it("should initiate independent worker closes together when stopping", async () => {
     const workerCloseStarts: string[] = [];
     const closeGate = createCloseGate();

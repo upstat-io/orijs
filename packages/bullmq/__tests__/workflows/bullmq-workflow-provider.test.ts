@@ -5,7 +5,7 @@
  * Verifies correct integration of FlowBuilder, StepRegistry, and BullMQ.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { Workflow, type WorkflowContext } from '@orijs/core';
 import { Type } from '@orijs/validation';
 import {
@@ -201,6 +201,10 @@ describe('BullMQWorkflowProvider', () => {
 		};
 
 		provider = new BullMQWorkflowProvider(options);
+	});
+
+	afterEach(async () => {
+		await provider.stop();
 	});
 
 	describe('registerDefinitionConsumer', () => {
