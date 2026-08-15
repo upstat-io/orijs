@@ -1,5 +1,6 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
 import { Mapper } from "../src/mapper.ts";
+import { MapperBuilder } from "../src/mapper-builder.ts";
 import { field } from "../src/field.ts";
 
 /**
@@ -199,6 +200,45 @@ describe("MapperBuilder", () => {
   });
 
   describe("json()", () => {
+    test("should omit unset JSON config options", () => {
+      const Tables = Mapper.defineTables({
+        User: {
+          tableName: "user",
+          id: field("id").number(),
+        },
+      });
+      const factory = (raw: unknown): string => String(raw);
+      const addJson = spyOn(MapperBuilder.prototype, "addJson");
+
+      try {
+        Mapper.for<{ id: number; settings: string }>(Tables.User)
+          .json<string>("settings")
+          .build();
+        Mapper.for<{ id: number; settings: string }>(Tables.User)
+          .json<string>("settings", factory)
+          .default("fallback")
+          .build();
+
+        const unsetConfig = addJson.mock.calls[0]?.[0];
+        expect(unsetConfig).toEqual({
+          column: "settings",
+          propertyName: "settings",
+          isOptional: false,
+        });
+        expect(Object.hasOwn(unsetConfig ?? {}, "factory")).toBe(false);
+        expect(Object.hasOwn(unsetConfig ?? {}, "defaultValue")).toBe(false);
+        expect(addJson.mock.calls[1]?.[0]).toEqual({
+          column: "settings",
+          propertyName: "settings",
+          factory,
+          defaultValue: "fallback",
+          isOptional: false,
+        });
+      } finally {
+        addJson.mockRestore();
+      }
+    });
+
     test("should map JSON column", () => {
       const Tables = Mapper.defineTables({
         User: {
@@ -340,6 +380,46 @@ describe("MapperBuilder", () => {
   });
 
   describe("col()", () => {
+    test("should omit unset column config options", () => {
+      const Tables = Mapper.defineTables({
+        User: {
+          tableName: "user",
+          id: field("id").number(),
+        },
+      });
+      const computeFn = (row: Record<string, unknown>): number =>
+        Number(row["post_count"]);
+      const addCol = spyOn(MapperBuilder.prototype, "addCol");
+
+      try {
+        Mapper.for<{ id: number; postCount: number }>(Tables.User)
+          .col<number>("postCount")
+          .build();
+        Mapper.for<{ id: number; postCount: number }>(Tables.User)
+          .col<number>("postCount", computeFn)
+          .default(0)
+          .build();
+
+        const unsetConfig = addCol.mock.calls[0]?.[0];
+        expect(unsetConfig).toEqual({
+          column: "post_count",
+          propertyName: "postCount",
+          isOptional: false,
+        });
+        expect(Object.hasOwn(unsetConfig ?? {}, "defaultValue")).toBe(false);
+        expect(Object.hasOwn(unsetConfig ?? {}, "computeFn")).toBe(false);
+        expect(addCol.mock.calls[1]?.[0]).toEqual({
+          column: "",
+          propertyName: "postCount",
+          defaultValue: 0,
+          isOptional: false,
+          computeFn,
+        });
+      } finally {
+        addCol.mockRestore();
+      }
+    });
+
     test("should map extra column", () => {
       const Tables = Mapper.defineTables({
         User: {

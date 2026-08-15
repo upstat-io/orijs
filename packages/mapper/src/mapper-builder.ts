@@ -352,8 +352,10 @@ class JsonBuilder<T, J>
     this.parent.addJson({
       column: this.column,
       propertyName: this.jsonPropertyName,
-      factory: this.factory,
-      defaultValue: this.jsonDefault,
+      ...(this.factory === undefined ? {} : { factory: this.factory }),
+      ...(this.jsonDefault === undefined
+        ? {}
+        : { defaultValue: this.jsonDefault }),
       isOptional: this.jsonOptional,
     });
   }
@@ -393,9 +395,11 @@ class ColBuilder<T, C> extends ChainedBuilder<T> implements IColBuilder<T, C> {
     this.parent.addCol({
       column: this.column,
       propertyName: this.colPropertyName,
-      defaultValue: this.colDefault,
+      ...(this.colDefault === undefined
+        ? {}
+        : { defaultValue: this.colDefault }),
       isOptional: this.colOptional,
-      computeFn: this.computeFn,
+      ...(this.computeFn === undefined ? {} : { computeFn: this.computeFn }),
     });
   }
 }
