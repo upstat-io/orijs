@@ -153,6 +153,7 @@ describe('StepRegistry', () => {
 			const step = registry.getStep('TestWorkflow', 'step1');
 			expect(step.handler).toBe(handler);
 			expect(step.rollback).toBeUndefined();
+			expect(Object.hasOwn(step, 'rollback')).toBe(false);
 		});
 
 		it('should return full step info including rollback', () => {

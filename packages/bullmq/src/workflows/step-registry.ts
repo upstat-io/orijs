@@ -74,7 +74,7 @@ export class StepRegistry {
 			workflowSteps = new Map();
 			this.steps.set(workflowName, workflowSteps);
 		}
-		workflowSteps.set(stepName, { handler, rollback });
+		workflowSteps.set(stepName, rollback === undefined ? { handler } : { handler, rollback });
 	}
 
 	/**
