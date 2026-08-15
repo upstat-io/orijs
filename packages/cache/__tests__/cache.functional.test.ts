@@ -614,27 +614,32 @@ describe('CacheService (functional)', () => {
 		it('should not provide stale value when grace period has expired', async () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
-			// Use very short TTL + grace for fast test
-			const ShortCache = Cache.for('User').ttl(0.1).grace(0.1).build();
+			const GraceCache = Cache.for('User').ttl(60).grace(60).build();
 
 			const params = { accountUuid: crypto.randomUUID(), userUuid: crypto.randomUUID() };
 			const originalUser: User = { uuid: 'user-expired', name: 'Original', email: 'orig@example.com' };
+			const cachedAt = new Date('2026-01-02T03:04:05.000Z');
 
-			// First call - populate cache
-			await cacheService.getOrSet<User, typeof params>(ShortCache, params, async () => originalUser);
+			setSystemTime(cachedAt);
+			try {
+				await cacheService.getOrSet<User, typeof params>(GraceCache, params, async () => originalUser);
+				setSystemTime(new Date(cachedAt.getTime() + 121_000));
 
-			// Wait for both TTL AND grace to fully expire (0.1s + 0.1s = 0.2s, wait 400ms)
-			await new Promise((resolve) => setTimeout(resolve, 400));
+				let receivedStaleValue: User | undefined = {
+					uuid: 'sentinel',
+					name: 'sentinel',
+					email: 'sentinel'
+				};
 
-			// Second call - stale value should NOT be provided (grace expired)
-			let receivedStaleValue: User | undefined = { uuid: 'sentinel', name: 'sentinel', email: 'sentinel' };
+				await cacheService.getOrSet<User, typeof params>(GraceCache, params, async (ctx) => {
+					receivedStaleValue = ctx.staleValue;
+					return { uuid: 'user-expired', name: 'New', email: 'new@example.com' };
+				});
 
-			await cacheService.getOrSet<User, typeof params>(ShortCache, params, async (ctx) => {
-				receivedStaleValue = ctx.staleValue;
-				return { uuid: 'user-expired', name: 'New', email: 'new@example.com' };
-			});
-
-			expect(receivedStaleValue).toBeUndefined();
+				expect(receivedStaleValue).toBeUndefined();
+			} finally {
+				setSystemTime();
+			}
 		});
 	});
 
