@@ -74,6 +74,7 @@ describe("createEventContext", () => {
       });
 
       expect(ctx.causationId).toBeUndefined();
+      expect(Object.hasOwn(ctx, "causationId")).toBeFalse();
     });
 
     it("should use event name as default logger name", () => {

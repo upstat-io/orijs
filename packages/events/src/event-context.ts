@@ -116,7 +116,9 @@ export function createEventContext<
     log,
     emit: emitFn,
     correlationId: message.correlationId,
-    causationId: message.causationId,
+    ...(message.causationId !== undefined && {
+      causationId: message.causationId,
+    }),
     eventName: message.eventName,
     timestamp: message.timestamp,
   });
