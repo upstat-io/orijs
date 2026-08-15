@@ -259,7 +259,7 @@ export class TestEventProvider implements EventProvider {
       payload,
       meta,
       correlationId,
-      causationId,
+      ...(causationId !== undefined && { causationId }),
       timestamp: Date.now(),
     };
   }

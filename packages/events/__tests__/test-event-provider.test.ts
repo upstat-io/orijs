@@ -275,6 +275,40 @@ describe("TestEventProvider", () => {
     });
   });
 
+  describe("causation tracking", () => {
+    it("should pass causationId to handler when provided", async () => {
+      let receivedCausationId: string | undefined;
+
+      provider.subscribe("test.event", async (msg: EventMessage) => {
+        receivedCausationId = msg.causationId;
+      });
+
+      await provider.emit(
+        "test.event",
+        {},
+        {},
+        {
+          causationId: "parent-event-123",
+        },
+      );
+
+      expect(receivedCausationId).toBe("parent-event-123");
+    });
+
+    it("should omit causationId when not provided", async () => {
+      let receivedMessage: EventMessage | undefined;
+
+      provider.subscribe("test.event", async (message: EventMessage) => {
+        receivedMessage = message;
+      });
+
+      await provider.emit("test.event", {}, {});
+
+      expect(receivedMessage?.causationId).toBeUndefined();
+      expect(Object.hasOwn(receivedMessage!, "causationId")).toBeFalse();
+    });
+  });
+
   describe("chained events", () => {
     it("should support emitting events from handler", async () => {
       const receivedEvents: string[] = [];
