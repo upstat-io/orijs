@@ -232,8 +232,8 @@ export interface IQueueManager {
 export class QueueManager implements IQueueManager {
 	private readonly connection: ConnectionOptions;
 	private readonly queuePrefix: string;
-	private readonly metrics?: QueueMetrics;
-	private readonly logger?: Logger;
+	private readonly metrics: QueueMetrics | undefined;
+	private readonly logger: Logger | undefined;
 	private readonly defaultRetry: Required<RetryOptions>;
 	private readonly defaultJobOptions: Partial<JobsOptions>;
 	private readonly defaultWorkerOptions: Partial<WorkerOptions>;
