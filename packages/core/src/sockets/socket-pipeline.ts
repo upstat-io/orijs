@@ -61,7 +61,7 @@ export class SocketPipeline<TSocket extends SocketEmitter = SocketEmitter> {
       messageType: route.messageType,
       handler: route.handler,
       guards,
-      schema: route.schema,
+      ...(route.schema !== undefined && { schema: route.schema }),
     };
   }
 

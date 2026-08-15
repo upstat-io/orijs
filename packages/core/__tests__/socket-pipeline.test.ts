@@ -149,6 +149,18 @@ describe("SocketPipeline", () => {
 
       expect(compiled.schema).toBe(schema);
     });
+
+    test("should omit schema when the route has no schema", () => {
+      const route = {
+        messageType: "test",
+        handler: async () => ({}),
+        guards: [],
+      };
+
+      const compiled = pipeline.compileRoute(route);
+
+      expect(Object.hasOwn(compiled, "schema")).toBeFalse();
+    });
   });
 
   describe("runConnectionGuards()", () => {
