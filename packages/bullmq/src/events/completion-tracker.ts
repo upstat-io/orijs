@@ -351,8 +351,8 @@ export class CompletionTracker implements ICompletionTracker {
 
 		queuePending.set(correlationId, {
 			onSuccess: onSuccess as CompletionCallback,
-			onError,
-			timeoutHandle
+			...(onError === undefined ? {} : { onError }),
+			...(timeoutHandle === undefined ? {} : { timeoutHandle })
 		});
 	}
 
