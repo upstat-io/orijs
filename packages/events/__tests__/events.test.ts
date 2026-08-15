@@ -254,6 +254,7 @@ describe("EventSystem", () => {
       const meta = createPropagationMeta();
 
       expect(meta.correlationId).toBeUndefined();
+      expect(Object.hasOwn(meta, "correlationId")).toBeFalse();
     });
 
     it("should include additional fields", () => {

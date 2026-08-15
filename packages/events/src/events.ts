@@ -282,7 +282,7 @@ export function createPropagationMeta(
   additional?: Record<string, unknown>,
 ): PropagationMeta {
   return {
-    correlationId,
+    ...(correlationId !== undefined && { correlationId }),
     ...additional,
   };
 }
