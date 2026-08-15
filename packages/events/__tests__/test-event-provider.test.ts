@@ -81,12 +81,12 @@ describe('TestEventProvider', () => {
 				return { greeting: `Hello, ${payload.name}!` };
 			});
 
-			const start = Date.now();
+			const start = performance.now();
 
 			// Direct await on subscription
 			const result = await provider.emit<{ greeting: string }>('greet', { name: 'World' }, {});
 
-			const elapsed = Date.now() - start;
+			const elapsed = performance.now() - start;
 
 			// Should have taken at least the processing delay
 			expect(elapsed).toBeGreaterThanOrEqual(8); // Allow small timing variance
@@ -98,12 +98,12 @@ describe('TestEventProvider', () => {
 				return { done: true };
 			});
 
-			const start = Date.now();
+			const start = performance.now();
 
 			// Emit with 20ms delay + 10ms processing = 30ms total
 			const result = await provider.emit<{ done: boolean }>('delayed', {}, {}, { delay: 20 });
 
-			const elapsed = Date.now() - start;
+			const elapsed = performance.now() - start;
 
 			// Total delay should be emit delay + processing delay
 			expect(elapsed).toBeGreaterThanOrEqual(25); // 30ms target with variance
@@ -307,11 +307,11 @@ describe('TestEventProvider vs InProcessEventProvider timing', () => {
 			return { timestamp: Date.now() };
 		});
 
-		const emitTime = Date.now();
+		const emitTime = performance.now();
 
 		await provider.emit<{ timestamp: number }>('timing.test', {}, {});
 
-		const resolveTime = Date.now();
+		const resolveTime = performance.now();
 		const elapsed = resolveTime - emitTime;
 
 		// Should have taken at least the processing delay
