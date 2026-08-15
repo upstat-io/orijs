@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
-import { createRedisTestHelper, type RedisTestHelper } from '@orijs/test-utils';
+import { createRedisTestHelper, waitForAsync, type RedisTestHelper } from '@orijs/test-utils';
 import { RedisCacheProvider } from '../src/redis-cache';
 import { Redis } from 'ioredis';
 
@@ -106,8 +106,11 @@ describe('RedisCacheProvider (functional)', () => {
 		it('should expire key after TTL', async () => {
 			await redisCache.set('expire-key', 'value', 1);
 
-			// Wait for expiration (Redis may have slight delay)
-			await new Promise((resolve) => setTimeout(resolve, 2500));
+			await waitForAsync(async () => (await redisCache.ttl('expire-key')) === -2, {
+				timeout: 5000,
+				interval: 25,
+				message: 'Redis key did not expire after its 1 second TTL'
+			});
 
 			const result = await redisCache.get('expire-key');
 
