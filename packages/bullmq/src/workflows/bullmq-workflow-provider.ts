@@ -2163,7 +2163,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
         job,
         workflowName,
         workflowData,
-        meta: data.meta,
+        ...(data.meta !== undefined && { meta: data.meta }),
       });
 
       // Call onError callback
@@ -2239,7 +2239,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
         outcomes,
         existingResults,
         failure,
-        meta: data.meta,
+        ...(data.meta !== undefined && { meta: data.meta }),
       });
     }
 
@@ -2314,7 +2314,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
         job,
         workflowName: ctx.workflowName,
         workflowData: ctx.workflowData,
-        meta: ctx.meta,
+        ...(ctx.meta !== undefined && { meta: ctx.meta }),
       },
       parallelResults,
     );
