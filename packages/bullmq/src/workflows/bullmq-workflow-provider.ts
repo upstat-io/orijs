@@ -927,9 +927,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
       workflowName: opts.workflowName,
       flowId: opts.flowId,
       queuePrefix: this.queuePrefix,
-      meta: opts.meta,
-      idempotencyKey: opts.executeOptions?.idempotencyKey,
-      stepJobOpts: opts.stepJobOpts,
+      ...(opts.meta !== undefined && { meta: opts.meta }),
+      ...(opts.executeOptions?.idempotencyKey !== undefined && {
+        idempotencyKey: opts.executeOptions.idempotencyKey,
+      }),
+      ...(opts.stepJobOpts !== undefined && {
+        stepJobOpts: opts.stepJobOpts,
+      }),
     });
     const job = flowBuilder.buildFlow(opts.stepGroups, opts.data);
     const jobId = flowBuilder.getParentJobId();
@@ -950,7 +954,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
       flowId: opts.flowId,
       workflowData: opts.data,
       stepResults: {},
-      meta: opts.meta,
+      ...(opts.meta !== undefined && { meta: opts.meta }),
     };
     const jobId =
       opts.executeOptions?.idempotencyKey ??

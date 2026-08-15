@@ -320,6 +320,16 @@ describe("Definition-Based Workflow Execution", () => {
       expect(jobData.stepResults).toEqual({});
     });
 
+    it("should omit propagation meta when unavailable", async () => {
+      const definition = createTestWorkflowDefinition("no-meta-workflow");
+      provider.registerEmitterWorkflow(definition.name);
+      await provider.start();
+
+      await provider.execute(definition as any, { userId: "user-no-meta" });
+
+      expect(capturedJobs[0]!.data).not.toHaveProperty("meta");
+    });
+
     it("should include propagation meta when available", async () => {
       const definition = createTestWorkflowDefinition("meta-workflow");
       provider.registerEmitterWorkflow(definition.name);
