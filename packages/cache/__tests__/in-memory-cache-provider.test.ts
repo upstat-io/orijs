@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, setSystemTime } from 'bun:test';
 import { waitForAsync } from '@orijs/test-utils';
 import { InMemoryCacheProvider } from '../src/in-memory-cache-provider';
 
@@ -561,18 +561,21 @@ describe('InMemoryCacheProvider', () => {
 
 		it('should handle very short TTL', async () => {
 			const key = `short-ttl-${crypto.randomUUID()}`;
-			// Set TTL to 50ms
-			await provider.set(key, 'value', 0.05);
+			const cachedAt = new Date('2026-01-02T03:04:05.000Z');
 
-			const exists1 = await provider.exists(key);
-			expect(exists1).toBe(true);
+			setSystemTime(cachedAt);
+			try {
+				await provider.set(key, 'value', 0.05);
+				expect(await provider.exists(key)).toBe(true);
 
-			// Wait longer than TTL to ensure expiry under parallel test load
-			// Using 200ms instead of 80ms provides sufficient margin for CI
-			await new Promise((resolve) => setTimeout(resolve, 200));
+				setSystemTime(new Date(cachedAt.getTime() + 50));
+				expect(await provider.exists(key)).toBe(true);
 
-			const exists2 = await provider.exists(key);
-			expect(exists2).toBe(false);
+				setSystemTime(new Date(cachedAt.getTime() + 51));
+				expect(await provider.exists(key)).toBe(false);
+			} finally {
+				setSystemTime();
+			}
 		});
 
 		it('should handle special characters in keys', async () => {
