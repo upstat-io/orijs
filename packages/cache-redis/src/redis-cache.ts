@@ -75,7 +75,7 @@ export interface RedisCacheProviderOptions {
  */
 export class RedisCacheProvider implements CacheProvider {
 	private readonly redis: Redis;
-	private readonly logger?: Logger;
+	private readonly logger: Logger | undefined;
 
 	constructor(options: RedisCacheProviderOptions) {
 		// Default 2s connect timeout - fail fast if Redis unavailable

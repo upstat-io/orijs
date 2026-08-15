@@ -304,8 +304,9 @@ export const EntityRegistry = {
  * // Scope.Project is typed as ScopeDef<'project', 'projectUuid'>
  * ```
  */
-export function defineScopes<T extends ScopeDefsInput>(scopes: T): ScopeDefsOutput<T> {
-	return scopes as ScopeDefsOutput<T>;
+export function defineScopes<T extends ScopeDefsInput>(scopes: T): ScopeDefsOutput<T>;
+export function defineScopes(scopes: ScopeDefsInput): ScopeDefsInput {
+	return scopes;
 }
 
 /**
@@ -328,8 +329,9 @@ export function defineScopes<T extends ScopeDefsInput>(scopes: T): ScopeDefsOutp
  * // Entities.Product is typed as EntityDef<'Product', typeof Scope.Project, 'productUuid'>
  * ```
  */
-export function defineEntities<T extends EntityDefsInput>(entities: T): EntityDefsOutput<T> {
-	return entities as EntityDefsOutput<T>;
+export function defineEntities<T extends EntityDefsInput>(entities: T): EntityDefsOutput<T>;
+export function defineEntities(entities: EntityDefsInput): EntityDefsInput {
+	return entities;
 }
 
 // --- ENTITY INVALIDATION REGISTRY ---

@@ -582,7 +582,9 @@ export class CacheService {
 			value,
 			createdAt: now,
 			expiresAt: now + config.ttl * 1000,
-			graceExpiresAt: graceSeconds > 0 ? now + (config.ttl + graceSeconds) * 1000 : undefined
+			...(graceSeconds > 0
+				? { graceExpiresAt: now + (config.ttl + graceSeconds) * 1000 }
+				: {})
 		};
 
 		// Total TTL includes grace period

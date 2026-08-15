@@ -402,8 +402,8 @@ class CacheBuilderInternal<TEntityNames extends string, TParams extends object>
 			metaParams: Object.freeze([...metaParams]) as readonly (keyof TParams)[],
 			dependsOn: Object.freeze(dependsOn) as Readonly<Partial<Record<string, readonly (keyof TParams)[]>>>,
 			cacheNull: this.shouldCacheNull,
-			timeout: this.timeoutMs,
-			tags: this.tagsFn
+			...(this.timeoutMs !== undefined ? { timeout: this.timeoutMs } : {}),
+			...(this.tagsFn !== undefined ? { tags: this.tagsFn } : {})
 		});
 	}
 
