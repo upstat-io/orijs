@@ -196,10 +196,14 @@ describe('ScheduledEventManager', () => {
 			});
 
 			const schedules = manager.getSchedules('monitor.check');
+			const intervalSchedule = schedules.find((schedule) => schedule.scheduleId === 'check-1');
+			const cronSchedule = schedules.find((schedule) => schedule.scheduleId === 'check-2');
 
 			expect(schedules.length).toBe(2);
-			expect(schedules.find((s) => s.scheduleId === 'check-1')).toBeDefined();
-			expect(schedules.find((s) => s.scheduleId === 'check-2')).toBeDefined();
+			expect(intervalSchedule).toBeDefined();
+			expect(cronSchedule).toBeDefined();
+			expect(Object.hasOwn(intervalSchedule ?? {}, 'cron')).toBeFalse();
+			expect(Object.hasOwn(cronSchedule ?? {}, 'every')).toBeFalse();
 		});
 
 		it('should return empty array for event type with no schedules', async () => {

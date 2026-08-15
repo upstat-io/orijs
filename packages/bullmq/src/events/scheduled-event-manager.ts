@@ -162,14 +162,14 @@ export interface IScheduledEventManager {
 export class ScheduledEventManager implements IScheduledEventManager {
 	private readonly connection: ConnectionOptions;
 	private readonly queuePrefix: string;
-	private readonly logger?: Logger;
+	private readonly logger: Logger | undefined;
 	private readonly queues = new Map<string, IScheduleQueueLike>();
 	private readonly schedules = new Map<string, Map<string, ScheduleInfo>>();
 	private readonly QueueClass: new (
 		name: string,
 		options: { connection: ConnectionOptions }
 	) => IScheduleQueueLike;
-	private readonly queueManager?: IQueueManager;
+	private readonly queueManager: IQueueManager | undefined;
 
 	/**
 	 * Creates a new ScheduledEventManager.
@@ -338,8 +338,8 @@ export class ScheduledEventManager implements IScheduledEventManager {
 		const scheduleInfo: ScheduleInfo = {
 			scheduleId: options.scheduleId,
 			eventName,
-			cron: hasCron ? options.cron : undefined,
-			every: hasEvery ? options.every : undefined,
+			...(hasCron ? { cron: options.cron } : {}),
+			...(hasEvery ? { every: options.every } : {}),
 			payload: options.payload
 		};
 
