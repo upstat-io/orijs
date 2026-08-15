@@ -10,7 +10,7 @@
  * - Registry integration
  */
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, setSystemTime } from 'bun:test';
 import { createRedisTestHelper, type RedisTestHelper } from '@orijs/test-utils';
 import { EntityRegistry, createCacheBuilder, CacheService, CacheTimeoutError, cacheRegistry } from '../src';
 import { RedisCacheProvider } from '@orijs/cache-redis';
@@ -562,38 +562,32 @@ describe('CacheService (functional)', () => {
 		it('should pass stale value and staleAge to factory during grace period', async () => {
 			const registry = createTestRegistry();
 			const Cache = createCacheBuilder(registry);
-			// TTL=0.2s, Grace=1s - short for fast tests
-			const ShortCache = Cache.for('User').ttl(0.2).grace(1).build();
+			const GraceCache = Cache.for('User').ttl(60).grace(60).build();
 
 			const params = { accountUuid: crypto.randomUUID(), userUuid: crypto.randomUUID() };
 			const originalUser: User = { uuid: 'user-stale', name: 'Original', email: 'original@example.com' };
 			const updatedUser: User = { uuid: 'user-stale', name: 'Updated', email: 'updated@example.com' };
+			const cachedAt = new Date('2026-01-02T03:04:05.000Z');
 
-			// First call - populate cache
-			await cacheService.getOrSet<User, typeof params>(ShortCache, params, async () => originalUser);
+			setSystemTime(cachedAt);
+			try {
+				await cacheService.getOrSet<User, typeof params>(GraceCache, params, async () => originalUser);
+				setSystemTime(new Date(cachedAt.getTime() + 61_000));
 
-			// Wait for TTL to expire but stay within grace period
-			await new Promise((resolve) => setTimeout(resolve, 300));
+				let receivedStaleValue: User | undefined;
+				let receivedStaleAge: number | undefined;
+				const result = await cacheService.getOrSet<User, typeof params>(GraceCache, params, async (ctx) => {
+					receivedStaleValue = ctx.staleValue;
+					receivedStaleAge = ctx.staleAge;
+					return updatedUser;
+				});
 
-			// Second call - should receive stale value in context
-			let receivedStaleValue: User | undefined;
-			let receivedStaleAge: number | undefined;
-
-			const result = await cacheService.getOrSet<User, typeof params>(ShortCache, params, async (ctx) => {
-				receivedStaleValue = ctx.staleValue;
-				receivedStaleAge = ctx.staleAge;
-				return updatedUser;
-			});
-
-			// Factory should have received the stale value
-			expect(receivedStaleValue).toEqual(originalUser);
-
-			// Stale age should be > 0.2s
-			expect(receivedStaleAge).toBeGreaterThanOrEqual(0.2);
-			expect(receivedStaleAge).toBeLessThan(2);
-
-			// Result should be the updated value
-			expect(result).toEqual(updatedUser);
+				expect(receivedStaleValue).toEqual(originalUser);
+				expect(receivedStaleAge).toBe(61);
+				expect(result).toEqual(updatedUser);
+			} finally {
+				setSystemTime();
+			}
 		});
 
 		it('should not provide stale value when cache is fresh', async () => {
