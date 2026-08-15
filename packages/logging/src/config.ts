@@ -152,20 +152,19 @@ export function buildLoggerOptions(config: LogConfig): LoggerOptions {
   const hasFilter =
     config.includeNames.length > 0 || config.excludeNames.length > 0;
   if (hasFilter) {
-    consoleT = filterTransport(consoleT, {
-      includeNames:
-        config.includeNames.length > 0 ? config.includeNames : undefined,
-      excludeNames:
-        config.excludeNames.length > 0 ? config.excludeNames : undefined,
-    });
+    const filterOptions = {
+      ...(config.includeNames.length > 0
+        ? { includeNames: config.includeNames }
+        : {}),
+      ...(config.excludeNames.length > 0
+        ? { excludeNames: config.excludeNames }
+        : {}),
+    };
+
+    consoleT = filterTransport(consoleT, filterOptions);
 
     if (fileT) {
-      fileT = filterTransport(fileT, {
-        includeNames:
-          config.includeNames.length > 0 ? config.includeNames : undefined,
-        excludeNames:
-          config.excludeNames.length > 0 ? config.excludeNames : undefined,
-      });
+      fileT = filterTransport(fileT, filterOptions);
     }
   }
 

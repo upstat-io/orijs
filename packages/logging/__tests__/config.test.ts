@@ -349,24 +349,68 @@ describe("buildLoggerOptions", () => {
       const config: LogConfig = {
         ...createDefaultConfig(),
         includeNames: ["AuthService", "UserService"],
+        jsonFormat: true,
       };
 
       const result = buildLoggerOptions(config);
+      const output: string[] = [];
+      const originalLog = console.log;
+      console.log = (line: string) => output.push(line);
 
-      // Verify transport was created with filtering
-      expect(result.transports).toHaveLength(1);
-      expect(result.level).toBe("info");
+      try {
+        result.transports?.[0]?.write({
+          time: 1,
+          level: 20,
+          msg: "included",
+          name: "AuthService",
+        });
+        result.transports?.[0]?.write({
+          time: 2,
+          level: 20,
+          msg: "excluded",
+          name: "HealthCheck",
+        });
+      } finally {
+        console.log = originalLog;
+      }
+
+      expect(output.map((line) => JSON.parse(line).name)).toEqual([
+        "AuthService",
+      ]);
     });
 
     test("should apply exclude filter to console transport", () => {
       const config: LogConfig = {
         ...createDefaultConfig(),
         excludeNames: ["HealthCheck"],
+        jsonFormat: true,
       };
 
       const result = buildLoggerOptions(config);
+      const output: string[] = [];
+      const originalLog = console.log;
+      console.log = (line: string) => output.push(line);
 
-      expect(result.transports).toHaveLength(1);
+      try {
+        result.transports?.[0]?.write({
+          time: 1,
+          level: 20,
+          msg: "included",
+          name: "AuthService",
+        });
+        result.transports?.[0]?.write({
+          time: 2,
+          level: 20,
+          msg: "excluded",
+          name: "HealthCheck",
+        });
+      } finally {
+        console.log = originalLog;
+      }
+
+      expect(output.map((line) => JSON.parse(line).name)).toEqual([
+        "AuthService",
+      ]);
     });
 
     test("should apply both include and exclude filters", () => {
