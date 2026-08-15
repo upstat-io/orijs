@@ -265,6 +265,28 @@ describe("BullMQWorkflowProvider", () => {
       // No error means success
     });
 
+    it("should omit onError when no error handler is provided", () => {
+      const onError = async () => {};
+
+      provider.registerDefinitionConsumer("NoErrorWorkflow", async () => {});
+      provider.registerDefinitionConsumer(
+        "ErrorWorkflow",
+        async () => {},
+        undefined,
+        undefined,
+        onError,
+      );
+
+      const noErrorConsumer =
+        provider["definitionConsumers"].get("NoErrorWorkflow");
+      const errorConsumer =
+        provider["definitionConsumers"].get("ErrorWorkflow");
+
+      expect(noErrorConsumer).toBeDefined();
+      expect(Object.hasOwn(noErrorConsumer!, "onError")).toBe(false);
+      expect(errorConsumer?.onError).toBe(onError);
+    });
+
     it("should log warning when step handler is missing for defined step", () => {
       const mockLogger = {
         info: mock(() => {}),

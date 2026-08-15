@@ -1387,7 +1387,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
     this.definitionConsumers.set(workflowName, {
       handler,
       stepGroups: groups,
-      onError,
+      ...(onError !== undefined && { onError }),
     });
 
     // Remove from emitter-only if it was there (now has a consumer)
