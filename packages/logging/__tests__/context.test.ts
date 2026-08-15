@@ -85,6 +85,22 @@ describe("generateCorrelationId", () => {
   });
 });
 
+describe("createTraceContext", () => {
+  test("should omit parentSpanId when no incoming span exists", () => {
+    const trace = createTraceContext("trace-without-parent");
+
+    expect(trace.parentSpanId).toBeUndefined();
+    expect(Object.hasOwn(trace, "parentSpanId")).toBeFalse();
+  });
+
+  test("should preserve an incoming span as parentSpanId", () => {
+    const trace = createTraceContext("trace-with-parent", "parent-span");
+
+    expect(trace.traceId).toBe("trace-with-parent");
+    expect(trace.parentSpanId).toBe("parent-span");
+  });
+});
+
 describe("capturePropagationMeta", () => {
   test("should return undefined when no context is set", () => {
     const meta = capturePropagationMeta();

@@ -125,7 +125,7 @@ export function createTraceContext(
   return {
     traceId: incomingTraceId ?? crypto.randomUUID(),
     spanId: generateSpanId(),
-    parentSpanId: incomingSpanId,
+    ...(incomingSpanId !== undefined && { parentSpanId: incomingSpanId }),
   };
 }
 
