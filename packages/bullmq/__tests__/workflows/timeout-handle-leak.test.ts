@@ -15,6 +15,8 @@ import {
   BullMQWorkflowProvider,
   type BullMQWorkflowProviderOptions,
 } from "../../src/workflows/bullmq-workflow-provider.ts";
+import { waitFor } from "../preload.ts";
+import { waitForAsync } from "@orijs/test-utils";
 
 /**
  * Mock Redis client for testing internal connections
@@ -418,16 +420,27 @@ describe("BullMQWorkflowProvider Timeout Handle Memory Leak", () => {
       // Verify timeout handle was created
       expect(timeoutHandles.has(flowId)).toBe(true);
 
-      // Wait for timeout to fire (effective timeout = TIMEOUT_MS + stallInterval)
-      await new Promise((resolve) =>
-        setTimeout(resolve, EFFECTIVE_TIMEOUT_MS + 50),
-      );
+      // Wait for the timeout to fire and its cleanup (.finally()) to run. The
+      // timer's own delay (EFFECTIVE_TIMEOUT_MS) is a floor, not a ceiling —
+      // under CPU contention the callback can fire well past it, so poll for
+      // the observable effect instead of sleeping a fixed margin past it.
+      await waitFor(() => !timeoutHandles.has(flowId), 8000);
 
       // Verify timeout handle was cleaned up (via .finally() after timeout rejects the promise)
       expect(timeoutHandles.has(flowId)).toBe(false);
 
-      // Verify status is 'failed'
-      expect(await provider.getStatus(flowId)).toBe("failed");
+      // Verify status is 'failed'. The timeout callback deletes the handle
+      // synchronously but only sets the status after an async Redis check
+      // (handleTimeoutWithRedisCheck), so this is a second, independent wait.
+      let lastStatus: string | undefined;
+      await waitForAsync(
+        async () => {
+          lastStatus = await provider.getStatus(flowId);
+          return lastStatus === "failed";
+        },
+        { timeout: 8000 },
+      );
+      expect(lastStatus).toBe("failed");
     }, 10000); // Extended timeout for this test (5s+ for stallInterval)
 
     it("should clean up timeout handle synchronously in callback even if promise already settled", async () => {
