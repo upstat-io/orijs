@@ -26,7 +26,7 @@
 	],
 	"license": "MIT",
 	"scripts": {
-		"test": "bun run --filter='./packages/*' test",
+		"test": "bun run --filter='./packages/*' --sequential test",
 		"test:coverage": "bun test --coverage",
 		"typecheck": "tsc --noEmit",
 		"lint": "oxlint --config oxlint.json packages/ example/src",
