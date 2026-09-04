@@ -420,11 +420,11 @@ describe("BullMQWorkflowProvider Timeout Handle Memory Leak", () => {
       // Verify timeout handle was created
       expect(timeoutHandles.has(flowId)).toBe(true);
 
-      // Wait for the timeout to fire and its cleanup (.finally()) to run. The
-      // timer's own delay (EFFECTIVE_TIMEOUT_MS) is a floor, not a ceiling —
-      // under CPU contention the callback can fire well past it, so poll for
-      // the observable effect instead of sleeping a fixed margin past it.
-      await waitFor(() => !timeoutHandles.has(flowId), 8000);
+      // Wait for the timeout to fire and its cleanup (.finally()) to run.
+      // EFFECTIVE_TIMEOUT_MS is the timer's floor, not a ceiling — under CPU
+      // contention the callback can fire well past it, so poll for the
+      // observable effect instead of sleeping a fixed margin past it.
+      await waitFor(() => !timeoutHandles.has(flowId), EFFECTIVE_TIMEOUT_MS + 3000);
 
       // Verify timeout handle was cleaned up (via .finally() after timeout rejects the promise)
       expect(timeoutHandles.has(flowId)).toBe(false);
@@ -438,10 +438,10 @@ describe("BullMQWorkflowProvider Timeout Handle Memory Leak", () => {
           lastStatus = await provider.getStatus(flowId);
           return lastStatus === "failed";
         },
-        { timeout: 8000 },
+        { timeout: 3000 },
       );
       expect(lastStatus).toBe("failed");
-    }, 10000); // Extended timeout for this test (5s+ for stallInterval)
+    }, 15000); // Extended timeout: EFFECTIVE_TIMEOUT_MS floor + both poll ceilings
 
     it("should clean up timeout handle synchronously in callback even if promise already settled", async () => {
       /**

@@ -1,4 +1,4 @@
-import type { Constructor, ConstructorDeps } from "./types/index";
+import type { Constructor, InjectionToken } from "./types/index";
 import type { EventProvider, EventMessage } from "@orijs/events";
 import { InProcessEventProvider } from "@orijs/events";
 import type { Logger } from "@orijs/logging";

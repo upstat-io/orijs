@@ -1,4 +1,4 @@
-import type { Constructor, ConstructorDeps } from "./types/index";
+import type { Constructor, InjectionToken } from "./types/index";
 import {
   InProcessWorkflowProvider,
   type WorkflowProvider,
