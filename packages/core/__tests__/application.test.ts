@@ -49,8 +49,8 @@ describe("Application", () => {
     Logger.reset();
   });
 
-  afterEach(() => {
-    app?.stop();
+  afterEach(async () => {
+    await app?.stop();
   });
 
   describe("Ori factory", () => {
@@ -1670,7 +1670,7 @@ describe("Application", () => {
       expect(elapsed).toBeLessThan(500); // Should complete well before timeout
     });
 
-    test("should force stop after timeout with hanging shutdown hook", async () => {
+    test("should reject on timeout while a shutdown hook remains incomplete", async () => {
       let hookStarted = false;
       let hookCompleted = false;
 
@@ -1680,28 +1680,39 @@ describe("Application", () => {
         }
       }
 
-      app = Ori.create()
+      const timeoutApp = Ori.create()
         .controller("/test", TestController)
         .setShutdownTimeout(100); // Very short timeout for test
 
-      await app.listen(getPort());
+      await timeoutApp.listen(getPort());
 
       // Register a hanging shutdown hook
-      const appContext = app.context;
+      const appContext = timeoutApp.context;
+      const releaseHook = Promise.withResolvers<void>();
+      const hooksDrained = Promise.withResolvers<void>();
+      appContext.onShutdown(() => {
+        hooksDrained.resolve();
+      });
       appContext?.onShutdown(async () => {
         hookStarted = true;
-        await new Promise<void>(() => {});
+        await releaseHook.promise;
         hookCompleted = true;
       });
 
       const startTime = performance.now();
-      await app.stop();
-      const elapsed = performance.now() - startTime;
-
-      expect(hookStarted).toBe(true);
-      expect(hookCompleted).toBe(false); // Hook should NOT have completed
-      expect(elapsed).toBeLessThan(500); // Should have timed out around 100ms
-      expect(elapsed).toBeGreaterThanOrEqual(90); // Should have waited for timeout (allow 10% timing jitter)
+      try {
+        await expect(timeoutApp.stop()).rejects.toThrow(
+          "Shutdown timeout exceeded",
+        );
+        const elapsed = performance.now() - startTime;
+        expect(hookStarted).toBe(true);
+        expect(hookCompleted).toBe(false);
+        expect(elapsed).toBeLessThan(500);
+        expect(elapsed).toBeGreaterThanOrEqual(90);
+      } finally {
+        releaseHook.resolve();
+        await hooksDrained.promise;
+      }
     });
 
     test("should use default 10s timeout", async () => {

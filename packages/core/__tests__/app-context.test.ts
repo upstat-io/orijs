@@ -320,12 +320,12 @@ describe("AppContext", () => {
       expect(capturedPhase).toBe("stopping");
     });
 
-    test("should set phase to stopped after execution", async () => {
+    test("should retain stopping phase until application providers drain", async () => {
       const appContext = new AppContext(logger, container);
 
       await appContext.executeShutdownHooks();
 
-      expect(appContext.phase).toBe("stopped");
+      expect(appContext.phase).toBe("stopping");
     });
 
     test("should continue on error and log it", async () => {
@@ -351,7 +351,7 @@ describe("AppContext", () => {
       // All hooks should run (LIFO: 3, error, 1)
       expect(order).toEqual([3, 1]);
       expect(errorSpy).toHaveBeenCalled();
-      expect(appContext.phase).toBe("stopped");
+      expect(appContext.phase).toBe("stopping");
     });
 
     test("should support async hooks", async () => {

@@ -834,6 +834,8 @@ client.connect();
 
 ### Automatic Reconnection
 
+Calling `disconnect()` stops automatic reconnection and emits `Disconnected` once if the client was connected. Repeated calls while disconnected emit nothing. You can call `connect()` immediately afterward: callbacks from the retired socket cannot disturb the new connection, and tracked rooms are rejoined.
+
 The client uses full jitter exponential backoff for reconnection, which is the optimal strategy for distributed systems. The delay is randomized within an exponential range with a guaranteed minimum:
 
 ```

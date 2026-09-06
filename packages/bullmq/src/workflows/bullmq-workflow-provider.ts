@@ -424,6 +424,7 @@ interface RollbackContext {
 export interface IFlowProducer {
   add(flow: FlowJobDefinition): Promise<{ job: { id: string } }>;
   close(): Promise<void>;
+  waitUntilReady(): Promise<unknown>;
   /**
    * Main ioredis connection.
    * Exposed for adding error handlers that persist through close().
@@ -460,6 +461,7 @@ interface IRedisConnection {
 
 export interface IWorker {
   close(force?: boolean): Promise<void>;
+  waitUntilReady(): Promise<unknown>;
   pause?(doNotWaitActive?: boolean): Promise<void>;
   on(event: string, handler: (...args: unknown[]) => void): this;
   /**
@@ -573,6 +575,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
   private queueEventsInitializations: Map<string, QueueEventsInitialization> =
     new Map();
   private started = false;
+  private startupPromise: Promise<void> | undefined;
 
   // Definition-based consumer handlers (new API)
   private readonly definitionConsumers: Map<
@@ -1470,9 +1473,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
    *
    * Idempotent - calling multiple times has no effect after first start.
    */
-  public async start(): Promise<void> {
-    if (this.started) return;
+  public start(): Promise<void> {
+    if (this.startupPromise) return this.startupPromise;
+    this.startupPromise = this.startResources();
+    return this.startupPromise;
+  }
 
+  private async startResources(): Promise<void> {
     this.flowProducer = new this.FlowProducerClass({
       connection: this.connection,
     });
@@ -1482,6 +1489,13 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
     for (const [workflowName] of this.definitionConsumers) {
       this.createDefinitionWorker(workflowName);
     }
+
+    await Promise.all([
+      this.flowProducer.waitUntilReady(),
+      ...[...this.stepWorkers.values(), ...this.workflowWorkers.values()].map(
+        (worker) => worker.waitUntilReady(),
+      ),
+    ]);
 
     const consumerList = [...this.definitionConsumers.keys()];
     const emitterList = [...this.emitterWorkflows];
@@ -1553,6 +1567,7 @@ export class BullMQWorkflowProvider implements WorkflowProvider<never> {
     this.pendingResults.clear();
     this.idempotentHandles.clear();
     this.localFlowStates.clear();
+    this.startupPromise = undefined;
 
     this.log.info("Workflow Provider stopped");
   }

@@ -377,7 +377,6 @@ export class AppContext<
         this.log.error("Shutdown hook failed", { error });
       }
     }
-    this.currentPhase = "stopped";
   }
 
   /** Get count of registered hooks (for testing/debugging) */

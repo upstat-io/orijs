@@ -186,6 +186,33 @@ export class RedisWsProvider implements WebSocketProvider {
   private readonly retryTimeouts: Set<ReturnType<typeof setTimeout>> =
     new Set();
 
+  private readonly subscriptionWaiters = new Map<string, Set<{ resolve: () => void; reject: (error: Error) => void }>>();
+
+  /** Wait for the server acknowledgement of an already requested topic subscription. */
+  public whenSubscribed(topic: string): Promise<void> {
+    validateTopic(topic);
+    const channel = this.getRedisChannel(topic);
+    if (!this.started || !this.localSubscriptions.get(topic)?.size) return Promise.reject(new Error('Topic is not subscribed'));
+    if (this.redisSubscriptions.has(channel) && !this.pendingUnsubscriptions.has(channel)) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const waiters = this.subscriptionWaiters.get(channel) ?? new Set();
+      const finish = (error?: Error) => {
+        clearTimeout(timer); waiters.delete(waiter);
+        if (waiters.size === 0) this.subscriptionWaiters.delete(channel);
+        if (error) reject(error); else resolve();
+      };
+      const waiter = { resolve: () => finish(), reject: (error: Error) => finish(error) };
+      const timer = setTimeout(() => finish(new Error('Topic subscription readiness timed out')), this.connectTimeout + 5000);
+      waiters.add(waiter); this.subscriptionWaiters.set(channel, waiters);
+    });
+  }
+
+  private settleSubscription(channel: string, error?: Error): void {
+    for (const waiter of [...this.subscriptionWaiters.get(channel) ?? []]) {
+      if (error) waiter.reject(error); else waiter.resolve();
+    }
+  }
+
   constructor(options: RedisWsProviderOptions) {
     this.logger = options.logger ?? Logger.console("RedisWsProvider");
     this.keyPrefix = options.keyPrefix ?? "ws";
@@ -229,6 +256,8 @@ export class RedisWsProvider implements WebSocketProvider {
       connectTimeout: this.connectTimeout,
       commandTimeout: this.connectTimeout, // Timeout for individual commands
       maxRetriesPerRequest: 1, // Fail fast on connection issues
+      lazyConnect: true,
+      enableOfflineQueue: false,
     };
 
     // Create publisher connection
@@ -253,6 +282,13 @@ export class RedisWsProvider implements WebSocketProvider {
       this.resubscribeAll();
     });
 
+    try {
+      await Promise.all([this.publisher.connect(), this.subscriber.connect()]);
+    } catch (error) {
+      this.publisher.disconnect(); this.subscriber.disconnect();
+      this.publisher = null; this.subscriber = null;
+      throw error;
+    }
     this.started = true;
     this.logger.info("RedisWsProvider started");
   }
@@ -267,6 +303,7 @@ export class RedisWsProvider implements WebSocketProvider {
     }
 
     this.started = false;
+    for (const channel of [...this.subscriptionWaiters.keys()]) this.settleSubscription(channel, new Error('WebSocket provider stopped'));
 
     // Unsubscribe from all Redis channels
     if (this.subscriber && this.redisSubscriptions.size > 0) {
@@ -544,6 +581,7 @@ export class RedisWsProvider implements WebSocketProvider {
         }
 
         this.redisSubscriptions.add(channel);
+        this.settleSubscription(channel);
       })
       .catch((err) => {
         const errorMessage =
@@ -576,6 +614,7 @@ export class RedisWsProvider implements WebSocketProvider {
           });
           // Final failure: remove from pending, don't add to subscribed
           this.pendingSubscriptions.delete(channel);
+          this.settleSubscription(channel, new Error('Topic subscription failed'));
         }
       });
   }

@@ -34,6 +34,7 @@ class TestRedisClient {
 }
 
 class TestFlowProducer implements IFlowProducer {
+  public async waitUntilReady(): Promise<void> {}
   public readonly connection = { _client: new TestRedisClient() };
 
   public async add(flow: FlowJobDefinition): Promise<{ job: { id: string } }> {
@@ -114,6 +115,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
     const firstCloseStarted = createCloseGate();
 
     class GatedWorker implements IWorker {
+      public async waitUntilReady(): Promise<void> {}
       public readonly connection = { _client: new TestRedisClient() };
       public readonly blockingConnection = { _client: new TestRedisClient() };
 
@@ -179,6 +181,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
     const pauseGate = createCloseGate();
 
     class PauseGatedWorker implements IWorker {
+      public async waitUntilReady(): Promise<void> {}
       public readonly connection = { _client: new TestRedisClient() };
       public readonly blockingConnection = { _client: new TestRedisClient() };
 
@@ -245,6 +248,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
     const workers = new Map<string, ActiveJobWorker>();
 
     class ActiveJobWorker implements IWorker {
+      public async waitUntilReady(): Promise<void> {}
       public readonly connection = { _client: new TestRedisClient() };
       public readonly blockingConnection = { _client: new TestRedisClient() };
       private readonly listeners = new Map<
@@ -378,6 +382,7 @@ describe("BullMQWorkflowProvider shutdown", () => {
     }
 
     class IdleWorker implements IWorker {
+      public async waitUntilReady(): Promise<void> {}
       public readonly connection = { _client: new TestRedisClient() };
       public readonly blockingConnection = { _client: new TestRedisClient() };
 

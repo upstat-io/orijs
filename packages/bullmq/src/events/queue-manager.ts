@@ -585,7 +585,12 @@ export class QueueManager implements IQueueManager {
     // CRITICAL: Wait for worker to be connected and ready to process jobs.
     // Without this, jobs added immediately after registration may complete
     // before the worker is connected, causing race conditions.
-    await worker.waitUntilReady();
+    try {
+      await worker.waitUntilReady();
+    } catch (error) {
+      await worker.close();
+      throw error;
+    }
 
     // Atomically swap: new worker is ready, close old one if exists
     const existing = this.workers.get(queueName);

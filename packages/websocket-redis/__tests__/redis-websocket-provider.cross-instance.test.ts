@@ -85,7 +85,7 @@ describe("RedisWsProvider cross-instance messaging", () => {
 
       instanceA.subscribe(SOCKET_INSTANCE_A, "account:123");
 
-      await delay(200); // Allow Redis subscription to establish
+      await instanceA.whenSubscribed("account:123");
 
       await instanceB.publish(
         "account:123",

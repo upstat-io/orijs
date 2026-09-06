@@ -207,3 +207,7 @@ const provider = new RedisWsProvider({
 | External dependency | None                         | Redis                      |
 | Setup complexity    | Minimal                      | Moderate                   |
 | Use case            | Single instance, development | Production, multi-instance |
+
+## Subscription readiness
+
+After requesting a topic subscription, await `provider.whenSubscribed(topic)` before acknowledging it to a client or reading a snapshot that follows it. This waits for the Redis subscription acknowledgement, rejects on provider stop/failure or a bounded readiness timeout, and prevents a snapshot/subscribe gap. It does not promise durable message delivery; reconnect must re-read authoritative application state.

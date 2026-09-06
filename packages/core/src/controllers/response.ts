@@ -48,10 +48,10 @@ export interface SseStreamOptions {
  */
 export class ResponseFactory {
   // Pre-computed JSON strings for static responses (avoids JSON.stringify per call)
-  private static readonly JSON_404 = '{"error":"Not Found"}';
-  private static readonly JSON_403 = '{"error":"Forbidden"}';
-  private static readonly JSON_405 = '{"error":"Method Not Allowed"}';
-  private static readonly JSON_HEADERS = { "Content-Type": "application/json" };
+  public static readonly JSON_404 = '{"error":"Not Found"}';
+  public static readonly JSON_403 = '{"error":"Forbidden"}';
+  public static readonly JSON_405 = '{"error":"Method Not Allowed"}';
+  public static readonly JSON_HEADERS = { "Content-Type": "application/json" };
 
   /**
    * Create a JSON response with the given data and status
@@ -78,10 +78,12 @@ export class ResponseFactory {
   /**
    * 404 Not Found response (uses pre-computed JSON string)
    */
-  public notFound(): Response {
+  public notFound(customHeaders?: Record<string, string>): Response {
     return new Response(ResponseFactory.JSON_404, {
       status: 404,
-      headers: ResponseFactory.JSON_HEADERS,
+      headers: customHeaders
+        ? { ...ResponseFactory.JSON_HEADERS, ...customHeaders }
+        : ResponseFactory.JSON_HEADERS,
     });
   }
 

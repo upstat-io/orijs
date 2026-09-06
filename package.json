@@ -3,6 +3,8 @@
 	"version": "0.0.1",
 	"description": "Lightweight NestJS-inspired framework for Bun",
 	"private": true,
+	"packageManager": "bun@1.4.2",
+	"engines": { "bun": ">=1.4.2" },
 	"main": "src/index.ts",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
