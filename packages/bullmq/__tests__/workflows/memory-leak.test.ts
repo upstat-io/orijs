@@ -97,6 +97,7 @@ function createMockQueueEvents(): MockQueueEvents {
 function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
   let jobIdCounter = 0;
   return class MockFlowProducerClass {
+    public async waitUntilReady(): Promise<void> {}
     public add = mock((flowJob: { opts?: { jobId?: string } }) => {
       // Use opts.jobId if provided for predictable job identification
       const jobId = flowJob.opts?.jobId ?? `job-${++jobIdCounter}`;
@@ -111,6 +112,7 @@ function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
  */
 function createMockWorkerClass(mockWorker: MockWorker) {
   return class MockWorkerClass {
+    public async waitUntilReady(): Promise<void> {}
     public close = mockWorker.close;
     public on = mockWorker.on;
     public connection = mockWorker.connection;

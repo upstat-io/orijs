@@ -45,8 +45,8 @@ export class EventCoordinator {
   /** Event names that have registered consumers (populated after bootstrap) */
   private registeredConsumerEvents: Set<string> = new Set();
 
-  /** Promises from async subscribe() calls (BullMQ), awaited during bootstrap */
-  private pendingSubscriptions: Promise<void>[] = [];
+  /** Deferred subscriptions activated after startup hooks and providers are ready. */
+  private pendingSubscriptions: Array<() => void | Promise<void>> = [];
 
   constructor(
     private readonly container: Container,
@@ -117,7 +117,7 @@ export class EventCoordinator {
   }
 
   /**
-   * Instantiates all registered consumers via DI and wires them to the provider.
+   * Instantiates consumers via DI and prepares their provider subscriptions.
    * Called during bootstrap after container is ready.
    */
   public registerConsumers(): void {
@@ -164,14 +164,10 @@ export class EventCoordinator {
       // Create wrapped handler with TypeBox validation
       const wrappedHandler = this.createValidatedHandler(definition, consumer);
 
-      // Register with provider — subscribe() may return Promise<void> (BullMQ) or void (in-process)
-      const result = this.eventProvider.subscribe(eventName, wrappedHandler);
-      if (
-        result != null &&
-        typeof (result as Promise<void>).then === "function"
-      ) {
-        this.pendingSubscriptions.push(result as Promise<void>);
-      }
+      const provider = this.eventProvider;
+      this.pendingSubscriptions.push(() =>
+        provider.subscribe(eventName, wrappedHandler),
+      );
 
       // Track that this event has a consumer
       this.registeredConsumerEvents.add(eventName);
@@ -184,11 +180,19 @@ export class EventCoordinator {
     this.pendingConsumers = [];
   }
 
-  /** Awaits all pending subscriptions from registerConsumers(). Safe to call multiple times. */
+  /** Activates and awaits prepared subscriptions after dependent providers are ready. */
   public async awaitSubscriptions(): Promise<void> {
     if (this.pendingSubscriptions.length === 0) return;
     const batch = this.pendingSubscriptions.splice(0);
-    await Promise.all(batch);
+    const results = await Promise.allSettled(
+      batch.map((subscribe) => Promise.resolve().then(subscribe)),
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length > 0)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Event subscription startup failed",
+      );
   }
 
   /**

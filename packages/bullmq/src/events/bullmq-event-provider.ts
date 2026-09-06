@@ -552,7 +552,7 @@ export class BullMQEventProvider implements EventProvider {
    */
   public async stop(): Promise<void> {
     // Idempotency guard - prevent double stop issues
-    if (!this.started) {
+    if (this.stopping) {
       return;
     }
     this.stopping = true;

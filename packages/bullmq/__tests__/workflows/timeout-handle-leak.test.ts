@@ -99,6 +99,7 @@ function createMockQueueEvents(): MockQueueEvents {
 function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
   let jobIdCounter = 0;
   return class MockFlowProducerClass {
+    public async waitUntilReady(): Promise<void> {}
     public add = mock((flowJob: { opts?: { jobId?: string } }) => {
       const jobId = flowJob.opts?.jobId ?? `job-${++jobIdCounter}`;
       return Promise.resolve({ job: { id: jobId } });
@@ -112,6 +113,7 @@ function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
  */
 function createMockWorkerClass(mockWorker: MockWorker) {
   return class MockWorkerClass {
+    public async waitUntilReady(): Promise<void> {}
     public close = mockWorker.close;
     public on = mockWorker.on;
     public connection = mockWorker.connection;
@@ -424,7 +426,10 @@ describe("BullMQWorkflowProvider Timeout Handle Memory Leak", () => {
       // EFFECTIVE_TIMEOUT_MS is the timer's floor, not a ceiling — under CPU
       // contention the callback can fire well past it, so poll for the
       // observable effect instead of sleeping a fixed margin past it.
-      await waitFor(() => !timeoutHandles.has(flowId), EFFECTIVE_TIMEOUT_MS + 3000);
+      await waitFor(
+        () => !timeoutHandles.has(flowId),
+        EFFECTIVE_TIMEOUT_MS + 3000,
+      );
 
       // Verify timeout handle was cleaned up (via .finally() after timeout rejects the promise)
       expect(timeoutHandles.has(flowId)).toBe(false);

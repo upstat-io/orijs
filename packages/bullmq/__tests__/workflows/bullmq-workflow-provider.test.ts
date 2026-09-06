@@ -59,6 +59,7 @@ interface MockWorker {
  */
 function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
   return class MockFlowProducerClass {
+    public async waitUntilReady(): Promise<void> {}
     public add = mockFlowProducer.add;
     public close = mockFlowProducer.close;
   };
@@ -69,6 +70,7 @@ function createMockFlowProducerClass(mockFlowProducer: MockFlowProducer) {
  */
 function createMockWorkerClass(mockWorker: MockWorker) {
   return class MockWorkerClass {
+    public async waitUntilReady(): Promise<void> {}
     public close = mockWorker.close;
     public on = mockWorker.on;
     public connection = mockWorker.connection;
@@ -86,6 +88,7 @@ function createCapturingWorkerClass(
   onStepProcessor: (processor: (job: unknown) => Promise<unknown>) => void,
 ) {
   return class CapturingWorkerClass {
+    public async waitUntilReady(): Promise<void> {}
     public close = mock(() => Promise.resolve());
     public connection = createMockRedisConnection();
     public blockingConnection = createMockRedisConnection();
@@ -950,6 +953,7 @@ describe("processDefinitionWorkflow functional tests", () => {
 
     // Create Worker class that captures the workflow processor (not step processor)
     const CapturingWorkflowWorkerClass = class {
+      public async waitUntilReady(): Promise<void> {}
       public close = mock(() => Promise.resolve());
       public connection = { _client: { on: mock(() => {}) } };
       public blockingConnection = { _client: { on: mock(() => {}) } };
@@ -994,6 +998,7 @@ describe("processDefinitionWorkflow functional tests", () => {
     };
 
     const FlowProducerClass = class {
+      public async waitUntilReady(): Promise<void> {}
       public add = mockFlowProducer.add;
       public close = mockFlowProducer.close;
     };

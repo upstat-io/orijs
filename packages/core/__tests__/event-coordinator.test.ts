@@ -51,7 +51,7 @@ describe("EventCoordinator", () => {
     }) as unknown as EventProvider;
 
   describe("Provider Factory Injection", () => {
-    it("should use injected provider factory when registering consumers", () => {
+    it("should use injected provider factory when registering consumers", async () => {
       let factoryCalled = false;
       const mockProvider = createMockProvider();
 
@@ -72,11 +72,12 @@ describe("EventCoordinator", () => {
 
       // Factory is called during registerConsumers
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(factoryCalled).toBe(true);
     });
 
-    it("should NOT use factory when explicit provider is set", () => {
+    it("should NOT use factory when explicit provider is set", async () => {
       let factoryCalled = false;
       const explicitProvider = createMockProvider();
 
@@ -96,6 +97,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(factoryCalled).toBe(false);
       expect(coordinator.getProvider()).toBe(explicitProvider);
@@ -107,6 +109,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(coordinator.isConfigured()).toBe(true);
       expect(coordinator.getProvider()).not.toBeNull();
@@ -137,6 +140,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await expect(coordinator.start()).rejects.toThrow(
         "Provider start failed",
@@ -166,6 +170,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
       expect(started).toBe(true);
@@ -191,7 +196,7 @@ describe("EventCoordinator", () => {
   });
 
   describe("Event Definition Registration", () => {
-    it("should register event definition", () => {
+    it("should register event definition", async () => {
       const coordinator = new EventCoordinator(container, logger);
 
       coordinator.registerEventDefinition(TestEvent);
@@ -202,7 +207,7 @@ describe("EventCoordinator", () => {
       );
     });
 
-    it("should throw on duplicate event registration", () => {
+    it("should throw on duplicate event registration", async () => {
       const coordinator = new EventCoordinator(container, logger);
 
       coordinator.registerEventDefinition(TestEvent);
@@ -212,7 +217,7 @@ describe("EventCoordinator", () => {
       }).toThrow(/duplicate/i);
     });
 
-    it("should return undefined for unregistered event", () => {
+    it("should return undefined for unregistered event", async () => {
       const coordinator = new EventCoordinator(container, logger);
 
       expect(coordinator.getEventDefinition("non-existent")).toBeUndefined();
@@ -220,17 +225,18 @@ describe("EventCoordinator", () => {
   });
 
   describe("Consumer Registration", () => {
-    it("should instantiate consumer via DI during registerConsumers()", () => {
+    it("should instantiate consumer via DI during registerConsumers()", async () => {
       const coordinator = new EventCoordinator(container, logger);
 
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(coordinator.isConfigured()).toBe(true);
     });
 
-    it("should return registered event names", () => {
+    it("should return registered event names", async () => {
       const SecondEvent = Event.define({
         name: "second.event",
         data: Type.Object({ id: Type.Number() }),
@@ -287,6 +293,7 @@ describe("EventCoordinator", () => {
 
       // Call registerConsumers even though we have no consumers
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -349,6 +356,7 @@ describe("EventCoordinator", () => {
       coordinator.addEventConsumer(ConsumerEvent, ConsumerEventHandler, []);
 
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -391,6 +399,7 @@ describe("EventCoordinator", () => {
       // Register definition only - emitter-only app
       coordinator.registerEventDefinition(TestEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -411,7 +420,7 @@ describe("EventCoordinator", () => {
   });
 
   describe("TTL Configuration Bridge", () => {
-    it("should call configureEvent for TTL events", () => {
+    it("should call configureEvent for TTL events", async () => {
       const configuredEvents: Array<{
         name: string;
         config: { ttl?: number };
@@ -445,6 +454,7 @@ describe("EventCoordinator", () => {
       coordinator.setProvider(mockProvider as EventProvider);
       coordinator.registerEventDefinition(TtlEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(configuredEvents).toHaveLength(1);
       expect(configuredEvents[0]).toEqual({
@@ -453,7 +463,7 @@ describe("EventCoordinator", () => {
       });
     });
 
-    it("should skip configureEvent for non-TTL events", () => {
+    it("should skip configureEvent for non-TTL events", async () => {
       const configuredEvents: Array<{
         name: string;
         config: { ttl?: number };
@@ -486,11 +496,12 @@ describe("EventCoordinator", () => {
       coordinator.setProvider(mockProvider as EventProvider);
       coordinator.registerEventDefinition(NoTtlEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(configuredEvents).toHaveLength(0);
     });
 
-    it("should work when provider lacks configureEvent", () => {
+    it("should work when provider lacks configureEvent", async () => {
       const mockProvider = createMockProvider();
 
       const TtlEvent = Event.define({
@@ -537,6 +548,7 @@ describe("EventCoordinator", () => {
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerEventDefinition(EmitterOnlyEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -569,6 +581,7 @@ describe("EventCoordinator", () => {
       coordinator.setProvider(mockProvider);
       coordinator.registerEventDefinition(EmitterOnlyEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -596,6 +609,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(TestEvent);
       coordinator.addEventConsumer(TestEvent, TestEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -660,6 +674,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(UserCreatedEvent);
       coordinator.addEventConsumer(UserCreatedEvent, UserCreatedConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -716,6 +731,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(StrictEvent);
       coordinator.addEventConsumer(StrictEvent, StrictConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -767,6 +783,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(ResponseEvent);
       coordinator.addEventConsumer(ResponseEvent, BadResponseConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -843,6 +860,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(MetadataEvent);
       coordinator.addEventConsumer(MetadataEvent, MetadataConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       expect(capturedHandler).toBeDefined();
       await capturedHandler!({
@@ -935,6 +953,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(SecondaryEvent);
       coordinator.addEventConsumer(PrimaryEvent, PrimaryEventConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -1033,6 +1052,7 @@ describe("EventCoordinator", () => {
       coordinator.addEventConsumer(ProcessEvent, ProcessConsumer, []);
       coordinator.addEventConsumer(ValidateEvent, ValidateConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -1107,6 +1127,7 @@ describe("EventCoordinator", () => {
       coordinator.registerEventDefinition(DelayedEvent);
       coordinator.addEventConsumer(TriggerEvent, TriggerConsumer, []);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       await coordinator.start();
 
@@ -1159,6 +1180,7 @@ describe("EventCoordinator", () => {
       );
       coordinator.registerEventDefinition(TestEvent);
       coordinator.registerConsumers();
+      await coordinator.awaitSubscriptions();
 
       const result = await coordinator.cancel("test.event", "my-key");
 

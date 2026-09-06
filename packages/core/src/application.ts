@@ -1722,9 +1722,6 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
     this.eventCoordinator.registerConsumers();
     this.workflowCoordinator.registerConsumers();
 
-    // Await async subscription promises (BullMQ returns Promise from subscribe())
-    await this.eventCoordinator.awaitSubscriptions();
-
     // Set workflow executor on AppContext AFTER registerConsumers() creates the provider
     // Use createExecutor() to get a definition-aware executor that handles both
     // WorkflowDefinition (new API) and WorkflowClass (old API)
@@ -1764,6 +1761,7 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
     await this._context.executeStartupHooks();
     await this.eventCoordinator.start();
     await this.workflowCoordinator.start();
+    await this.eventCoordinator.awaitSubscriptions();
 
     // Start WebSocket provider if configured
     if (this.websocketProvider) {

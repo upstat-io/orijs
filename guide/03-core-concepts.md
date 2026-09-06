@@ -52,7 +52,7 @@ When you call `listen()`, the framework bootstraps the application:
 
 4. **Startup hooks** — All `onStartup` hooks execute in FIFO order. These run before the server accepts connections.
 
-5. **Event/Workflow provider startup** — If you've configured events or workflows, their providers are started (connecting to Redis/BullMQ, starting consumers).
+5. **Event/Workflow provider startup** — Providers start after startup hooks. Event subscriptions activate only after the workflow provider is ready, so a retained event cannot dispatch into an unstarted workflow provider. Bootstrap instantiates consumers and prepares subscriptions without accepting queued events. All subscription attempts settle before a startup failure proceeds to cleanup.
 
 6. **Route compilation** — Routes are compiled into Bun's optimized `Bun.serve({ routes })` format. Bun uses a radix tree internally, so route matching is O(log n) regardless of how many routes you have.
 

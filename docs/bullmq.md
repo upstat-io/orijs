@@ -93,7 +93,9 @@ Per BullMQ best practices, shutdown proceeds in order:
 
 This ensures workers finish processing before QueueEvents closes, QueueEvents receives all completion events before closing, and no pending completion callbacks are lost.
 
-Idempotency guard: `stop()` checks `started` flag and returns immediately on double-stop.
+`stop()` also cleans resources opened during subscription before provider startup completed. Its stopping guard prevents repeated cleanup. A worker whose readiness rejects is closed before its failed registration returns.
+
+The workflow provider's `start()` shares a pending result and waits for its FlowProducer and every registered step/parent worker to become ready. Declare consumers before startup and await it before registering schedules or reporting readiness. Injected worker and producer implementations must implement `waitUntilReady()` as well. Queue connection/retry options and the executable's startup deadline must bound unavailable infrastructure; a constructed worker is not evidence of a usable consumer.
 
 ---
 

@@ -109,10 +109,12 @@ describe("BullMQWorkflowProvider Options", () => {
         connection: { host: "localhost", port: 6379 },
         workflowOptions,
         FlowProducerClass: class {
+          async waitUntilReady(): Promise<void> {}
           add = mockFlowProducer.add;
           close = mockFlowProducer.close;
         } as unknown as BullMQWorkflowProviderOptions["FlowProducerClass"],
         WorkerClass: class {
+          async waitUntilReady(): Promise<void> {}
           on = mockWorker.on;
           close = mockWorker.close;
           concurrency: number;

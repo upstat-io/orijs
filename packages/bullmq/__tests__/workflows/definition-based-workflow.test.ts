@@ -63,6 +63,7 @@ describe("Definition-Based Workflow Execution", () => {
 
     // Create mock FlowProducer that captures jobs
     const MockFlowProducerClass = class {
+      async waitUntilReady(): Promise<void> {}
       add = mock((job: CapturedFlowJob) => {
         capturedJobs.push(job);
         return Promise.resolve({ job });
@@ -72,6 +73,7 @@ describe("Definition-Based Workflow Execution", () => {
 
     // Create mock Worker
     const MockWorkerClass = class {
+      async waitUntilReady(): Promise<void> {}
       close = mock(() => Promise.resolve());
       on = mock(() => this);
       connection = createMockRedisConnection();
@@ -263,6 +265,7 @@ describe("Definition-Based Workflow Execution", () => {
         connection: { host: "localhost", port: 6379 },
         queuePrefix: "custom-prefix",
         FlowProducerClass: class {
+          async waitUntilReady(): Promise<void> {}
           add = mock((job: CapturedFlowJob) => {
             capturedJobs.push(job);
             return Promise.resolve({ job });
@@ -270,6 +273,7 @@ describe("Definition-Based Workflow Execution", () => {
           close = mock(() => Promise.resolve());
         } as unknown as BullMQWorkflowProviderOptions["FlowProducerClass"],
         WorkerClass: class {
+          async waitUntilReady(): Promise<void> {}
           close = mock(() => Promise.resolve());
           on = mock(() => this);
           connection = createMockRedisConnection();

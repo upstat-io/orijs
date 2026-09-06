@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { TestEventProvider } from "@orijs/events";
+import { TestEventProvider, type EventHandlerFn } from "@orijs/events";
+import { Type } from "@orijs/validation";
+import { Event } from "../src/types/event-definition";
 import { InProcessWorkflowProvider } from "@orijs/workflows";
 import { Ori } from "../src/application";
 import type { OriController, RouteBuilder } from "../src/types";
@@ -8,6 +10,57 @@ function gate() {
   const { promise, resolve } = Promise.withResolvers<void>();
   return { promise, release: resolve };
 }
+
+test("should activate event consumers only after startup hooks and workflow readiness", async () => {
+  const starting = gate();
+  const ready = gate();
+  const order: string[] = [];
+  class Workflows extends InProcessWorkflowProvider {
+    override async start() {
+      starting.release();
+      await ready.promise;
+      await super.start();
+      order.push("workflow-ready");
+    }
+  }
+  class Events extends TestEventProvider {
+    override subscribe<TPayload = unknown, TReturn = void>(
+      name: string,
+      handler: EventHandlerFn<TPayload, TReturn>,
+    ): void {
+      order.push("event-admission");
+      super.subscribe(name, handler);
+    }
+  }
+  const definition = Event.define({
+    name: "startup.admission",
+    data: Type.Object({}),
+    result: Type.Void(),
+  });
+  class Consumer {
+    onEvent = async () => undefined;
+  }
+  const app = Ori.create()
+    .logger({ level: "error" })
+    .disableSignalHandling()
+    .eventProvider(new Events())
+    .workflowProvider(new Workflows())
+    .event(definition)
+    .consumer(Consumer);
+  app.context.onStartup(() => {
+    order.push("startup-hook");
+  });
+  const listening = app.listen(0);
+  try {
+    await starting.promise;
+    expect(order).toEqual(["startup-hook"]);
+  } finally {
+    ready.release();
+    await listening;
+    await app.stop();
+  }
+  expect(order).toEqual(["startup-hook", "workflow-ready", "event-admission"]);
+});
 
 class GatedEvents extends TestEventProvider {
   readonly stopping = gate();
