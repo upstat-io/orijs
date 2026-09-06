@@ -481,30 +481,10 @@ describe("RedisWsProvider (functional)", () => {
       });
 
       try {
-        await badProvider.start();
-
-        badProvider.subscribe(SOCKET_1, "room:123");
-
-        await waitFor(
-          () =>
-            errorMock.mock.calls.some(
-              ([message]) =>
-                message === "Redis subscribe failed after max retries",
-            ),
-          {
-            timeout: 5000,
-            message: "Invalid Redis subscription did not fail",
-          },
-        );
-
-        expect(errorMock).toHaveBeenCalledWith(
-          "Redis subscribe failed after max retries",
-          expect.objectContaining({
-            channel: "ws:room:123",
-            attempts: 3,
-            error: expect.any(String),
-          }),
-        );
+        const startedAt = Date.now();
+        await expect(badProvider.start()).rejects.toThrow();
+        expect(Date.now() - startedAt).toBeLessThan(2500);
+        await expect(badProvider.publish('room:123', 'unavailable')).rejects.toThrow('Provider not ready');
 
         await badProvider.stop();
 

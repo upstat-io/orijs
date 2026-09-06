@@ -4,7 +4,8 @@ import {
   createRedisWsProvider,
 } from "../src/redis-websocket-provider";
 import type { BunServer } from "@orijs/websocket";
-import { waitFor } from "@orijs/test-utils";
+import { Redis } from "ioredis";
+import { createRedisTestHelper, waitFor } from "@orijs/test-utils";
 
 /** Valid UUID v4 socket IDs for testing */
 const SOCKET_1 = "550e8400-e29b-41d4-a716-446655440001";
@@ -15,18 +16,17 @@ const SOCKET_3 = "550e8400-e29b-41d4-a716-446655440003";
  * Unit tests for RedisWsProvider
  *
  * These tests verify the internal state management logic in isolation.
- * They use a non-existent Redis host to avoid actual connections while
- * testing the provider's local state tracking.
+ * Unstarted providers exercise local state tracking; started providers use
+ * the package-owned Redis fixture and explicit transport faults.
  *
  * For integration tests with real Redis, see redis-websocket-provider.functional.test.ts
  */
 
 describe("RedisWsProvider", () => {
-  // Use invalid host to prevent actual connections while testing local state
-  const defaultOptions = {
-    connection: { host: "invalid-host-for-testing", port: 9999 },
-    connectTimeout: 100, // Fast timeout for tests
-  };
+  // Pure state tests never start a connection; ingress tests use the owned Redis fixture.
+  const helper = createRedisTestHelper(process.env.TEST_PACKAGE_NAME ?? 'orijs-websocket-redis');
+  const { host, port, db } = helper.getConnectionConfig();
+  const defaultOptions = { connection: { host, port, db }, connectTimeout: 100 };
 
   describe("constructor", () => {
     it('should use default keyPrefix "ws" when not provided', () => {
@@ -402,15 +402,20 @@ describe("RedisWsProvider", () => {
 
       // Create provider with invalid connection and short timeout
       const provider = new RedisWsProvider({
-        connection: { host: "invalid-host-for-retry-test", port: 59999 },
+        connection: defaultOptions.connection,
         connectTimeout: 50, // Very short timeout for fast failures
         logger: mockLogger as never,
       });
 
       await provider.start();
 
-      // Subscribe to trigger retry behavior
+      // Fail the established outer transport; startup itself now requires readiness.
+      const subscriber: unknown = Reflect.get(provider, 'subscriber');
+      if (!(subscriber instanceof Redis)) throw new Error('Redis subscriber fixture unavailable');
+      subscriber.disconnect();
       provider.subscribe(SOCKET_1, "room:test");
+      const readiness = provider.whenSubscribed('room:test');
+      const rejection = expect(readiness).rejects.toThrow('Topic subscription failed');
 
       // Wait for all retries to complete using polling instead of fixed delay
       // Expects 2 retry warnings (SUBSCRIBE_MAX_RETRIES - 1) and 1 final error
@@ -446,6 +451,8 @@ describe("RedisWsProvider", () => {
           call[0].includes("Redis subscribe failed after max retries"),
       );
       expect(finalErrors.length).toBe(1);
+
+      await rejection;
 
       // Access private pendingSubscriptions to verify cleanup
       const pendingSubscriptions = (
