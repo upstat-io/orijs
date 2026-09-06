@@ -220,22 +220,24 @@ describe("SocketClient with Real WebSocket", () => {
       expect(connected).toBe(true);
     });
 
-    it("should fire Disconnected event on disconnect", async () => {
+    it("should fire Disconnected once when explicitly disconnecting", async () => {
       const client = createClient();
-      let disconnected = false;
+      let disconnectCount = 0;
 
       client.on(Disconnected, () => {
-        disconnected = true;
+        disconnectCount++;
       });
 
       client.connect();
       await waitFor(() => client.isConnected, { timeout: 1000 });
 
       client.disconnect();
+      client.disconnect();
 
-      await waitFor(() => disconnected, { timeout: 1000 });
+      await waitFor(() => serverSockets.size === 0, { timeout: 1000 });
 
-      expect(disconnected).toBe(true);
+      expect(disconnectCount).toBe(1);
+      expect(client.connectionState).toBe("disconnected");
     });
   });
 
@@ -503,6 +505,10 @@ describe("SocketClient with Real WebSocket", () => {
       const client = createClient({
         reconnect: false, // Manual reconnect
       });
+      let disconnectCount = 0;
+      client.on(Disconnected, () => {
+        disconnectCount++;
+      });
 
       client.connect();
       await waitFor(() => client.isConnected, { timeout: 1000 });
@@ -514,7 +520,7 @@ describe("SocketClient with Real WebSocket", () => {
 
       // Explicit disconnect
       client.disconnect();
-      await waitFor(() => !client.isConnected, { timeout: 1000 });
+      expect(client.isConnected).toBe(false);
 
       clearServerMessages();
 
@@ -530,6 +536,8 @@ describe("SocketClient with Real WebSocket", () => {
       const joinMessages = getServerMessages("room.join");
       expect(joinMessages.length).toBe(1);
       expect((joinMessages[0]!.parsed as { room: string }).room).toBe("room1");
+      expect(client.isConnected).toBe(true);
+      expect(disconnectCount).toBe(1);
     });
   });
 

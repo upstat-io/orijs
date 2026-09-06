@@ -502,6 +502,10 @@ disconnected --> connecting --> connected
 
 ### 18. Reconnection Strategy
 
+`disconnect()` retires the current socket immediately, cancels its timers and disables automatic reconnection. It emits `Disconnected` once when leaving an established connection; repeated calls while disconnected emit nothing. Rooms remain tracked for a later `connect()`.
+
+Every socket callback must verify that its socket is still current before changing client state, timers or delivering messages. Close events may arrive after an immediate manual reconnect. Verify this with real sockets, including room rejoin and lifecycle event counts; a runtime that delivers close synchronously can conceal this race.
+
 #### Full Jitter Backoff
 
 ```typescript

@@ -28,8 +28,7 @@ export type ShutdownCallback = () => Promise<void>;
 /**
  * Manages application lifecycle including signal handling and graceful shutdown.
  *
- * Uses WeakRef to avoid preventing garbage collection of the parent application.
- * Signal handlers are cleaned up when stop() is called.
+ * Signal handlers are cleaned up when the shutdown attempt settles.
  */
 export class LifecycleManager {
   private readonly logger: Logger;
@@ -37,6 +36,8 @@ export class LifecycleManager {
   private enableSignalHandling: boolean;
   private signalHandlerCleanups: Array<() => void> = [];
   private isShuttingDown = false;
+  private shutdownPromise: Promise<void> | undefined;
+  private shutdownSucceeded = false;
 
   constructor(options: LifecycleOptions) {
     this.logger = options.logger;
@@ -60,6 +61,15 @@ export class LifecycleManager {
     this.enableSignalHandling = false;
   }
 
+  /** @internal Starts a new lifecycle only after the previous drain succeeded. */
+  public resetForStartup(): void {
+    if (this.shutdownPromise && !this.shutdownSucceeded) {
+      throw new Error("Previous application shutdown did not succeed");
+    }
+    this.shutdownPromise = undefined;
+    this.shutdownSucceeded = false;
+  }
+
   /**
    * Registers SIGTERM and SIGINT handlers for graceful shutdown.
    *
@@ -77,8 +87,13 @@ export class LifecycleManager {
 
     const shutdown = async (signal: string) => {
       this.logger.info(`Received Shutdown Signal: ${signal}`);
-      await onShutdown();
-      process.exit(0);
+      try {
+        await onShutdown();
+        process.exit(0);
+      } catch {
+        this.logger.error("Application shutdown failed");
+        process.exit(1);
+      }
     };
 
     // Named handlers so we can remove them later
@@ -99,20 +114,23 @@ export class LifecycleManager {
    * Executes graceful shutdown with timeout protection.
    *
    * @param shutdownWork - Async function containing shutdown operations
-   * @returns Promise that resolves when shutdown completes (or times out)
+   * Concurrent and subsequent callers observe the same outcome.
+   * @returns Promise resolving only after shutdown work completes
+   * @throws The shutdown error, or a deadline error while work may still run
    */
-  public async executeGracefulShutdown(
+  public executeGracefulShutdown(
     shutdownWork: ShutdownCallback,
   ): Promise<void> {
-    // Guard against multiple calls
-    if (this.isShuttingDown) {
-      return;
-    }
+    if (this.shutdownPromise) return this.shutdownPromise;
     this.isShuttingDown = true;
+    this.shutdownPromise = this.awaitShutdown(shutdownWork);
+    return this.shutdownPromise;
+  }
 
+  private async awaitShutdown(shutdownWork: ShutdownCallback): Promise<void> {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    const shutdownPromise = shutdownWork();
+    // Defer invocation so a synchronous throw follows the same cleanup path.
+    const shutdownPromise = Promise.resolve().then(shutdownWork);
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(
@@ -123,21 +141,20 @@ export class LifecycleManager {
 
     try {
       await Promise.race([shutdownPromise, timeoutPromise]);
+      this.shutdownSucceeded = true;
     } catch (err) {
-      this.logger.warn("Shutdown Timeout: forcing stop", {
+      this.logger.warn("Application shutdown did not complete", {
         timeoutMs: this.shutdownTimeoutMs,
         error: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+      this.cleanupSignalHandlers();
+      this.isShuttingDown = false;
     }
-
-    // Clean up signal handlers to prevent memory leaks
-    this.cleanupSignalHandlers();
-
-    this.isShuttingDown = false;
   }
 
   /**

@@ -217,10 +217,11 @@ export class SocketClient {
 
     this.skipReconnect = false;
     this.deviceWentOffline = false;
-    this.setState("connecting");
 
+    let socket: WebSocket;
     try {
-      this.ws = new WebSocket(this.url);
+      socket = new WebSocket(this.url);
+      this.ws = socket;
     } catch (error) {
       this.setState("disconnected");
       this.notifyError(
@@ -228,32 +229,37 @@ export class SocketClient {
       );
       return;
     }
+    this.setState("connecting");
+    if (this.ws !== socket) return;
 
     // Connection timeout - fail fast if server doesn't respond
     if (this.options.connectionTimeout > 0) {
       this.connectionTimeoutTimer = setTimeout(() => {
-        if (this.state === "connecting" && this.ws) {
+        if (this.state === "connecting" && this.ws === socket) {
           const error = new Error(
             `Connection timeout after ${this.options.connectionTimeout}ms`,
           );
           this.notifyError(error);
-          this.ws.close();
+          socket.close();
         }
       }, this.options.connectionTimeout);
     }
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       // Clear connection timeout
       this.clearConnectionTimeout();
 
       const wasReconnect = this.backoff.attempts > 0;
-      this.setState("connected");
       this.reconnecting = false;
+      this.setState("connected");
+      if (this.ws !== socket) return;
 
       // Defer backoff reset until connection is stable.
       // If server rejects immediately (guard/rate-limit),
       // onclose fires before this timer and backoff keeps growing.
       this.backoffResetTimer = setTimeout(() => {
+        if (this.ws !== socket) return;
         this.backoffResetTimer = null;
         if (this.state === "connected") {
           this.backoff.reset();
@@ -271,11 +277,13 @@ export class SocketClient {
       this.emitInternal(CONNECTED_MESSAGE, { reconnected: wasReconnect });
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       this.handleMessage(event.data as string);
     };
 
-    this.ws.onclose = (event) => {
+    socket.onclose = (event) => {
+      if (this.ws !== socket) return;
       // Clear connection timeout
       this.clearConnectionTimeout();
 
@@ -293,6 +301,7 @@ export class SocketClient {
       if (wasConnected) {
         this.emitInternal(DISCONNECTED_MESSAGE, {});
       }
+      if (this.ws !== null) return;
 
       // Server explicitly rejected — don't reconnect
       // 1008 = Policy Violation (auth/rate limit)
@@ -309,7 +318,8 @@ export class SocketClient {
       this.maybeReconnect();
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (this.ws !== socket) return;
       this.notifyError(new Error("WebSocket connection error"));
       // onclose will fire after onerror, so we don't change state here
     };
@@ -340,9 +350,11 @@ export class SocketClient {
 
   /**
    * Disconnect from the WebSocket server.
-   * Prevents automatic reconnection.
+   * Prevents automatic reconnection and emits Disconnected once if connected.
    */
   disconnect(): void {
+    const socket = this.ws;
+    const wasConnected = this.state === "connected";
     // Prevent reconnection
     this.skipReconnect = true;
     this.reconnecting = false;
@@ -364,13 +376,14 @@ export class SocketClient {
     // Clear send buffer (messages will be lost, but that's expected on intentional disconnect)
     this.sendBuffer.length = 0;
 
-    // Close the WebSocket
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    // Retire before close: its callback may run after a new connection exists.
+    this.ws = null;
+    socket?.close();
 
     this.setState("disconnected");
+    if (wasConnected) {
+      this.emitInternal(DISCONNECTED_MESSAGE, {});
+    }
   }
 
   /**

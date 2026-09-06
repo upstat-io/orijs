@@ -174,6 +174,13 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
   private readonly container: Container;
   private readonly responseFactory: ResponseFactory;
   private server: BunServer | null = null;
+  private startupPromise: Promise<BunServer> | undefined;
+  private readonly onUnhandledRejection = (reason: unknown): void => {
+    this.appLogger.error("Unhandled promise rejection", {
+      error: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  };
   private appLogger: Logger;
   /** Pre-allocated logger options for request contexts (avoids per-request object allocation) */
   private sharedLoggerOptions: LoggerOptions = { level: "info" };
@@ -1093,18 +1100,43 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
    * @param callback - Optional callback invoked when server is ready
    * @returns Promise resolving to the Bun server instance
    */
-  public async listen(port: number, callback?: () => void): Promise<BunServer> {
+  public listen(port: number, callback?: () => void): Promise<BunServer> {
+    if (this.startupPromise && this._context.phase !== "stopped") {
+      return Promise.reject(
+        new Error(
+          "Application already started; await successful stop before listening again",
+        ),
+      );
+    }
+    try {
+      this.lifecycleManager.resetForStartup();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    this.startupPromise = this.startListening(port, callback);
+    return this.startupPromise.catch(async (startupError: unknown) => {
+      try {
+        await this.stop();
+      } catch (shutdownError) {
+        throw new AggregateError(
+          [startupError, shutdownError],
+          "Application startup and cleanup failed",
+        );
+      }
+      throw startupError;
+    });
+  }
+
+  private async startListening(
+    port: number,
+    callback?: () => void,
+  ): Promise<BunServer> {
     const startTime = performance.now();
 
     // Prevent unhandled promise rejections from crashing the server.
     // Standard safety net for production HTTP servers — logs the error
     // instead of exiting the process.
-    process.on("unhandledRejection", (reason: unknown) => {
-      this.appLogger.error("Unhandled promise rejection", {
-        error: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-      });
-    });
+    process.on("unhandledRejection", this.onUnhandledRejection);
 
     this.logHeader();
 
@@ -1584,58 +1616,50 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
 
   /**
    * Stops the server gracefully.
-   * Executes shutdown hooks in LIFO order before closing the server.
-   * Safe to call multiple times (no-op if already stopped).
-   * Times out after configured duration (default 10s) to prevent hanging.
-   * @returns Promise resolving when shutdown is complete
+   * Drains HTTP before shutdown hooks and event/workflow/WebSocket providers.
+   * Concurrent and repeated calls observe the same shutdown outcome.
+   * @returns Promise resolving only after the complete drain succeeds
+   * @throws Provider errors or a deadline error; work may remain after rejection
    */
-  public async stop(): Promise<void> {
-    // Guard against multiple calls (check server AND lifecycle state)
-    if (this.lifecycleManager.isInShutdown() || !this.server) {
-      return;
+  public stop(): Promise<void> {
+    if (!this.startupPromise) return Promise.resolve();
+    return this.lifecycleManager
+      .executeGracefulShutdown(async () => {
+        // Raw startup settles before cleanup, including when listen() itself failed.
+        await this.startupPromise?.catch(() => undefined);
+        await this.drain();
+      })
+      .finally(() => {
+        process.removeListener("unhandledRejection", this.onUnhandledRejection);
+      });
+  }
+
+  private async drain(): Promise<void> {
+    this._context.setPhase("stopping");
+    // Start refusing new HTTP connections while closing existing WebSockets.
+    const server = this.server;
+    const httpDrain = server?.stop();
+    if (this.websocketCoordinator) {
+      for (const ws of this.websocketCoordinator.getAllConnections()) {
+        try {
+          ws.close(1001, "Server shutting down");
+        } catch {
+          /* A disconnected client needs no further close frame. */
+        }
+      }
     }
-
-    await this.lifecycleManager.executeGracefulShutdown(async () => {
-      // Execute shutdown hooks (LIFO, continue on error)
-      await this._context.executeShutdownHooks();
-
-      // Stop event system
-      await this.eventCoordinator.stop();
-
-      // Stop workflow provider
-      await this.workflowCoordinator.stop();
-
-      // Drain WebSocket connections gracefully
-      if (this.websocketCoordinator) {
-        const connections = this.websocketCoordinator.getAllConnections();
-        for (const ws of connections) {
-          try {
-            // Send close frame with reason (1001 = Going Away)
-            ws.close(1001, "Server shutting down");
-          } catch {
-            // Connection may already be closed, ignore
-          }
-        }
-        // Brief delay to allow close frames to be sent
-        if (connections.length > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      // Stop WebSocket provider
-      if (this.websocketProvider) {
-        await this.websocketProvider.stop();
-      }
-    });
-
-    // Stop the server
-    this.server.stop();
+    await httpDrain;
     this.server = null;
+    await this._context.executeShutdownHooks();
+    await this.eventCoordinator.stop();
+    await this.workflowCoordinator.stop();
+    await this.websocketProvider?.stop();
+    this._context.setPhase("stopped");
   }
 
   /**
    * Sets the graceful shutdown timeout in milliseconds.
-   * If shutdown hooks take longer than this, the server will force stop.
+   * A deadline rejects stop(); built-in signal handling then exits unsuccessfully.
    * Default: 10000ms (10 seconds)
    * @param timeoutMs - Timeout in milliseconds
    */

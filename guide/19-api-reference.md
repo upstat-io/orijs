@@ -147,8 +147,8 @@ The main application class. All methods return `this` for fluent chaining unless
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `listen` | `(port: number, callback?): Promise<BunServer>` | Starts the HTTP server |
-| `stop` | `(): Promise<void>` | Stops the server gracefully |
+| `listen` | `(port: number, callback?): Promise<BunServer>` | Starts or restarts after successful stop; a startup failure awaits partial-resource cleanup before rejecting |
+| `stop` | `(): Promise<void>` | Shares one shutdown outcome; resolves after HTTP and provider drain, rejects on failure or timeout |
 | `disableSignalHandling` | `(): this` | Disables SIGINT/SIGTERM handling (for tests) |
 | `setShutdownTimeout` | `(timeoutMs: number): this` | Sets graceful shutdown timeout (default: 10s) |
 

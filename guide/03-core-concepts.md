@@ -75,15 +75,21 @@ Request → CORS → Global Guards → Controller Guards → Route Guards
 
 ### Phase 5: Shutdown
 
+Graceful HTTP/WebSocket drain requires Bun 1.4.2 or later. Bun 1.3.14 has a [shutdown-promise defect after WebSocket closure](https://github.com/oven-sh/bun/issues/36223); a bounded timeout cannot turn that failure into evidence of drain.
+
 When the process receives SIGTERM or SIGINT (or you call `app.stop()`):
 
-1. **Shutdown hooks execute** in LIFO (last-in, first-out) order — this ensures that dependencies are cleaned up before the services that depend on them
-2. **Event/Workflow providers stop** — gracefully draining queues and closing connections
-3. **WebSocket connections close** — close frames are sent to all connected clients
-4. **Server stops** — the HTTP server stops accepting new connections
-5. **Process exits** (if triggered by SIGTERM/SIGINT)
+1. **Startup settles** if a concurrent `listen()` is still opening resources.
+2. **HTTP stops accepting connections and drains requests** while providers remain available. WebSocket clients receive close frames so their connections can drain too.
+3. **Shutdown hooks execute** in LIFO (last-in, first-out) order.
+4. **Event, workflow and WebSocket providers stop** in that order. Event handlers can finish workflow handoffs before the workflow provider closes.
+5. **Process exits** (if triggered by SIGTERM/SIGINT): zero after successful drain, nonzero after failure or timeout.
 
-The shutdown timeout (default: 10 seconds) ensures the process doesn't hang indefinitely. Configure it with `app.setShutdownTimeout(30_000)` for applications that need more time to drain.
+The shutdown timeout (default: 10 seconds) bounds the caller's wait. Configure it with `app.setShutdownTimeout(30_000)` for applications that need more time to drain. `stop()` rejects on a provider error or timeout; a timeout does not cancel work or prove that dependencies can close. Concurrent and subsequent calls observe the same shutdown outcome without repeating hooks or provider stops. A caller managing signals itself must handle rejection and terminate unsuccessfully rather than claiming a successful drain.
+
+The application removes its own signal and unhandled-rejection listeners when its shutdown attempt settles, including after failed startup. It leaves listeners owned by other application instances untouched.
+
+A failed `listen()` cleans up partially started resources before rejecting; if cleanup also fails, the rejection retains both errors. Calling `stop()` before any `listen()` is a no-op. During provider drain, `context.phase` remains `stopping`; it reaches `stopped` only after the complete drain succeeds. A new `listen()` on the same instance is allowed after a successful stop, provided its configured providers support restart; concurrent starts and restarting after failed shutdown are rejected. Startup/ready hooks must throw to abort startup, not await `stop()` from inside the startup operation that shutdown itself must await.
 
 ## Dependency Injection
 
@@ -527,10 +533,6 @@ Runs when the application is shutting down (SIGTERM, SIGINT, or `app.stop()`). U
 app.context.onShutdown(async () => {
   app.context.log.info('Shutting down...');
 
-  // Close database connections
-  const db = app.context.resolve(DatabasePool);
-  await db.close();
-
   // Deregister from service discovery
   await serviceRegistry.deregister('user-api');
 });
@@ -548,7 +550,7 @@ app.context.onShutdown(async () => {
 });
 ```
 
-The cache flush runs before the database close. If the cache needs to write through to the database during flush, the database connection is still available. LIFO order ensures that dependencies are cleaned up after the services that depend on them.
+The cache flush runs before the database close. This example is appropriate only when background consumers do not use that database. Shutdown hooks run before provider drain: if an event or workflow consumer uses the pool, keep it open until `await app.stop()` succeeds, then close it in the process composition. A shutdown hook is not a post-drain callback.
 
 Shutdown hooks continue executing even if one throws an error (the error is logged). This ensures that a failure in one cleanup step doesn't prevent others from running.
 
