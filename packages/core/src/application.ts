@@ -1165,7 +1165,12 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
       this.server = Bun.serve({
         port,
         routes: bunRoutes,
-        fetch: (request) => this.handleUnmatchedRequest(request),
+        fetch: (request) => {
+          if (this._corsConfig && request.method === "OPTIONS") {
+            return this.handleCorsPreFlight(request);
+          }
+          return this.handleUnmatchedRequest(request);
+        },
       });
     }
 
@@ -1716,7 +1721,17 @@ export class OriApplication<TSocket extends SocketEmitter = SocketEmitter> {
    * Handles requests that don't match any registered route.
    * This is the fallback for Bun's fetch handler.
    */
-  private handleUnmatchedRequest(_request: Request): Response {
+  private handleUnmatchedRequest(request: Request): Response {
+    if (this._corsConfig) {
+      const corsHeaders = this.getCorsHeadersForRequest(request);
+      return new Response(ResponseFactory.JSON_404, {
+        status: 404,
+        headers: {
+          ...ResponseFactory.JSON_HEADERS,
+          ...corsHeaders,
+        },
+      });
+    }
     return this.responseFactory.notFound();
   }
 

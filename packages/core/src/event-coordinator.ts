@@ -147,11 +147,17 @@ export class EventCoordinator {
     for (const { definition, consumerClass, deps } of this.pendingConsumers) {
       const eventName = definition.name;
 
-      // Register consumer class with container
-      this.container.register(
-        consumerClass,
-        deps as ConstructorDeps<typeof consumerClass>,
-      );
+      // Register consumer class with container if not already registered or if deps explicitly provided
+      if (!this.container.has(consumerClass) || deps !== undefined) {
+        if (deps !== undefined) {
+          this.container.registerWithTokenDeps(
+            consumerClass,
+            deps as InjectionToken[],
+          );
+        } else {
+          this.container.register(consumerClass);
+        }
+      }
       const consumer =
         this.container.resolve<IEventConsumer<unknown, unknown>>(consumerClass);
 
